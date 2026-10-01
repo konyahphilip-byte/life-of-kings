@@ -1,4 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Float } from '@react-three/drei';
 import { Suspense, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { Leaf } from 'lucide-react';
@@ -18,7 +19,8 @@ function LeafObject({pointer}:{pointer:MutableRefObject<{x:number;y:number}>}){
     const veinGeometry=new THREE.TubeGeometry(curve,32,.014,7,false);return{shape:geometry,vein:veinGeometry};
   },[]);
   useFrame(({clock},delta)=>{
-    const t=clock.elapsedTime;if(group.current){group.current.rotation.x=THREE.MathUtils.damp(group.current.rotation.x,-pointer.current.y*.28,4,delta);group.current.rotation.y=THREE.MathUtils.damp(group.current.rotation.y,pointer.current.x*.38,4,delta);group.current.rotation.z=THREE.MathUtils.damp(group.current.rotation.z,-pointer.current.x*.08,4,delta);group.current.position.y=THREE.MathUtils.damp(group.current.position.y,Math.sin(t*.72)*.075,3,delta);group.current.scale.setScalar(1+Math.sin(t*.8)*.012);}
+    const t=clock.elapsedTime;
+    if(group.current){group.current.rotation.x=THREE.MathUtils.damp(group.current.rotation.x,-pointer.current.y*.28,4,delta);group.current.rotation.y=THREE.MathUtils.damp(group.current.rotation.y,pointer.current.x*.38,4,delta);group.current.rotation.z=THREE.MathUtils.damp(group.current.rotation.z,-pointer.current.x*.08,4,delta);}
     if(orb.current)orb.current.rotation.y=t*.09;
   });
   return <group ref={group}>
@@ -41,5 +43,5 @@ export default function HomeDepth(){
   useEffect(()=>{const element=host.current;if(!element||!('IntersectionObserver'in window))return;const observer=new IntersectionObserver(([entry])=>setVisible(entry.isIntersecting),{threshold:.03});observer.observe(element);return()=>observer.disconnect();},[]);
   const move=(event:React.PointerEvent<HTMLDivElement>)=>{const box=event.currentTarget.getBoundingClientRect();pointer.current.x=THREE.MathUtils.clamp(((event.clientX-box.left)/box.width-.5)*2,-1,1);pointer.current.y=THREE.MathUtils.clamp(((event.clientY-box.top)/box.height-.5)*2,-1,1);};
   const reset=()=>{pointer.current.x=0;pointer.current.y=0;};
-  return <div ref={host} className="home-depth" role="img" aria-label="A polished green leaf floating in a glass orb" onPointerMove={move} onPointerLeave={reset}><StaticLeaf/>{!reduced&&<Canvas className="home-depth-canvas" dpr={[1,1.5]} frameloop="demand" camera={{position:[0,0,5.2],fov:38}} gl={{alpha:true,antialias:true,powerPreference:'low-power'}}><Suspense fallback={null}><FrameDriver enabled={visible}/><ambientLight intensity={.72}/><directionalLight position={[-3.5,5,4]} intensity={2.5} color="#f2ffe7"/><pointLight position={[3,-1,2]} intensity={1.1} color="#81df94"/><pointLight position={[-3,-2,-1]} intensity={.45} color="#8982ff"/><LeafObject pointer={pointer}/></Suspense></Canvas>}</div>;
+  return <div ref={host} className="home-depth" role="img" aria-label="A polished green leaf floating in a glass orb" onPointerMove={move} onPointerLeave={reset}><StaticLeaf/>{!reduced&&<Canvas className="home-depth-canvas" dpr={[1,1.5]} frameloop="demand" camera={{position:[0,0,5.2],fov:38}} gl={{alpha:true,antialias:true,powerPreference:'low-power'}} fallback={null}><Suspense fallback={null}><FrameDriver enabled={visible}/><ambientLight intensity={.72}/><directionalLight position={[-3.5,5,4]} intensity={2.5} color="#f2ffe7"/><pointLight position={[3,-1,2]} intensity={1.1} color="#81df94"/><pointLight position={[-3,-2,-1]} intensity={.45} color="#8982ff"/><Float speed={.55} rotationIntensity={.1} floatIntensity={.07} floatingRange={[-.05,.05]}><LeafObject pointer={pointer}/></Float></Suspense></Canvas>}</div>;
 }

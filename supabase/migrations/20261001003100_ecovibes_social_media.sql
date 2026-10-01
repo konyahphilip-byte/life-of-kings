@@ -54,3 +54,17 @@ create table public.reel_likes (
   created_at timestamptz not null default now(),
   primary key(reel_id,user_id)
 );
+
+-- Keep every API-exposed social table private to the server API. No browser
+-- client should query these tables directly.
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array[
+    'media_assets','people_presence','people_follows','stories','story_views',
+    'reels','reel_views','reel_likes'
+  ] loop
+    execute format('alter table public.%I enable row level security', table_name);
+    execute format('revoke all on public.%I from anon, authenticated', table_name);
+  end loop;
+end $$;

@@ -17,6 +17,7 @@ import {
 } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dbPath =
@@ -24,6 +25,9 @@ const dbPath =
 const port = Number(process.env.PORT || process.env.API_PORT || 8787);
 const isProduction = process.env.NODE_ENV === "production";
 const postgresMode = Boolean(process.env.DATABASE_URL);
+if (isProduction && !postgresMode) {
+  throw new Error("DATABASE_URL is required in production; refusing to start with local SQLite.");
+}
 const transactionClient = new AsyncLocalStorage();
 const pool = postgresMode
   ? new Pool({
@@ -41,6 +45,7 @@ if (!postgresMode) {
   db.exec(`
  PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, eco_id TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, password_salt TEXT NOT NULL, password_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS supabase_identities(supabase_user_id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE, created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS roles(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK(role IN ('customer','seller','provider')), created_at TEXT NOT NULL, PRIMARY KEY(user_id,role));
  CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, csrf_token TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
@@ -199,6 +204,60 @@ function fault(status, code, message) {
 }
 function assert(condition, status, code, message) {
   if (!condition) fault(status, code, message);
+}
+function mediaStorageConfig() {
+  const projectUrl = (process.env.STORAGE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const key = process.env.STORAGE_KEY || process.env.SUPABASE_SECRET_KEY || "";
+  if (!projectUrl || !key) return null;
+  return {
+    root: projectUrl.endsWith("/storage/v1") ? projectUrl : `${projectUrl}/storage/v1`,
+    key,
+    bucket: process.env.STORAGE_BUCKET || "ecovibes-media",
+  };
+}
+function mediaObjectUrl(config, assetId) {
+  return `${config.root}/object/${encodeURIComponent(config.bucket)}/${encodeURIComponent(assetId)}`;
+}
+async function storeMediaAsset(assetId, bytes, mime) {
+  const config = mediaStorageConfig();
+  if (!config) {
+    assert(!isProduction, 503, "media_storage_unavailable", "Configure Supabase Storage before accepting uploads.");
+    const dir = resolve(root, "server/data/social-media");
+    mkdirSync(dir, { recursive: true });
+    await writeFile(resolve(dir, assetId), bytes, { flag: "wx", mode: 0o600 });
+    return;
+  }
+  const response = await fetch(mediaObjectUrl(config, assetId), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.key}`,
+      apikey: config.key,
+      "Content-Type": mime,
+      "x-upsert": "false",
+    },
+    body: bytes,
+  });
+  assert(response.ok, 502, "media_storage_failed", "The media provider could not save this upload.");
+}
+async function removeMediaAsset(assetId) {
+  const config = mediaStorageConfig();
+  if (!config) {
+    await unlink(resolve(root, "server/data/social-media", assetId)).catch(() => undefined);
+    return;
+  }
+  await fetch(mediaObjectUrl(config, assetId), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${config.key}`, apikey: config.key },
+  }).catch(() => undefined);
+}
+async function loadMediaAsset(assetId) {
+  const config = mediaStorageConfig();
+  if (!config) return await readFile(resolve(root, "server/data/social-media", assetId));
+  const response = await fetch(mediaObjectUrl(config, assetId), {
+    headers: { Authorization: `Bearer ${config.key}`, apikey: config.key },
+  });
+  assert(response.ok, 404, "asset_not_found", "Media is no longer available.");
+  return Buffer.from(await response.arrayBuffer());
 }
 const id = () => randomUUID();
 const liveKitConfigured = Boolean(process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET);
@@ -396,7 +455,7 @@ async function bodyJson(req, maxBytes = 256_000) {
   for await (const part of req) {
     const chunk = Buffer.from(part);
     totalBytes += chunk.length;
-    if (totalBytes > 256_000)
+    if (totalBytes > maxBytes)
       fault(413, "too_large", "Request body is too large.");
     chunks.push(chunk);
   }
@@ -559,6 +618,71 @@ async function getOrder(orderId) {
   })));
   return order;
 }
+async function expireUnpaidOrders() {
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const candidates = await all(
+    "SELECT id FROM orders WHERE status IN ('pending','confirmed') AND payment_status IN ('unpaid','pending') AND updated_at<=? ORDER BY updated_at LIMIT 100",
+    cutoff,
+  );
+  for (const candidate of candidates) {
+    await transaction(async () => {
+      const order = await q(
+        `SELECT * FROM orders WHERE id=?${postgresMode ? " FOR UPDATE" : ""}`,
+        candidate.id,
+      );
+      if (
+        !order ||
+        !["pending", "confirmed"].includes(order.status) ||
+        !["unpaid", "pending"].includes(order.payment_status) ||
+        order.updated_at > cutoff
+      ) return;
+      const details = await getOrder(order.id);
+      for (const group of details.groups) {
+        for (const item of group.items) {
+          await run(
+            "UPDATE products SET stock=stock+?,updated_at=? WHERE id=?",
+            item.quantity,
+            now(),
+            item.product_id,
+          );
+        }
+        await run(
+          "UPDATE fulfillment_groups SET status='cancelled',updated_at=? WHERE id=? AND status='pending'",
+          now(),
+          group.id,
+        );
+      }
+      await run(
+        "UPDATE orders SET status='cancelled',updated_at=? WHERE id=? AND status IN ('pending','confirmed') AND payment_status IN ('unpaid','pending')",
+        now(),
+        order.id,
+      );
+      await run(
+        "UPDATE payments SET state='failed' WHERE order_id=? AND state IN ('created','pending')",
+        order.id,
+      );
+      for (const group of details.groups) {
+        await notify(
+          group.seller_id,
+          "order",
+          "Unpaid order expired",
+          `Order ${order.id.slice(0, 8)} was not paid within 30 minutes and its reserved stock was released.`,
+          "order",
+          order.id,
+        );
+      }
+      await notify(
+        order.buyer_id,
+        "order",
+        "Unpaid order released",
+        `Order ${order.id.slice(0, 8)} expired after 30 minutes. Reserved stock is available again.`,
+        "order",
+        order.id,
+      );
+      await event(order.buyer_id, "order", order.id, "UNPAID_ORDER_EXPIRED");
+    });
+  }
+}
 function canReadOrder(ctx, order) {
   return (
     ctx.user &&
@@ -590,10 +714,32 @@ async function route(ctx, req, res, method, path, body, query) {
           await run("UPDATE payment_webhook_events SET processed_at=?,outcome='verification_failed' WHERE provider='paystack' AND event_id=?", now(), eventId);
           return;
         }
-        const order = await q("SELECT * FROM orders WHERE id=?", payment.order_id);
+        const order = await q(
+          `SELECT * FROM orders WHERE id=?${postgresMode ? " FOR UPDATE" : ""}`,
+          payment.order_id,
+        );
         if (order?.status === "cancelled") {
-          await run("UPDATE orders SET status='disputed',updated_at=? WHERE id=?", now(), order.id);
           await run("UPDATE payments SET state='paid' WHERE id=?", payment.id);
+          await run("UPDATE orders SET status='disputed',payment_status='paid',updated_at=? WHERE id=?", now(), order.id);
+          const refundId = id();
+          await run(
+            "INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,created_at) VALUES(?,?,?,?,?,'requested',?)",
+            refundId,
+            order.id,
+            order.buyer_id,
+            payment.amount_minor,
+            "Payment settled after this unpaid order was cancelled; staff review and provider refund are required.",
+            now(),
+          );
+          await notify(
+            order.buyer_id,
+            "refund",
+            "Late payment sent for review",
+            `Payment for cancelled order ${order.id.slice(0, 8)} arrived after stock was released. Staff review is required before a refund is sent.`,
+            "order",
+            order.id,
+          );
+          await event(order.buyer_id, "order", order.id, "LATE_PAYMENT_REFUND_REQUESTED", { refundId });
           await run("UPDATE payment_webhook_events SET processed_at=?,outcome='late_payment_after_cancel' WHERE provider='paystack' AND event_id=?", now(), eventId);
           return;
         }
@@ -648,7 +794,14 @@ async function route(ctx, req, res, method, path, body, query) {
     assert(tokenResponse.ok && token.access_token && token.refresh_token, 502, "shopify_token_exchange_failed", "Shopify did not return expiring offline credentials.");
     const stamp = now();
     await run("INSERT INTO store_connections(id,seller_id,platform,shop_domain,encrypted_access_token,encrypted_refresh_token,access_token_expires_at,refresh_token_expires_at,scopes,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'active',?,?) ON CONFLICT(shop_domain) DO UPDATE SET seller_id=excluded.seller_id,encrypted_access_token=excluded.encrypted_access_token,encrypted_refresh_token=excluded.encrypted_refresh_token,access_token_expires_at=excluded.access_token_expires_at,refresh_token_expires_at=excluded.refresh_token_expires_at,scopes=excluded.scopes,status='active',updated_at=excluded.updated_at", id(), stateRow.seller_id, "shopify", shop, encryptSecret(token.access_token), encryptSecret(token.refresh_token), new Date(Date.now() + Number(token.expires_in || 0) * 1000).toISOString(), new Date(Date.now() + Number(token.refresh_token_expires_in || 0) * 1000).toISOString(), String(token.scope || ""), stamp, stamp);
-    return { connected: true, shop, message: "Store connected. Return to EcoVibes to import products for review." };
+    const frontendOrigin = (process.env.APP_ORIGINS || "").split(",").map((value) => value.trim()).find(Boolean);
+    assert(frontendOrigin, 503, "frontend_origin_unconfigured", "Set APP_ORIGINS before connecting a store.");
+    const returnToApp = new URL("/", frontendOrigin);
+    returnToApp.searchParams.set("shopify", "connected");
+    res.statusCode = 303;
+    res.setHeader("Location", returnToApp.toString());
+    res.end();
+    return { __sent: true };
   }
   if (method === "POST" && path === "/media/webhook") {
     requireLiveKit();
@@ -665,13 +818,15 @@ async function route(ctx, req, res, method, path, body, query) {
     }
     return { received: true };
   }
-  if (method === "GET" && path === "/health")
+  if (method === "GET" && path === "/health") {
+    await q("SELECT 1 AS ok");
     return {
       status: "ok",
       service: "ecovibes-api",
       database: postgresMode ? "postgres" : "sqlite",
       time: now(),
     };
+  }
   if (method === "GET" && path === "/connectors/shopify") {
     await requireRole(ctx, "seller");
     return await all("SELECT id,shop_domain,scopes,status,last_synced_at,created_at FROM store_connections WHERE seller_id=? AND platform='shopify' ORDER BY created_at DESC", ctx.user.id);
@@ -834,6 +989,116 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "GET" && path === "/auth/me")
     return { user: ctx.user, csrfToken: ctx.csrfToken || null };
+  if (method === "GET" && path === "/auth/supabase/me") {
+    rateLimit(`supabase-auth:${req.socket.remoteAddress}`, 60, 60_000);
+    const result = await authenticateSupabaseRequest(req);
+    if (result.error) {
+      fault(
+        result.error.status || 401,
+        result.error.code || "supabase_auth_failed",
+        result.error.message || "Supabase authentication failed.",
+      );
+    }
+    return {
+      provider: "supabase",
+      user: {
+        id: result.user.id,
+        email: result.user.email || null,
+        emailConfirmedAt: result.user.email_confirmed_at || null,
+      },
+    };
+  }
+  if (method === "POST" && path === "/auth/supabase/session") {
+    rateLimit(`supabase-session:${req.socket.remoteAddress}`, 12, 15 * 60_000);
+    const result = await authenticateSupabaseRequest(req);
+    if (result.error) {
+      fault(
+        result.error.status || 401,
+        result.error.code || "supabase_auth_failed",
+        result.error.message || "Supabase authentication failed.",
+      );
+    }
+
+    let userId;
+    let created = false;
+    let linked = false;
+    await transaction(async () => {
+      let identity = await q(
+        "SELECT user_id FROM supabase_identities WHERE supabase_user_id=?",
+        result.user.id,
+      );
+      if (identity) {
+        assert(
+          !ctx.user || ctx.user.id === identity.user_id,
+          409,
+          "identity_already_linked",
+          "This Supabase identity is linked to another EcoVibes ID. Sign out of the current EcoVibes ID first.",
+        );
+        userId = identity.user_id;
+        return;
+      }
+
+      if (ctx.user) {
+        userId = ctx.user.id;
+        await run(
+          "INSERT INTO supabase_identities(supabase_user_id,user_id,created_at) VALUES(?,?,?)",
+          result.user.id,
+          userId,
+          now(),
+        );
+        linked = true;
+        return;
+      }
+
+      const user = result.user;
+      const email = typeof user.email === "string" ? user.email : "";
+      const metadataName = typeof user.user_metadata?.full_name === "string"
+        ? user.user_metadata.full_name
+        : typeof user.user_metadata?.name === "string"
+          ? user.user_metadata.name
+          : "";
+      const displayName = (metadataName.trim().replace(/\s+/g, " ").slice(0, 80) || email.split("@")[0]?.slice(0, 80) || "EcoVibes member");
+      const suffix = hash(user.id).slice(0, 12);
+      let ecoId = `member.${suffix}`;
+      let collision = 1;
+      while (await q("SELECT 1 ok FROM users WHERE eco_id=?", ecoId)) {
+        ecoId = `member.${suffix}.${collision++}`;
+      }
+      userId = id();
+      const salt = randomBytes(16).toString("hex");
+      await run(
+        "INSERT INTO users(id,eco_id,display_name,password_salt,password_hash,created_at) VALUES(?,?,?,?,?,?)",
+        userId,
+        ecoId,
+        displayName,
+        salt,
+        passwordHash(randomBytes(48).toString("hex"), salt),
+        now(),
+      );
+      await run(
+        "INSERT INTO roles(user_id,role,created_at) VALUES(?,?,?)",
+        userId,
+        "customer",
+        now(),
+      );
+      await run(
+        "INSERT INTO supabase_identities(supabase_user_id,user_id,created_at) VALUES(?,?,?)",
+        user.id,
+        userId,
+        now(),
+      );
+      created = true;
+    });
+
+    ctx.user = await safeUser(userId);
+    await session(ctx, res, req);
+    return {
+      user: ctx.user,
+      csrfToken: ctx.csrfToken,
+      created,
+      linked,
+    };
+  }
   if (method === "GET" && path === "/media/status")
     return { configured: liveKitConfigured, serverUrl: liveKitConfigured ? liveKitClientUrl : null };
   assert(
@@ -992,11 +1257,22 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   const assetMatch = path.match(/^\/social\/assets\/([a-f0-9-]+)$/);
   if (method === "GET" && assetMatch) {
-    const asset = await q("SELECT a.* FROM media_assets a WHERE a.id=? AND (EXISTS (SELECT 1 FROM stories s WHERE s.asset_id=a.id AND s.expires_at>?) OR EXISTS (SELECT 1 FROM reels r WHERE r.asset_id=a.id AND r.status='active'))", assetMatch[1], now());
+    const imagePath = `/social/assets/${assetMatch[1]}`;
+    const viewerId = ctx.user?.id || "";
+    const asset = await q("SELECT a.* FROM media_assets a WHERE a.id=? AND (EXISTS (SELECT 1 FROM stories s WHERE s.asset_id=a.id AND s.expires_at>? AND (s.visibility='public' OR s.author_id=? OR EXISTS (SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id))) OR EXISTS (SELECT 1 FROM reels r WHERE r.asset_id=a.id AND r.status='active') OR EXISTS (SELECT 1 FROM products p WHERE p.image_url=? AND p.status='active'))", assetMatch[1], now(), viewerId, viewerId, imagePath);
     assert(asset, 404, "asset_not_found", "Media is no longer available.");
-    const file = await readFile(resolve(root, "server/data/social-media", asset.id));
-    res.statusCode = 200; res.setHeader("Content-Type", asset.mime_type); res.setHeader("Content-Length", file.length); res.setHeader("Cache-Control", "private, max-age=300"); res.end(file);
+    const file = await loadMediaAsset(asset.id);
+    res.statusCode = 200; res.setHeader("Content-Type", asset.mime_type); res.setHeader("Content-Length", file.length); res.setHeader("Cache-Control", "private, no-store"); res.end(file);
     return { __sent: true };
+  }
+  if (method === "DELETE" && assetMatch) {
+    const asset = await q("SELECT * FROM media_assets WHERE id=? AND owner_id=?", assetMatch[1], ctx.user.id);
+    assert(asset, 404, "asset_not_found", "Media asset not found.");
+    const references = await q("SELECT (EXISTS(SELECT 1 FROM stories WHERE asset_id=?) OR EXISTS(SELECT 1 FROM reels WHERE asset_id=?) OR EXISTS(SELECT 1 FROM products WHERE image_url=? AND status!='removed')) AS used", asset.id, asset.id, `/social/assets/${asset.id}`);
+    assert(!references?.used, 409, "media_in_use", "Remove the media from its listing or post before deleting it.");
+    await run("DELETE FROM media_assets WHERE id=? AND owner_id=?", asset.id, ctx.user.id);
+    await removeMediaAsset(asset.id);
+    return { deleted: true };
   }
   if (method === "POST" && path === "/social/assets") {
     const mime = body.mimeType;
@@ -1007,10 +1283,10 @@ async function route(ctx, req, res, method, path, body, query) {
     assert(bytes.length > 0 && bytes.length <= 14 * 1024 * 1024, 413, "media_too_large", "Media uploads must be 14 MB or smaller.");
     const signatureOk = mime === "image/jpeg" ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff : mime === "image/png" ? bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : mime === "image/webp" ? bytes.toString("ascii",0,4)==="RIFF" && bytes.toString("ascii",8,12)==="WEBP" : mime === "video/mp4" ? bytes.toString("ascii",4,8)==="ftyp" : bytes.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));
     assert(signatureOk, 400, "invalid_media_file", "The uploaded file content does not match its media type.");
-    const assetId = id(); const dir = resolve(root, "server/data/social-media"); mkdirSync(dir, { recursive: true });
-    await writeFile(resolve(dir, assetId), bytes, { flag: "wx", mode: 0o600 });
+    const assetId = id();
+    await storeMediaAsset(assetId, bytes, mime);
     try { await run("INSERT INTO media_assets(id,owner_id,mime_type,byte_size,created_at) VALUES(?,?,?,?,?)", assetId, ctx.user.id, mime, bytes.length, now()); }
-    catch (error) { await unlink(resolve(dir, assetId)).catch(() => undefined); throw error; }
+    catch (error) { await removeMediaAsset(assetId); throw error; }
     return { id: assetId, url: `/api/v1/social/assets/${assetId}`, mimeType: mime, byteSize: bytes.length };
   }
   if (method === "POST" && path === "/people/presence") {
@@ -1205,6 +1481,7 @@ async function route(ctx, req, res, method, path, body, query) {
     return { id: refund.id, status: body.status === "approved" ? "provider_pending" : "rejected" };
   }
   if (method === "GET" && path === "/marketplace/products") {
+    await expireUnpaidOrders();
     const qtext = String(query.get("q") || "")
       .trim()
       .slice(0, 100);
@@ -1272,10 +1549,18 @@ async function route(ctx, req, res, method, path, body, query) {
       "invalid_product_type",
       "Choose a supported product type.",
     );
+    let imageUrl = null;
+    if (body.imageUrl) {
+      const imageMatch = String(body.imageUrl).match(/^\/social\/assets\/([a-f0-9-]+)$/);
+      assert(imageMatch, 400, "invalid_product_image", "Choose an EcoVibes image upload.");
+      const ownedAsset = await q("SELECT id FROM media_assets WHERE id=? AND owner_id=?", imageMatch[1], ctx.user.id);
+      assert(ownedAsset, 403, "product_image_owner_required", "Only your own uploaded image can be used for this listing.");
+      imageUrl = `/social/assets/${ownedAsset.id}`;
+    }
     const productId = id(),
       stamp = now();
     await run(
-      "INSERT INTO products(id,seller_id,name,description,category,product_type,currency,price_minor,cost_minor,stock,variants_json,fulfillment_type,supplier_name,shipping_info,location,source_type,source_url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO products(id,seller_id,name,description,category,product_type,currency,price_minor,cost_minor,stock,variants_json,fulfillment_type,supplier_name,shipping_info,location,image_url,source_type,source_url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       productId,
       ctx.user.id,
       name,
@@ -1293,6 +1578,7 @@ async function route(ctx, req, res, method, path, body, query) {
       String(body.supplierName || "").slice(0, 120),
       String(body.shippingInfo || "").slice(0, 200),
       String(body.location || "").slice(0, 120),
+      imageUrl,
       "direct",
       null,
       stamp,
@@ -1303,7 +1589,7 @@ async function route(ctx, req, res, method, path, body, query) {
       category,
       fulfillment,
     });
-    return rowProduct(await q("SELECT * FROM products WHERE id=?", productId), ctx.user.ecoId);
+    return rowProduct(await q("SELECT * FROM products WHERE id=?", productId), ctx.user.eco_id);
   }
   match = path.match(/^\/marketplace\/products\/([a-f0-9-]+)$/);
   if (method === "PATCH" && match) {
@@ -1350,7 +1636,7 @@ async function route(ctx, req, res, method, path, body, query) {
       priceMinor: body.priceMinor,
       status: body.status,
     });
-    return rowProduct(await q("SELECT * FROM products WHERE id=?", product.id), ctx.user.ecoId);
+    return rowProduct(await q("SELECT * FROM products WHERE id=?", product.id), ctx.user.eco_id);
   }
   if (method === "POST" && path === "/marketplace/products/import") {
     await requireRole(ctx, "seller");
@@ -1412,13 +1698,16 @@ async function route(ctx, req, res, method, path, body, query) {
       return { imported: created.length };
     });
   }
-  if (method === "GET" && path === "/marketplace/orders")
+  if (method === "GET" && path === "/marketplace/orders") {
+    await expireUnpaidOrders();
     return await Promise.all((await all(
       `SELECT DISTINCT o.* FROM orders o LEFT JOIN fulfillment_groups g ON g.order_id=o.id WHERE o.buyer_id=? OR g.seller_id=? ORDER BY o.created_at DESC LIMIT 100`,
       ctx.user.id,
       ctx.user.id,
     )).map(async (order) => visibleOrder(await getOrder(order.id), ctx)));
+  }
   if (method === "POST" && path === "/marketplace/orders") {
+    await expireUnpaidOrders();
     assert(
       Array.isArray(body.items) &&
         body.items.length > 0 &&
@@ -1557,26 +1846,36 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   match = path.match(/^\/marketplace\/orders\/([a-f0-9-]+)\/cancel$/);
   if (method === "POST" && match) {
-    const order = await getOrder(match[1]);
-    assert(
-      order && order.buyer_id === ctx.user.id,
-      404,
-      "not_found",
-      "Order not found.",
-    );
-    assert(
-      ["pending", "confirmed"].includes(order.status),
-      409,
-      "cannot_cancel",
-      "Orders can only be cancelled before shipping.",
-    );
-    assert(
-      order.payment_status === "unpaid",
-      409,
-      "refund_required",
-      "A paid order must go through the provider refund flow.",
-    );
     return await transaction(async () => {
+      const current = await q(
+        `SELECT * FROM orders WHERE id=?${postgresMode ? " FOR UPDATE" : ""}`,
+        match[1],
+      );
+      assert(
+        current && current.buyer_id === ctx.user.id,
+        404,
+        "not_found",
+        "Order not found.",
+      );
+      assert(
+        ["pending", "confirmed"].includes(current.status),
+        409,
+        "cannot_cancel",
+        "Orders can only be cancelled before shipping.",
+      );
+      assert(
+        !["paid", "partially_refunded", "refunded"].includes(current.payment_status),
+        409,
+        "refund_required",
+        "A paid order must go through the provider refund flow.",
+      );
+      assert(
+        current.payment_status === "unpaid",
+        409,
+        "payment_pending",
+        "A payment is still processing. Wait for its result; unpaid reservations expire after 30 minutes.",
+      );
+      const order = await getOrder(current.id);
       for (const group of order.groups)
         for (const item of group.items)
           await run(
@@ -1586,12 +1885,12 @@ async function route(ctx, req, res, method, path, body, query) {
             item.product_id,
           );
       await run(
-        "UPDATE fulfillment_groups SET status='cancelled',updated_at=? WHERE order_id=?",
+        "UPDATE fulfillment_groups SET status='cancelled',updated_at=? WHERE order_id=? AND status='pending'",
         now(),
         order.id,
       );
       await run(
-        "UPDATE orders SET status='cancelled',updated_at=? WHERE id=?",
+        "UPDATE orders SET status='cancelled',updated_at=? WHERE id=? AND status IN ('pending','confirmed') AND payment_status='unpaid'",
         now(),
         order.id,
       );
@@ -1615,6 +1914,7 @@ async function route(ctx, req, res, method, path, body, query) {
     const group = await q("SELECT * FROM fulfillment_groups WHERE id=?", match[1]);
     assert(group, 404, "not_found", "Fulfillment group not found.");
     const order = await q("SELECT * FROM orders WHERE id=?", group.order_id);
+    assert(order?.payment_status === "paid", 409, "payment_required", "The order must be paid before fulfillment can continue.");
     if (match[2] === "confirm") {
       assert(
         group.seller_id === ctx.user.id,
@@ -1628,11 +1928,12 @@ async function route(ctx, req, res, method, path, body, query) {
         "invalid_transition",
         "This group cannot be confirmed now.",
       );
-      await run(
-        "UPDATE fulfillment_groups SET status='processing',updated_at=? WHERE id=?",
+      const change = await run(
+        "UPDATE fulfillment_groups SET status='processing',updated_at=? WHERE id=? AND status='pending'",
         now(),
         group.id,
       );
+      assert(change.changes === 1, 409, "invalid_transition", "This group has already changed state.");
       await notify(
         order.buyer_id,
         "order",
@@ -1663,12 +1964,13 @@ async function route(ctx, req, res, method, path, body, query) {
       const tracking = inputString(body.trackingCode, "Tracking code", {
         max: 100,
       });
-      await run(
-        "UPDATE fulfillment_groups SET status='shipped',tracking_code=?,updated_at=? WHERE id=?",
+      const change = await run(
+        "UPDATE fulfillment_groups SET status='shipped',tracking_code=?,updated_at=? WHERE id=? AND status='processing'",
         tracking,
         now(),
         group.id,
       );
+      assert(change.changes === 1, 409, "invalid_transition", "This group has already changed state.");
       await notify(
         order.buyer_id,
         "order",
@@ -1693,11 +1995,12 @@ async function route(ctx, req, res, method, path, body, query) {
         "invalid_transition",
         "This group has not shipped.",
       );
-      await run(
-        "UPDATE fulfillment_groups SET status='delivered',updated_at=? WHERE id=?",
+      const change = await run(
+        "UPDATE fulfillment_groups SET status='delivered',updated_at=? WHERE id=? AND status='shipped'",
         now(),
         group.id,
       );
+      assert(change.changes === 1, 409, "invalid_transition", "This group has already changed state.");
       await event(ctx.user.id, "fulfillment_group", group.id, "GROUP_DELIVERED");
     }
     const groups = await all(
@@ -1863,7 +2166,7 @@ async function route(ctx, req, res, method, path, body, query) {
       job.customer_id,
       "job",
       "New offer on your job",
-      `${ctx.user.ecoId} sent an offer.`,
+      `@${ctx.user.eco_id} sent an offer.`,
       "job",
       job.id,
     );
@@ -1884,15 +2187,19 @@ async function route(ctx, req, res, method, path, body, query) {
     );
     assert(offer, 404, "offer_unavailable", "Offer is not available.");
     return await transaction(async () => {
-      await run(
-        "UPDATE job_offers SET status=CASE WHEN id=? THEN 'selected' ELSE 'declined' END WHERE job_id=?",
+      const claim = await run(
+        "UPDATE jobs SET status='assigned',assigned_provider_id=?,updated_at=? WHERE id=? AND customer_id=? AND status='open' AND EXISTS (SELECT 1 FROM job_offers WHERE id=? AND job_id=? AND status='pending')",
+        offer.provider_id,
+        now(),
+        job.id,
+        ctx.user.id,
         offer.id,
         job.id,
       );
+      assert(claim.changes === 1, 409, "offer_unavailable", "This job or offer has already changed.");
       await run(
-        "UPDATE jobs SET status='assigned',assigned_provider_id=?,updated_at=? WHERE id=?",
-        offer.provider_id,
-        now(),
+        "UPDATE job_offers SET status=CASE WHEN id=? THEN 'selected' ELSE 'declined' END WHERE job_id=?",
+        offer.id,
         job.id,
       );
       await event(ctx.user.id, "job", job.id, "JOB_ASSIGNED", {
@@ -2069,7 +2376,7 @@ async function route(ctx, req, res, method, path, body, query) {
         other,
         "message",
         "New Quick&Handi message",
-        `${ctx.user.ecoId} sent a message.`,
+        `@${ctx.user.eco_id} sent a message.`,
         "job",
         job.id,
       );
@@ -2130,7 +2437,7 @@ const server = createServer(async (req, res) => {
     if (method === "OPTIONS") {
       assert(requestOrigin && allowedOrigins.includes(requestOrigin), 403, "bad_origin", "This app origin is not allowed.");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type,X-CSRF-Token");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type,X-CSRF-Token,Authorization,apikey");
       res.setHeader("Access-Control-Max-Age", "600");
       res.statusCode = 204;
       return res.end();
@@ -2156,6 +2463,8 @@ const server = createServer(async (req, res) => {
     }
     const authOpen =
       (method === "GET" && url.pathname === "/api/v1/auth/me") ||
+      (method === "GET" && url.pathname === "/api/v1/auth/supabase/me") ||
+      (method === "POST" && url.pathname === "/api/v1/auth/supabase/session") ||
       (method === "POST" &&
         ["/api/v1/auth/register", "/api/v1/auth/login"].includes(
           url.pathname,
@@ -2210,6 +2519,11 @@ const server = createServer(async (req, res) => {
     );
   }
 });
+const unpaidOrderExpiry = setInterval(() => {
+  void expireUnpaidOrders().catch((error) => console.error("Unpaid order cleanup failed", error));
+}, 60_000);
+unpaidOrderExpiry.unref();
+void expireUnpaidOrders().catch((error) => console.error("Initial unpaid order cleanup failed", error));
 server.listen(port, isProduction ? "0.0.0.0" : "127.0.0.1", () =>
   console.log(
     `EcoVibes API listening on port ${port} · database ${postgresMode ? "postgres" : dbPath}`,
@@ -2217,6 +2531,7 @@ server.listen(port, isProduction ? "0.0.0.0" : "127.0.0.1", () =>
 );
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
+    clearInterval(unpaidOrderExpiry);
     server.close(() => {
       Promise.resolve(postgresMode ? pool.end() : db.close()).finally(() => process.exit(0));
     });

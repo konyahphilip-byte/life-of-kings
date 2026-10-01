@@ -9,6 +9,7 @@ The API is configured for private Supabase Postgres. The browser talks to the AP
 3. From this project directory, authenticate with the Supabase CLI and link the project. The project reference is visible in the Supabase project URL and settings.
 4. Apply the checked-in migration with `npx supabase db push`.
 5. In Supabase, check that the migration is recorded and the API tables exist. The migration enables row-level security and revokes direct browser roles; requests go through EcoVibes API.
+6. In **Storage**, create a private bucket named `ecovibes-media`. Keep it private; the API proxies authorized media reads and uploads.
 
 The API needs the database connection string as `DATABASE_URL`. For Render's IPv4 service, use Supabase's shared **session pooler** connection (port 5432); use the direct connection only when your host has IPv6 or you have enabled Supabase's IPv4 add-on. Do not use the browser-facing Supabase anon key for the server database connection. [Supabase documents the connection modes and IP support here](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
@@ -17,9 +18,10 @@ The API needs the database connection string as `DATABASE_URL`. For Render's IPv
 1. Push this project to a Git provider and connect it to Render.
 2. Choose **New > Blueprint** and select this repository. [`render.yaml`](./render.yaml) defines the API service and the static web app.
 3. In the `ecovibes-api` service's **Environment** settings, add the private `DATABASE_URL` value from Supabase.
-4. Set `ECOVIBES_ADMIN_ECO_IDS` to the comma-separated EcoVibes IDs that should receive the initial `admin` capability. This value is read by the API and must stay in Render's secret settings.
-5. Deploy both services. The API health check is `/api/v1/health`. The web app uses the configured API URL.
-6. If you attach a custom web domain, update the API's `APP_ORIGINS` value to that exact origin. Also update the Shopify callback URL if the API domain changes.
+4. Set `STORAGE_URL` to the Supabase project URL, `STORAGE_KEY` to a server-only Supabase secret/service key, and `STORAGE_BUCKET` to `ecovibes-media`. The storage key must never use a `VITE_` prefix or be exposed to the browser.
+5. Set `ECOVIBES_ADMIN_ECO_IDS` to the comma-separated EcoVibes IDs that should receive the initial `admin` capability. This value is read by the API and must stay in Render's secret settings.
+6. Deploy both services. The API health check is `/api/v1/health`. The web app uses the configured API URL.
+7. If you attach a custom web domain, update the API's `APP_ORIGINS` value to that exact origin. Also update the Shopify callback URL if the API domain changes.
 
 ## 3. Turn on Paystack test checkout and refunds
 

@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { AudioConference, LiveKitRoom, RoomAudioRenderer, VideoConference } from '@livekit/components-react';
 import '@livekit/components-styles';
 import { Activity, Mic, Phone, Radio, Video, X } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 type MediaMode = 'voice' | 'video' | 'live';
 type Session = { id:string; mode:MediaMode; title:string; visibility:'private'|'public'; status:string; created_at:string; creator_eco_id:string; creator_name:string; role?:string };
 type JoinInfo = { token:string; serverUrl:string; session:{id:string;mode:MediaMode;title:string;role:string;canPublish:boolean} };
-const api='/api/v1';
 async function request<T>(path:string, csrf:string, init:RequestInit={}) {
-  const response=await fetch(`${api}${path}`,{...init,credentials:'include',headers:{'Content-Type':'application/json',...(init.method&&init.method!=='GET'?{'X-CSRF-Token':csrf}:{}),...init.headers}});
+  const response=await fetch(apiUrl(path),{...init,credentials:'include',headers:{'Content-Type':'application/json',...(init.method&&init.method!=='GET'?{'X-CSRF-Token':csrf}:{}),...init.headers}});
   const result=await response.json();
   if(!response.ok) throw new Error(result.error?.message||'The request could not be completed.');
   return result as T;
@@ -19,7 +19,7 @@ export default function Communications(){
   const [mode,setMode]=useState<MediaMode>('video'); const [title,setTitle]=useState(''); const [invitees,setInvitees]=useState('');
   const [active,setActive]=useState<JoinInfo|null>(null); const [stream,setStream]=useState<{url:string;streamKey:string}|null>(null); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
   const refresh=useCallback(async()=>{try{const [me,data]=await Promise.all([request<{user:{id:string;display_name:string}|null;csrfToken:string|null}>('/auth/me',''),request<{sessions:Session[];configured:boolean}>('/media/sessions',csrf)]);setUser(me.user);setCsrf(me.csrfToken||'');setSessions(data.sessions);setConfigured(data.configured);}catch(e){setError(e instanceof Error?e.message:'Could not load rooms.');}},[csrf]);
-  useEffect(()=>{let done=false;Promise.all([fetch(`${api}/auth/me`,{credentials:'include'}).then(r=>r.json()),fetch(`${api}/media/status`,{credentials:'include'}).then(r=>r.json()),fetch(`${api}/media/sessions`,{credentials:'include'}).then(r=>r.json())]).then(([me,status,data])=>{if(done)return;setUser(me.user);setCsrf(me.csrfToken||'');setConfigured(Boolean(status.configured));setSessions(data.sessions||[]);}).catch(()=>{if(!done)setError('Start the EcoVibes API and sign in to use live rooms.');});return()=>{done=true;}},[]);
+  useEffect(()=>{let done=false;Promise.all([fetch(apiUrl('/auth/me'),{credentials:'include'}).then(r=>r.json()),fetch(apiUrl('/media/status'),{credentials:'include'}).then(r=>r.json()),fetch(apiUrl('/media/sessions'),{credentials:'include'}).then(r=>r.json())]).then(([me,status,data])=>{if(done)return;setUser(me.user);setCsrf(me.csrfToken||'');setConfigured(Boolean(status.configured));setSessions(data.sessions||[]);}).catch(()=>{if(!done)setError('Start the EcoVibes API and sign in to use live rooms.');});return()=>{done=true;}},[]);
   async function create(e:FormEvent){e.preventDefault();setError('');setBusy(true);try{const result=await request<{id:string}>('/media/sessions',csrf,{method:'POST',body:JSON.stringify({mode,title:title.trim()||undefined,visibility:mode==='live'?'public':'private',invitees:invitees.split(',').map(x=>x.trim()).filter(Boolean)})});await join(result.id);}catch(e){setError(e instanceof Error?e.message:'Could not create room.');}finally{setBusy(false);}}
   async function join(id:string){setError('');setBusy(true);try{const data=await request<JoinInfo>(`/media/sessions/${id}/join`,csrf,{method:'POST',body:'{}'});setActive(data);setStream(null);await refresh();}catch(e){setError(e instanceof Error?e.message:'Could not join room.');}finally{setBusy(false);}}
   async function startStream(){if(!active)return;try{setStream(await request(`/media/sessions/${active.session.id}/ingress`,csrf,{method:'POST',body:'{}'}));}catch(e){setError(e instanceof Error?e.message:'Could not start stream ingest.');}}
