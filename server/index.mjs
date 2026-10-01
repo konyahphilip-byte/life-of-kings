@@ -908,6 +908,12 @@ async function route(ctx, req, res, method, path, body, query) {
     return { authorizationUrl: result.data.authorization_url, reference };
   }
   if (method === "POST" && path === "/auth/register") {
+    assert(
+      !process.env.SUPABASE_URL,
+      410,
+      "supabase_auth_required",
+      "Create new EcoVibes IDs with Supabase Auth. Password sign-in is available only to link an existing EcoVibes ID.",
+    );
     rateLimit(`reg:${req.socket.remoteAddress}`, 8, 60 * 60_000);
     const ecoId = inputString(body.ecoId, "EcoVibes ID", { min: 3, max: 24 })
       .toLowerCase()
@@ -1059,10 +1065,30 @@ async function route(ctx, req, res, method, path, body, query) {
           : "";
       const displayName = (metadataName.trim().replace(/\s+/g, " ").slice(0, 80) || email.split("@")[0]?.slice(0, 80) || "EcoVibes member");
       const suffix = hash(user.id).slice(0, 12);
-      let ecoId = `member.${suffix}`;
-      let collision = 1;
-      while (await q("SELECT 1 ok FROM users WHERE eco_id=?", ecoId)) {
-        ecoId = `member.${suffix}.${collision++}`;
+      const requestedEcoId = typeof user.user_metadata?.eco_id === "string"
+        ? user.user_metadata.eco_id.trim().replace(/^@/, "").toLowerCase()
+        : "";
+      let ecoId;
+      if (requestedEcoId) {
+        assert(
+          /^[a-z0-9][a-z0-9._]{2,23}$/.test(requestedEcoId),
+          400,
+          "invalid_eco_id",
+          "Use 3–24 letters, numbers, dots or underscores for your EcoVibes ID.",
+        );
+        assert(
+          !await q("SELECT 1 ok FROM users WHERE eco_id=?", requestedEcoId),
+          409,
+          "eco_id_taken",
+          "That EcoVibes ID is already in use. Choose another one.",
+        );
+        ecoId = requestedEcoId;
+      } else {
+        ecoId = `member.${suffix}`;
+        let collision = 1;
+        while (await q("SELECT 1 ok FROM users WHERE eco_id=?", ecoId)) {
+          ecoId = `member.${suffix}.${collision++}`;
+        }
       }
       userId = id();
       const salt = randomBytes(16).toString("hex");
@@ -2460,6 +2486,22 @@ const server = createServer(async (req, res) => {
         ctx.user = await safeUser(record.user_id);
         ctx.csrfToken = record.csrf_token;
       }
+    }
+    const legacyMigrationOnly = Boolean(
+      ctx.user &&
+      process.env.SUPABASE_URL &&
+      !await q("SELECT 1 ok FROM supabase_identities WHERE user_id=?", ctx.user.id),
+    );
+    const allowedMigrationRequest =
+      (method === "GET" && url.pathname === "/api/v1/auth/me") ||
+      (method === "POST" && url.pathname === "/api/v1/auth/supabase/session") ||
+      (method === "POST" && url.pathname === "/api/v1/auth/logout");
+    if (legacyMigrationOnly && !allowedMigrationRequest) {
+      fault(
+        403,
+        "supabase_link_required",
+        "Link Supabase Auth to this EcoVibes ID before using protected services.",
+      );
     }
     const authOpen =
       (method === "GET" && url.pathname === "/api/v1/auth/me") ||
