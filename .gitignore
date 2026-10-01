@@ -1,0 +1,17 @@
+node_modules
+dist
+.env*
+!.env.example
+.DS_Store
+coverage
+work/
+supabase/.temp/
+*.tsbuildinfo
+
+server/data/*.sqlite
+server/data/*.sqlite-shm
+server/data/*.sqlite-wal
+server/data/social-media/
+server/data/*-preview.sqlite
+server/data/*-preview.sqlite-shm
+server/data/*-preview.sqlite-wal

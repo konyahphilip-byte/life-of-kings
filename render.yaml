@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: ecovibes-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ORIGINS
+        value: https://ecovibes-web.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: ECOVIBES_ADMIN_ECO_IDS
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: SHOPIFY_CLIENT_ID
+        sync: false
+      - key: SHOPIFY_CLIENT_SECRET
+        sync: false
+      - key: SHOPIFY_REDIRECT_URI
+        value: https://ecovibes-api.onrender.com/api/v1/connectors/shopify/callback
+      - key: SHOPIFY_API_VERSION
+        value: 2026-07
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+
+  - type: web
+    name: ecovibes-web
+    runtime: static
+    buildCommand: npm ci --include=dev && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://ecovibes-api.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
