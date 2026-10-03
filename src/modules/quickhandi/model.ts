@@ -1,7 +1,7 @@
 export const serviceCategories = [
  'Delivery & Errands','Cleaning','Laundry','Plumbing','Electrical','Repairs','Moving','Photography','Videography','Graphic Design','Video Editing','Beauty & Barber','Event Services','Food & Catering','Tutoring','Technology Services','Home Services','Business Services','Freelancing','Other'
 ] as const;
-export type ServiceCategory = typeof serviceCategories[number];
+export type ServiceCategory = typeof serviceCategories[number] | 'Waste & Recycling';
 export type VerificationLevel = 'unverified'|'basic'|'verified'|'ecovibes-verified';
 export type PricingModel = 'fixed'|'from'|'quote';
 export type JobStatus = 'requested'|'quoted'|'accepted'|'confirmed'|'in_progress'|'awaiting_customer'|'completed'|'cancelled'|'disputed';

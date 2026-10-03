@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { answerEcoVibesQuery } from './assistant';
 
-describe('EcoVibes sidekick catalogue search', () => {
+describe('Chale AI catalogue search', () => {
   it('finds a relevant opportunity for a grant query', () => {
     const result = answerEcoVibesQuery('Find grants');
     expect(result.items.some(item => item.destination === 'Opportunities')).toBe(true);

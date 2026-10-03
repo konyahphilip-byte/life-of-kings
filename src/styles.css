@@ -35,3 +35,11 @@
 .backend-product-image{width:32px;height:32px;object-fit:cover;border-radius:6px;margin-right:7px;vertical-align:middle;background:var(--canvas)}
 
 .product-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sidekick-head small{font-size:10px}.sidekick-head small i{background:#c38d58}.sidekick-head small i.connected{background:#5a9d67}.sidekick-context>span:last-child small{font-size:10px}.assistant-message.assistant>p,.assistant-message.user p{font-size:12px}.assistant-results small{font-size:8px}.assistant-results b{font-size:10px}.assistant-results i{font-size:9px}.sidekick-prompts>span{font-size:9px}.sidekick-prompts button{font-size:10px}.sidekick-input input{font-size:11px}.sidekick-disclosure{font-size:10px;line-height:1.45;color:var(--muted)}
+
+.setting-row[href]{text-decoration:none}
+.staff-mfa-enrollment{display:grid;justify-items:start;gap:9px;margin:10px 0;padding:11px;border-radius:9px;background:var(--canvas)}
+.staff-mfa-enrollment>p{margin:0;color:var(--muted);font-size:8px;line-height:1.5}
+.staff-mfa-enrollment>img{width:150px;height:150px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.staff-mfa-enrollment details{display:grid;gap:6px;color:var(--muted);font-size:8px}
+.staff-mfa-enrollment details code{display:block;max-width:100%;overflow-wrap:anywhere;padding:7px;border-radius:6px;background:var(--paper);color:var(--ink);font-size:9px}

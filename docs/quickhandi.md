@@ -72,4 +72,4 @@ Recommended build sequence from the product brief:
 4. Business and creator profiles, then an AI concierge that searches only permissioned platform data and routes users to the correct feature.
 5. Rewards/referrals and a versioned developer API/event contract.
 
-The local build has started the backend foundation and includes server catalog search across active products and open jobs. Wallet balances, withdrawals, escrow and rewards must come from server ledgers and regulated payment providers; never infer them from a client-side job state. The sidekick has no generative model, uses server search only when signed in, and falls back to bundled examples otherwise.
+The backend includes server catalog search across active products and open jobs. Chale AI uses the server-side OpenAI Responses API when `AI_PROVIDER_KEY` is configured, and can search public active products and open Quick&Handi jobs through a scoped server tool. See [Chale AI setup](./chale-ai.md) for configuration and data handling. Wallet balances, withdrawals, escrow and rewards must come from server ledgers and regulated payment providers; never infer them from a client-side job state.

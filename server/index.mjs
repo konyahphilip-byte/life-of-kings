@@ -18,6 +18,17 @@ import {
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
+import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
+import languageCatalog from "../shared/language-catalog.json" with { type: "json" };
+import {
+  BASE_RECOMMENDATION_INTERESTS,
+  recommendationInterestWeights,
+  normalizeRecommendationTopic,
+  rankRecommendations,
+  recommendationTopicsForItem,
+  summarizeAvoidedRecommendationTopics,
+  summarizeRecommendationProfile,
+} from "./recommendations.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dbPath =
@@ -37,7 +48,18 @@ const pool = postgresMode
       idleTimeoutMillis: 30_000,
     })
   : null;
-if (postgresMode) await pool.query("SELECT 1");
+if (postgresMode) {
+  await pool.query("SELECT 1");
+  const schema = await pool.query(
+    "SELECT 1 FROM public.ecovibes_schema_version WHERE version=$1",
+    ["20261002000000_eco_language_core"],
+  ).catch(() => null);
+  if (!schema?.rowCount) {
+    throw new Error(
+      "The hosted database is missing the current EcoVibes migration. Apply the Supabase migrations before starting this API.",
+    );
+  }
+}
 let db = null;
 if (!postgresMode) {
   mkdirSync(dirname(dbPath), { recursive: true });
@@ -45,10 +67,21 @@ if (!postgresMode) {
   db.exec(`
  PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, eco_id TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, password_salt TEXT NOT NULL, password_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS user_language_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,profile_json TEXT NOT NULL,updated_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS supabase_identities(supabase_user_id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE, created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS roles(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK(role IN ('customer','seller','provider')), created_at TEXT NOT NULL, PRIMARY KEY(user_id,role));
- CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, csrf_token TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, csrf_token TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, auth_assurance TEXT NOT NULL DEFAULT 'aal1' CHECK(auth_assurance IN ('aal1','aal2')));
  CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+ CREATE TABLE IF NOT EXISTS rate_limit_buckets(bucket_key TEXT PRIMARY KEY,window_started_at TEXT NOT NULL,expires_at TEXT NOT NULL,hits INTEGER NOT NULL CHECK(hits>=0));
+ CREATE INDEX IF NOT EXISTS rate_limit_buckets_expiry ON rate_limit_buckets(expires_at);
+ CREATE TABLE IF NOT EXISTS recommendation_preferences(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,topic TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,topic));
+ CREATE TABLE IF NOT EXISTS recommendation_settings(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,personalization_enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS recommendation_signals(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,item_type TEXT NOT NULL CHECK(item_type IN ('product','job')),item_id TEXT NOT NULL,action TEXT NOT NULL CHECK(action IN ('opened','saved','dismissed','purchased')),topic TEXT NOT NULL,weight REAL NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,item_type,item_id,action,topic));
+ CREATE INDEX IF NOT EXISTS recommendation_signals_user_recent ON recommendation_signals(user_id,created_at DESC);
+ CREATE INDEX IF NOT EXISTS recommendation_signals_user_topic ON recommendation_signals(user_id,topic,active);
+ CREATE TABLE IF NOT EXISTS recommendation_activity_signals(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,item_type TEXT NOT NULL,item_id TEXT NOT NULL,pillar TEXT NOT NULL CHECK(pillar IN ('connect','create','play','trade','grow','earn')),action TEXT NOT NULL CHECK(action IN ('opened','saved','dismissed','purchased','followed','watched','liked','completed','attended','applied')),topic TEXT NOT NULL,weight REAL NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,item_type,item_id,action,topic));
+ CREATE INDEX IF NOT EXISTS recommendation_activity_user_recent ON recommendation_activity_signals(user_id,created_at DESC);
+ CREATE INDEX IF NOT EXISTS recommendation_activity_topic ON recommendation_activity_signals(user_id,topic,active);
  CREATE TABLE IF NOT EXISTS provider_profiles(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, provider_type TEXT NOT NULL DEFAULT 'individual', business_name TEXT, service_area TEXT, verification_state TEXT NOT NULL DEFAULT 'unverified', created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS seller_profiles(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, business_name TEXT, location TEXT, verification_state TEXT NOT NULL DEFAULT 'unverified', created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS products(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL, product_type TEXT NOT NULL DEFAULT 'physical', currency TEXT NOT NULL DEFAULT 'GHS', price_minor INTEGER NOT NULL CHECK(price_minor > 0), cost_minor INTEGER CHECK(cost_minor IS NULL OR cost_minor >= 0), stock INTEGER NOT NULL DEFAULT 0 CHECK(stock >= 0), variants_json TEXT NOT NULL DEFAULT '[]', fulfillment_type TEXT NOT NULL CHECK(fulfillment_type IN ('own_inventory','supplier_fulfilled','dropship','external_checkout')), supplier_name TEXT, shipping_info TEXT, location TEXT, image_url TEXT, source_type TEXT NOT NULL DEFAULT 'direct', source_url TEXT, source_external_id TEXT, status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','paused','removed')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -63,11 +96,11 @@ if (!postgresMode) {
  CREATE INDEX IF NOT EXISTS orders_buyer ON orders(buyer_id,created_at DESC);
  CREATE TABLE IF NOT EXISTS fulfillment_groups(id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, seller_id TEXT NOT NULL REFERENCES users(id), status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','shipped','delivered','cancelled')), tracking_code TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS fulfillment_seller ON fulfillment_groups(seller_id,status,created_at DESC);
- CREATE TABLE IF NOT EXISTS order_items(id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, group_id TEXT NOT NULL REFERENCES fulfillment_groups(id) ON DELETE CASCADE, product_id TEXT NOT NULL REFERENCES products(id), product_name TEXT NOT NULL, quantity INTEGER NOT NULL CHECK(quantity > 0), unit_price_minor INTEGER NOT NULL CHECK(unit_price_minor > 0), seller_id TEXT NOT NULL REFERENCES users(id));
+ CREATE TABLE IF NOT EXISTS order_items(id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, group_id TEXT NOT NULL REFERENCES fulfillment_groups(id) ON DELETE CASCADE, product_id TEXT NOT NULL REFERENCES products(id), product_name TEXT NOT NULL, variant_id TEXT, variant_title TEXT, quantity INTEGER NOT NULL CHECK(quantity > 0), unit_price_minor INTEGER NOT NULL CHECK(unit_price_minor > 0), seller_id TEXT NOT NULL REFERENCES users(id));
  CREATE TABLE IF NOT EXISTS payments(id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), provider TEXT NOT NULL, provider_reference TEXT, amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), currency TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('created','pending','paid','failed','refunded')), created_at TEXT NOT NULL);
  CREATE UNIQUE INDEX IF NOT EXISTS payments_provider_reference ON payments(provider,provider_reference) WHERE provider_reference IS NOT NULL;
  CREATE TABLE IF NOT EXISTS payment_webhook_events(provider TEXT NOT NULL,event_id TEXT NOT NULL,event_type TEXT NOT NULL,received_at TEXT NOT NULL,processed_at TEXT,outcome TEXT,PRIMARY KEY(provider,event_id));
- CREATE TABLE IF NOT EXISTS refunds(id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), requester_id TEXT NOT NULL REFERENCES users(id), amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'requested' CHECK(status IN ('requested','approved','rejected','provider_pending','refunded')), provider_reference TEXT, reviewer_id TEXT REFERENCES users(id), review_note TEXT, reviewed_at TEXT, created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS refunds(id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), requester_id TEXT NOT NULL REFERENCES users(id), amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'requested' CHECK(status IN ('requested','approved','rejected','provider_pending','refunded')), provider_reference TEXT, reviewer_id TEXT REFERENCES users(id), review_note TEXT, reviewed_at TEXT, previous_order_status TEXT CHECK(previous_order_status IS NULL OR previous_order_status IN ('delivered','disputed')), created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS domain_events(id TEXT PRIMARY KEY, aggregate_type TEXT NOT NULL, aggregate_id TEXT NOT NULL, event_type TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES users(id), details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS events_aggregate ON domain_events(aggregate_type,aggregate_id,created_at);
  CREATE TABLE IF NOT EXISTS notifications(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, target_type TEXT, target_id TEXT, read_at TEXT, created_at TEXT NOT NULL);
@@ -100,6 +133,9 @@ if (!postgresMode) {
   for (const [table, column, definition] of [
     ["products", "source_external_id", "TEXT"],
     ["products", "image_url", "TEXT"],
+    ["order_items", "variant_id", "TEXT"],
+    ["order_items", "variant_title", "TEXT"],
+    ["sessions", "auth_assurance", "TEXT NOT NULL DEFAULT 'aal1' CHECK(auth_assurance IN ('aal1','aal2'))"],
     ["verification_requests", "reviewer_id", "TEXT REFERENCES users(id)"],
     ["verification_requests", "review_note", "TEXT"],
     ["verification_requests", "reviewed_at", "TEXT"],
@@ -114,12 +150,32 @@ if (!postgresMode) {
     ["refunds", "reviewer_id", "TEXT REFERENCES users(id)"],
     ["refunds", "review_note", "TEXT"],
     ["refunds", "reviewed_at", "TEXT"],
+    ["refunds", "previous_order_status", "TEXT CHECK(previous_order_status IS NULL OR previous_order_status IN ('delivered','disputed'))"],
   ]) addColumn(table, column, definition);
+  db.exec(`
+    INSERT OR IGNORE INTO recommendation_activity_signals
+      (user_id,item_type,item_id,pillar,action,topic,weight,active,created_at,updated_at)
+    SELECT user_id,item_type,item_id,
+      CASE WHEN item_type='product' THEN 'trade' ELSE 'grow' END,
+      action,topic,weight,active,created_at,updated_at
+    FROM recommendation_signals;
+  `);
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
 }
 
 const now = () => new Date().toISOString();
 const hash = (value) => createHash("sha256").update(value).digest("hex");
+async function restoreRefundOrder(refund) {
+  const status = ["delivered", "disputed"].includes(refund.previous_order_status)
+    ? refund.previous_order_status
+    : "delivered";
+  await run(
+    "UPDATE orders SET status=?,updated_at=? WHERE id=? AND status='refund_requested'",
+    status,
+    now(),
+    refund.order_id,
+  );
+}
 const statements = new Map();
 function postgresQuery(sql, params) {
   const ignore = /^\s*INSERT\s+OR\s+IGNORE\s+INTO\s+/i.test(sql);
@@ -276,6 +332,35 @@ async function safeUser(userId) {
     userId,
   );
   if (!user) return null;
+  const bootstrapAdmins = (process.env.ECOVIBES_ADMIN_SUPABASE_USER_IDS || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value));
+  if (bootstrapAdmins.length) {
+    const identity = await q(
+      "SELECT supabase_user_id FROM supabase_identities WHERE user_id=?",
+      userId,
+    );
+    if (identity && bootstrapAdmins.includes(String(identity.supabase_user_id).toLowerCase())) {
+      const granted = await run(
+        "INSERT OR IGNORE INTO staff_access(user_id,staff_role,created_at) VALUES(?,'admin',?)",
+        userId,
+        now(),
+      );
+      if (granted.changes === 1) {
+        await run(
+          "INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)",
+          id(),
+          userId,
+          "STAFF_ADMIN_BOOTSTRAPPED",
+          "user",
+          userId,
+          "Configured Supabase Auth UUID bootstrap",
+          now(),
+        );
+      }
+    }
+  }
   const roles = (await all(
     "SELECT role FROM roles WHERE user_id=? ORDER BY role",
     userId,
@@ -284,10 +369,6 @@ async function safeUser(userId) {
     "SELECT staff_role AS role FROM staff_access WHERE user_id=? ORDER BY staff_role",
     userId,
   )).map((item) => item.role));
-  const bootstrapAdmins = (process.env.ECOVIBES_ADMIN_ECO_IDS || "")
-    .split(",")
-    .map((value) => value.trim().replace(/^@/, "").toLowerCase());
-  if (bootstrapAdmins.includes(user.eco_id.toLowerCase())) roles.push("admin");
   return {
     ...user,
     roles: [...new Set(roles)],
@@ -313,6 +394,14 @@ function requireStaff(ctx, role) {
     "staff_required",
     "This review action requires authorized staff access.",
   );
+  if (isProduction) {
+    assert(
+      ctx.authAssurance === "aal2",
+      403,
+      "staff_mfa_required",
+      "Staff review requires a verified second factor. Sign in with an enrolled authenticator before continuing.",
+    );
+  }
 }
 function tokenEncryptionKey() {
   const encoded = process.env.TOKEN_ENCRYPTION_KEY || "";
@@ -396,17 +485,18 @@ function cleanupSessions() {
     if (entry.until < t) sessions.delete(key);
 }
 setInterval(cleanupSessions, 60_000).unref();
-async function session(ctx, res, req) {
+async function session(ctx, res, req, authAssurance = "aal1") {
   const raw = randomBytes(32).toString("base64url");
   const csrf = randomBytes(24).toString("base64url");
-  const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const expires = new Date(Date.now() + (authAssurance === "aal2" ? 12 * 60 * 60_000 : 7 * 24 * 60 * 60_000)).toISOString();
   await run(
-    "INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at,created_at) VALUES(?,?,?,?,?)",
+    "INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at,created_at,auth_assurance) VALUES(?,?,?,?,?,?)",
     hash(raw),
     ctx.user.id,
     csrf,
     expires,
     now(),
+    authAssurance === "aal2" ? "aal2" : "aal1",
   );
   ctx.csrfToken = csrf;
   setCookie(res, "ev_session", raw, {
@@ -433,20 +523,36 @@ function originCheck(req) {
     "Cross-origin write rejected.",
   );
 }
-const limitBuckets = new Map();
-function rateLimit(key, maximum, windowMs) {
-  const stamp = Date.now();
-  const bucket = limitBuckets.get(key);
-  if (!bucket || stamp > bucket.resetAt) {
-    limitBuckets.set(key, { count: 1, resetAt: stamp + windowMs });
-    return;
-  }
-  bucket.count++;
+async function rateLimit(key, maximum, windowMs) {
+  const startedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + windowMs).toISOString();
+  const bucketKey = hash(`ecovibes:rate-limit:${key}`);
+  const bucket = await q(
+    `INSERT INTO rate_limit_buckets(bucket_key,window_started_at,expires_at,hits)
+     VALUES(?,?,?,1)
+     ON CONFLICT(bucket_key) DO UPDATE SET
+       hits=CASE WHEN rate_limit_buckets.expires_at<=excluded.window_started_at THEN 1 ELSE rate_limit_buckets.hits+1 END,
+       window_started_at=CASE WHEN rate_limit_buckets.expires_at<=excluded.window_started_at THEN excluded.window_started_at ELSE rate_limit_buckets.window_started_at END,
+       expires_at=CASE WHEN rate_limit_buckets.expires_at<=excluded.window_started_at THEN excluded.expires_at ELSE rate_limit_buckets.expires_at END
+     RETURNING hits`,
+    bucketKey,
+    startedAt,
+    expiresAt,
+  );
   assert(
-    bucket.count <= maximum,
+    Number(bucket?.hits || 0) <= maximum,
     429,
     "rate_limited",
     "Too many attempts. Wait before trying again.",
+  );
+}
+async function cleanupRateLimitBuckets() {
+  const stamp = now();
+  await run("DELETE FROM rate_limit_buckets WHERE expires_at<=?", stamp);
+  await run("DELETE FROM sessions WHERE expires_at<=?", stamp);
+  await run(
+    "DELETE FROM recommendation_activity_signals WHERE created_at<=?",
+    new Date(Date.now() - 365 * 86_400_000).toISOString(),
   );
 }
 async function bodyJson(req, maxBytes = 256_000) {
@@ -488,6 +594,37 @@ function inputString(
   );
   return trimmed;
 }
+const languageTags = new Set(languageCatalog.languages.map((language) => language.tag));
+const languageCountries = new Set(languageCatalog.supportedCountries);
+const defaultLanguagePreferences = {
+  preferredLanguage: "en-GH",
+  contentLanguages: ["en-GH"],
+  voiceInputLanguage: "en-GH",
+  voiceOutputLanguage: "en-GH",
+  regionCode: "GH",
+  allowCodeSwitching: false,
+};
+function normalizeLanguagePreferences(value) {
+  assert(value && typeof value === "object" && !Array.isArray(value), 400, "invalid_language_preferences", "Language preferences must be an object.");
+  const language = (candidate, field) => {
+    const tag = inputString(candidate, field, { min: 2, max: 35 });
+    assert(languageTags.has(tag), 400, "unsupported_language", "Choose a language from the EcoVibes language directory.");
+    return tag;
+  };
+  assert(Array.isArray(value.contentLanguages) && value.contentLanguages.length >= 1 && value.contentLanguages.length <= 6, 400, "invalid_content_languages", "Choose between 1 and 6 content languages.");
+  const contentLanguages = [...new Set(value.contentLanguages.map((tag) => language(tag, "Content language")))];
+  const regionCode = inputString(value.regionCode, "Region", { min: 2, max: 2 }).toUpperCase();
+  assert(languageCountries.has(regionCode), 400, "unsupported_region", "Choose a region from the EcoVibes language directory.");
+  assert(typeof value.allowCodeSwitching === "boolean", 400, "invalid_language_preferences", "Code-switching preference must be true or false.");
+  return {
+    preferredLanguage: language(value.preferredLanguage, "Preferred language"),
+    contentLanguages,
+    voiceInputLanguage: language(value.voiceInputLanguage, "Voice input language"),
+    voiceOutputLanguage: language(value.voiceOutputLanguage, "Voice output language"),
+    regionCode,
+    allowCodeSwitching: value.allowCodeSwitching,
+  };
+}
 function validMinor(value, name, { min = 1, allowZero = false } = {}) {
   assert(
     Number.isSafeInteger(value) && value >= (allowZero ? 0 : min),
@@ -497,10 +634,56 @@ function validMinor(value, name, { min = 1, allowZero = false } = {}) {
   );
   return value;
 }
+function normalizeVariants(values) {
+  if (!Array.isArray(values)) return [];
+  const ids = new Set();
+  return values.slice(0, 50).flatMap((value, index) => {
+    const input = typeof value === "string" ? { title: value } : value && typeof value === "object" ? value : null;
+    if (!input) return [];
+    const title = String(input.title || "").trim().slice(0, 120);
+    if (!title) return [];
+    let variantId = String(input.id || `option-${index + 1}`).trim().slice(0, 180) || `option-${index + 1}`;
+    if (ids.has(variantId)) variantId = `${variantId}-${index + 1}`;
+    ids.add(variantId);
+    const rawMinor = Number(input.priceMinor);
+    const rawPrice = Number(input.price);
+    const priceMinor = Number.isSafeInteger(rawMinor) && rawMinor > 0
+      ? rawMinor
+      : Number.isFinite(rawPrice) && rawPrice > 0
+        ? Math.round(rawPrice * 100)
+        : null;
+    const rawStock = input.stock;
+    const stock = rawStock !== null && rawStock !== undefined && Number.isSafeInteger(Number(rawStock)) && Number(rawStock) >= 0
+      ? Number(rawStock)
+      : null;
+    return [{ id: variantId, title, priceMinor, stock, options: Array.isArray(input.options) ? input.options.slice(0, 8) : [] }];
+  });
+}
+function productVariants(product) {
+  try { return normalizeVariants(JSON.parse(product.variants_json || "[]")); }
+  catch { return []; }
+}
+async function restoreReservedProductStock(item) {
+  const product = await q(
+    `SELECT * FROM products WHERE id=?${postgresMode ? " FOR UPDATE" : ""}`,
+    item.product_id,
+  );
+  if (!product) return;
+  const variants = productVariants(product);
+  const variant = item.variant_id && variants.find((candidate) => candidate.id === item.variant_id);
+  if (variant && variant.stock !== null) variant.stock += Number(item.quantity);
+  await run(
+    "UPDATE products SET stock=stock+?,variants_json=?,updated_at=? WHERE id=?",
+    item.quantity,
+    JSON.stringify(variants),
+    now(),
+    item.product_id,
+  );
+}
 function rowProduct(row, sellerEcoId) {
   return {
     ...row,
-    variants: JSON.parse(row.variants_json),
+    variants: productVariants(row),
     priceMinor: row.price_minor,
     costMinor: row.cost_minor,
     stock: row.stock,
@@ -559,7 +742,7 @@ function publicProduct(row, ctx) {
     currency: row.currency,
     priceMinor: row.price_minor,
     stock: row.stock,
-    variants: JSON.parse(row.variants_json),
+    variants: productVariants(row),
     fulfillment_type: row.fulfillment_type,
     shippingInfo: row.shipping_info,
     location: row.location,
@@ -638,14 +821,7 @@ async function expireUnpaidOrders() {
       ) return;
       const details = await getOrder(order.id);
       for (const group of details.groups) {
-        for (const item of group.items) {
-          await run(
-            "UPDATE products SET stock=stock+?,updated_at=? WHERE id=?",
-            item.quantity,
-            now(),
-            item.product_id,
-          );
-        }
+        for (const item of group.items) await restoreReservedProductStock(item);
         await run(
           "UPDATE fulfillment_groups SET status='cancelled',updated_at=? WHERE id=? AND status='pending'",
           now(),
@@ -690,7 +866,330 @@ function canReadOrder(ctx, order) {
       order.groups.some((group) => group.seller_id === ctx.user.id))
   );
 }
+const aiSearchStopWords = new Set([
+  "the", "a", "an", "for", "me", "my", "to", "in", "on", "of", "and", "with", "can", "you", "find", "show", "help", "look", "please", "near", "nearby", "some", "what", "where", "is", "are", "i", "need", "want", "buy", "get", "from", "under", "around", "cheap", "best", "good",
+]);
+function aiSearchTerms(query) {
+  const terms = query
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((term) => term.length > 1 && !aiSearchStopWords.has(term));
+  return [...new Set(terms)].slice(0, 6);
+}
+function aiSearchWhere(columns, terms) {
+  const condition = `(${columns.map((column) => `LOWER(${column}) LIKE LOWER(?)`).join(" OR ")})`;
+  return {
+    sql: `(${terms.map(() => condition).join(" OR ")})`,
+    params: terms.flatMap((term) => columns.map(() => `%${term}%`)),
+  };
+}
+function publicCatalogItemScore(item, terms) {
+  const title = item.title.toLowerCase();
+  const category = item.category.toLowerCase();
+  const area = String(item.area || "").toLowerCase();
+  const detail = item.detail.toLowerCase();
+  return terms.reduce(
+    (score, term) => score + (title.includes(term) ? 4 : 0) + (category.includes(term) ? 3 : 0) + (area.includes(term) ? 2 : 0) + (detail.includes(term) ? 1 : 0),
+    0,
+  );
+}
+async function findPublicCatalogListings(queryText, userId = null) {
+  const terms = aiSearchTerms(queryText);
+  if (!terms.length) return [];
+  const productFields = ["p.name", "p.description", "p.category"];
+  const productWhere = aiSearchWhere(productFields, terms);
+  const products = await all(
+    `SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,u.eco_id actor_eco_id,p.created_at FROM products p JOIN users u ON u.id=p.seller_id WHERE p.status='active' AND p.fulfillment_type!='external_checkout' ${userId ? "AND p.seller_id<>?" : ""} AND ${productWhere.sql} ORDER BY p.created_at DESC LIMIT 30`,
+    ...(userId ? [userId] : []),
+    ...productWhere.params,
+  );
+  const jobFields = ["j.title", "j.description", "j.category", "j.area"];
+  const jobWhere = aiSearchWhere(jobFields, terms);
+  const jobs = await all(
+    `SELECT j.id,j.title,j.description detail,j.category,j.area,u.eco_id actor_eco_id,j.created_at FROM jobs j JOIN users u ON u.id=j.customer_id WHERE j.status='open' ${userId ? "AND j.customer_id<>?" : ""} AND ${jobWhere.sql} ORDER BY j.created_at DESC LIMIT 30`,
+    ...(userId ? [userId] : []),
+    ...jobWhere.params,
+  );
+  const clean = (value, max = 280) => String(value || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
+  const items = [
+    ...products.map((item) => ({
+      id: String(item.id),
+      kind: "product",
+      title: clean(item.title, 140),
+      detail: clean(item.detail),
+      category: clean(item.category, 80),
+      actor_eco_id: clean(item.actor_eco_id, 48),
+      price: `GH₵${(item.price_minor / 100).toFixed(2)}`,
+      destination: "Marketplace",
+      area: "",
+      created_at: item.created_at,
+    })),
+    ...jobs.map((item) => ({
+      id: String(item.id),
+      kind: "job",
+      title: clean(item.title, 140),
+      detail: clean(item.detail),
+      category: clean(item.category, 80),
+      actor_eco_id: clean(item.actor_eco_id, 48),
+      price: "",
+      destination: "Quick&Handi",
+      area: clean(item.area, 100),
+      created_at: item.created_at,
+    })),
+  ];
+  const lexical = items
+    .map((item) => ({ ...item, relevance: publicCatalogItemScore(item, terms) }))
+    .filter((item) => item.relevance > 0)
+    .sort((left, right) => right.relevance - left.relevance || String(right.created_at).localeCompare(String(left.created_at)))
+    .slice(0, 30);
+  if (!userId) return lexical.slice(0, 8).map(({ created_at, relevance, ...item }) => item);
+  const [preferences, signals, settings] = await Promise.all([
+    all("SELECT topic FROM recommendation_preferences WHERE user_id=?", userId),
+    recommendationSignals(userId),
+    q("SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?", userId),
+  ]);
+  const enabled = Boolean(settings?.personalization_enabled);
+  return rankRecommendations(
+    lexical.map((item) => ({ ...item, itemType: item.kind, search_score: item.relevance })),
+    enabled ? preferences.map((row) => row.topic) : [],
+    enabled ? signals : [],
+    8,
+  ).map(({ created_at, itemType, relevance, score, reason, saved, search_score, ...item }) => ({
+    ...item,
+    kind: itemType,
+    recommendation_reason: reason,
+  }));
+}
+const recommendationSignalActions = new Set(["opened", "saved", "dismissed"]);
+const recommendationActivityWeights = {
+  opened: 0.7,
+  saved: 2.5,
+  dismissed: -3.5,
+  purchased: 4,
+  followed: 2,
+  watched: 1.1,
+  liked: 1.8,
+  completed: 4,
+  attended: 1.5,
+  applied: 3,
+};
+const recommendationPillars = {
+  product: "trade",
+  job: "grow",
+  story: "connect",
+  reel: "create",
+  creator: "create",
+  game: "play",
+  tournament: "play",
+  community: "connect",
+  event: "connect",
+  opportunity: "grow",
+  service: "trade",
+  reward: "earn",
+};
+function recommendationPillar(itemType) {
+  return recommendationPillars[itemType] || "connect";
+}
+async function recommendationChoices() {
+  const rows = await all(
+    "SELECT category FROM products WHERE status='active' AND fulfillment_type!='external_checkout' UNION SELECT category FROM jobs WHERE status='open'",
+  );
+  const choices = new Map();
+  for (const label of [...BASE_RECOMMENDATION_INTERESTS, ...rows.map((row) => row.category)]) {
+    const topic = String(label || "").trim().slice(0, 64);
+    const key = normalizeRecommendationTopic(topic);
+    if (key && !choices.has(key)) choices.set(key, topic);
+  }
+  return [...choices.values()].sort((left, right) => left.localeCompare(right));
+}
+async function recommendationSignals(userId) {
+  const cutoff = new Date(Date.now() - 365 * 86_400_000).toISOString();
+  return all(
+    "SELECT item_type,item_id,action,topic,weight,active,created_at FROM recommendation_activity_signals WHERE user_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 3000",
+    userId,
+    cutoff,
+  );
+}
+async function recommendationSnapshot(userId, limit = 6) {
+  const [preferences, signals, settings, productRows, jobRows, choices] = await Promise.all([
+    all("SELECT topic FROM recommendation_preferences WHERE user_id=? ORDER BY topic", userId),
+    recommendationSignals(userId),
+    q("SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?", userId),
+    all("SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,p.currency,p.location,p.created_at FROM products p WHERE p.status='active' AND p.stock>0 AND p.fulfillment_type!='external_checkout' AND p.seller_id<>? ORDER BY p.created_at DESC LIMIT 250", userId),
+    all("SELECT j.id,j.title,j.description detail,j.category,j.area,j.budget_minor,j.currency,j.created_at FROM jobs j WHERE j.status='open' AND j.customer_id<>? ORDER BY j.created_at DESC LIMIT 250", userId),
+    recommendationChoices(),
+  ]);
+  const clean = (value, max = 240) => String(value || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
+  const candidates = [
+    ...productRows.map((item) => ({
+      id: String(item.id), itemType: "product", title: clean(item.title, 120), detail: clean(item.detail),
+      category: clean(item.category, 64), price: `${item.currency === "GHS" ? "GH₵" : `${clean(item.currency, 4)} `}${(Number(item.price_minor) / 100).toFixed(2)}`,
+      area: clean(item.location, 80), destination: "Marketplace", created_at: item.created_at,
+    })),
+    ...jobRows.map((item) => ({
+      id: String(item.id), itemType: "job", title: clean(item.title, 120), detail: clean(item.detail),
+      category: clean(item.category, 64), price: Number(item.budget_minor) ? `${item.currency === "GHS" ? "GH₵" : `${clean(item.currency, 4)} `}${(Number(item.budget_minor) / 100).toFixed(2)} budget` : "Budget open",
+      area: clean(item.area, 80), destination: "Quick&Handi", created_at: item.created_at,
+    })),
+  ];
+  const enabled = Boolean(settings?.personalization_enabled);
+  const rankingSignals = enabled ? signals : [];
+  const ranked = rankRecommendations(candidates, enabled ? preferences.map((row) => row.topic) : [], rankingSignals, limit);
+  const activeSaves = new Set(signals.filter((signal) => signal.action === "saved" && Boolean(signal.active)).map((signal) => `${signal.item_type}:${signal.item_id}`));
+  const items = ranked.map((item) => ({ ...item, saved: activeSaves.has(`${item.itemType}:${item.id}`) }));
+  const learnedTopics = enabled ? summarizeRecommendationProfile(signals) : [];
+  const avoidedTopics = enabled ? summarizeAvoidedRecommendationTopics(signals) : [];
+  const signalCount = new Set(signals.filter((signal) => Boolean(signal.active)).map((signal) => `${signal.item_type}:${signal.item_id}:${signal.action}`)).size;
+  return {
+    items,
+    interests: preferences.map((row) => row.topic),
+    availableInterests: choices,
+    learnedTopics,
+    avoidedTopics,
+    learningActivityCount: signalCount,
+    enabled,
+    personalized: enabled && (preferences.length > 0 || learnedTopics.length > 0 || avoidedTopics.length > 0),
+  };
+}
+async function recordRecommendationSignals(userId, itemType, itemId, item, action, active = true, stamp = now()) {
+  const settings = await q(
+    "SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?",
+    userId,
+  );
+  if (!settings || !Boolean(settings.personalization_enabled)) return;
+  const topics = recommendationTopicsForItem(item);
+  const activeValue = postgresMode ? active : active ? 1 : 0;
+  await run(
+    "UPDATE recommendation_activity_signals SET active=0,updated_at=? WHERE user_id=? AND item_type=? AND item_id=? AND action=?",
+    stamp, userId, itemType, itemId, action,
+  );
+  for (const topic of topics) {
+    await run(
+      "INSERT INTO recommendation_activity_signals(user_id,item_type,item_id,pillar,action,topic,weight,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,item_type,item_id,action,topic) DO UPDATE SET pillar=excluded.pillar,active=excluded.active,updated_at=excluded.updated_at",
+      userId, itemType, itemId, recommendationPillar(itemType), action, topic, recommendationActivityWeights[action] ?? 0.7, activeValue, stamp, stamp,
+    );
+  }
+}
 async function route(ctx, req, res, method, path, body, query) {
+  if (method === "GET" && path === "/language/preferences") {
+    assert(ctx.user, 401, "sign_in_required", "Sign in to sync language preferences across your EcoVibes ID.");
+    const row = await q("SELECT profile_json,updated_at FROM user_language_preferences WHERE user_id=?", ctx.user.id);
+    let preferences = row?.profile_json || defaultLanguagePreferences;
+    if (typeof preferences === "string") {
+      try { preferences = JSON.parse(preferences); } catch { preferences = defaultLanguagePreferences; }
+    }
+    return { preferences: { ...defaultLanguagePreferences, ...preferences }, updatedAt: row?.updated_at || null };
+  }
+  if (method === "PATCH" && path === "/language/preferences") {
+    assert(ctx.user, 401, "sign_in_required", "Sign in to sync language preferences across your EcoVibes ID.");
+    const preferences = normalizeLanguagePreferences(body.preferences);
+    const updatedAt = now();
+    await run(
+      "INSERT INTO user_language_preferences(user_id,profile_json,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET profile_json=excluded.profile_json,updated_at=excluded.updated_at",
+      ctx.user.id, JSON.stringify(preferences), updatedAt,
+    );
+    return { preferences, updatedAt };
+  }
+  if (method === "GET" && path === "/recommendations") {
+    assert(ctx.user, 401, "sign_in_required", "Sign in to build recommendations around your interests.");
+    const requestedLimit = Number(query.get("limit") || 6);
+    const limit = Number.isInteger(requestedLimit) ? Math.min(12, Math.max(1, requestedLimit)) : 6;
+    return recommendationSnapshot(ctx.user.id, limit);
+  }
+  if (method === "POST" && path === "/recommendations/interests") {
+    assert(ctx.user, 401, "sign_in_required", "Sign in to save your interests.");
+    assert(Array.isArray(body.topics) && body.topics.length <= 12, 400, "invalid_interests", "Choose up to 12 interests.");
+    const choices = await recommendationChoices();
+    const choicesByKey = new Map(choices.map((topic) => [normalizeRecommendationTopic(topic), topic]));
+    const requested = body.topics.map((topic) => {
+      assert(typeof topic === "string", 400, "invalid_interests", "Each interest must be text.");
+      const key = normalizeRecommendationTopic(inputString(topic, "Interest", { min: 1, max: 64 }));
+      assert(choicesByKey.has(key), 400, "invalid_interest", "Choose an interest from the available list.");
+      return choicesByKey.get(key);
+    });
+    const selected = [...new Map(requested.map((topic) => [normalizeRecommendationTopic(topic), topic])).values()];
+    await transaction(async () => {
+      await run("DELETE FROM recommendation_preferences WHERE user_id=?", ctx.user.id);
+      for (const topic of selected) {
+        await run("INSERT INTO recommendation_preferences(user_id,topic,created_at) VALUES(?,?,?)", ctx.user.id, topic, now());
+      }
+    });
+    return recommendationSnapshot(ctx.user.id);
+  }
+  if (method === "POST" && path === "/recommendations/settings") {
+    assert(ctx.user, 401, "sign_in_required", "Sign in to update recommendation settings.");
+    assert(typeof body.enabled === "boolean", 400, "invalid_recommendation_setting", "Personalization must be enabled or paused.");
+    const enabledValue = postgresMode ? body.enabled : body.enabled ? 1 : 0;
+    await run(
+      "INSERT INTO recommendation_settings(user_id,personalization_enabled,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET personalization_enabled=excluded.personalization_enabled,updated_at=excluded.updated_at",
+      ctx.user.id, enabledValue, now(),
+    );
+    return recommendationSnapshot(ctx.user.id);
+  }
+  if (method === "DELETE" && path === "/recommendations/profile") {
+    assert(ctx.user, 401, "sign_in_required", "Sign in to reset recommendation learning.");
+    await transaction(async () => {
+      await run("DELETE FROM recommendation_signals WHERE user_id=?", ctx.user.id);
+      await run("DELETE FROM recommendation_activity_signals WHERE user_id=?", ctx.user.id);
+    });
+    return recommendationSnapshot(ctx.user.id);
+  }
+  if (method === "POST" && path === "/recommendations/signals") {
+    assert(ctx.user, 401, "sign_in_required", "Sign in to personalize your recommendations.");
+    await rateLimit(`recommendation-feedback:${ctx.user.id}`, 45, 60_000);
+    const setting = await q("SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?", ctx.user.id);
+    if (!setting || !Boolean(setting.personalization_enabled)) return { ok: true, active: false, paused: true };
+    const itemType = inputString(body.itemType, "Listing type", { min: 1, max: 16 });
+    assert(["product", "job"].includes(itemType), 400, "invalid_listing_type", "This listing type cannot be personalized yet.");
+    const itemId = inputString(body.itemId, "Listing ID", { min: 1, max: 64 });
+    assert(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(itemId), 400, "invalid_listing_id", "This listing ID is invalid.");
+    const action = inputString(body.action, "Feedback", { min: 1, max: 16 });
+    assert(recommendationSignalActions.has(action), 400, "invalid_feedback", "This feedback type is not supported.");
+    assert(body.active === undefined || typeof body.active === "boolean", 400, "invalid_feedback", "Feedback state must be true or false.");
+    const active = body.active !== false;
+    let item;
+    if (itemType === "product") {
+      item = await q("SELECT id,name title,category FROM products WHERE id=? AND status='active' AND stock>0 AND fulfillment_type!='external_checkout'", itemId);
+    } else {
+      item = await q("SELECT id,title,category FROM jobs WHERE id=? AND status='open'", itemId);
+    }
+    assert(item, 404, "listing_not_found", "This listing is no longer available.");
+    const stamp = now();
+    await transaction(async () => {
+      await recordRecommendationSignals(ctx.user.id, itemType, itemId, item, action, active, stamp);
+    });
+    return { ok: true, active, action };
+  }
+  if (method === "GET" && path === "/ai/status") {
+    return {
+      configured: isChaleAIConfigured(),
+      provider: isChaleAIConfigured() ? "OpenAI" : null,
+      model: isChaleAIConfigured() ? process.env.AI_MODEL || "gpt-6-astra" : null,
+    };
+  }
+  if (method === "POST" && path === "/ai/chat") {
+    await rateLimit(`chale-ai:${req.socket.remoteAddress}`, 10, 60_000);
+    assert(isChaleAIConfigured(), 503, "ai_not_configured", "Chale AI's OpenAI model is not configured yet.");
+    assert(Array.isArray(body.messages), 400, "invalid_messages", "Messages must be provided as a list.");
+    assert(body.messages.length >= 1 && body.messages.length <= 8, 400, "invalid_messages", "Send between 1 and 8 chat messages.");
+    let totalCharacters = 0;
+    const messages = body.messages.map((message) => {
+      assert(message && ["user", "assistant"].includes(message.role), 400, "invalid_messages", "Messages must have a user or assistant role.");
+      const content = inputString(message.content, "Message", { min: 1, max: 1200 });
+      totalCharacters += content.length;
+      return { role: message.role, content };
+    });
+    assert(totalCharacters <= 6000, 400, "messages_too_long", "The conversation is too long. Start a new chat and try again.");
+    assert(messages.at(-1).role === "user", 400, "invalid_messages", "The last chat message must be from the user.");
+    try {
+      return await generateChaleAIReply(messages, (text) => findPublicCatalogListings(text, ctx.user?.id || null));
+    } catch (error) {
+      console.warn(JSON.stringify({ level: "warn", event: "ai_reply_failed", errorType: error?.name || "Error", time: now() }));
+      fault(502, "ai_unavailable", "Chale AI could not reach its model. Please try again shortly.");
+    }
+  }
   if (method === "POST" && path === "/webhooks/paystack") {
     const secret = process.env.PAYSTACK_SECRET_KEY || "";
     assert(secret.startsWith("sk_test_"), 503, "test_provider_unavailable", "Paystack test mode is not configured.");
@@ -723,7 +1222,7 @@ async function route(ctx, req, res, method, path, body, query) {
           await run("UPDATE orders SET status='disputed',payment_status='paid',updated_at=? WHERE id=?", now(), order.id);
           const refundId = id();
           await run(
-            "INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,created_at) VALUES(?,?,?,?,?,'requested',?)",
+            "INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,previous_order_status,created_at) VALUES(?,?,?,?,?,'requested','disputed',?)",
             refundId,
             order.id,
             order.buyer_id,
@@ -746,6 +1245,8 @@ async function route(ctx, req, res, method, path, body, query) {
         if (order && order.payment_status !== "paid") {
           await run("UPDATE payments SET state='paid' WHERE id=?", payment.id);
           await run("UPDATE orders SET payment_status='paid',updated_at=? WHERE id=?", now(), order.id);
+          const purchasedItems = await all("SELECT oi.product_id id,oi.product_name title,p.category FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?", order.id);
+          for (const item of purchasedItems) await recordRecommendationSignals(order.buyer_id, "product", String(item.id), item, "purchased", true);
           await notify(order.buyer_id, "payment", "Payment confirmed", `Payment for order ${order.id.slice(0, 8)} is confirmed.`, "order", order.id);
           const groups = await all("SELECT seller_id FROM fulfillment_groups WHERE order_id=?", order.id);
           for (const group of groups) await notify(group.seller_id, "order", "Paid order ready", `Order ${order.id.slice(0, 8)} is paid and ready to fulfill.`, "order", order.id);
@@ -759,10 +1260,12 @@ async function route(ctx, req, res, method, path, body, query) {
           if (hook.event === "refund.processed") {
             await run("UPDATE refunds SET status='refunded',provider_reference=?,reviewed_at=? WHERE id=?", String(hook.data.refund_reference || ""), now(), refund.id);
             await run("UPDATE orders SET payment_status='refunded',updated_at=? WHERE id=?", now(), refund.order_id);
+            await restoreRefundOrder(refund);
             await run("UPDATE payments SET state='refunded' WHERE order_id=? AND provider='paystack'", refund.order_id);
             await notify(refund.requester_id, "refund", "Refund processed", `Refund for order ${refund.order_id.slice(0, 8)} was processed.`, "order", refund.order_id);
           } else if (hook.event === "refund.failed" || hook.event === "refund.needs-attention") {
             await run("UPDATE refunds SET status='rejected',review_note=? WHERE id=?", `Paystack refund ${hook.data.status || hook.event}. Contact support if you need help.`, refund.id);
+            await restoreRefundOrder(refund);
             await notify(refund.requester_id, "refund", "Refund needs attention", `The provider could not complete the refund for order ${refund.order_id.slice(0, 8)}.`, "order", refund.order_id);
           }
         }
@@ -870,7 +1373,11 @@ async function route(ctx, req, res, method, path, body, query) {
         const price = Number(variant?.price || 0), stock = Number(variant?.inventoryQuantity || 0);
         if (!item.title || !Number.isFinite(price) || price <= 0) continue;
         const productId = id(), stamp = now(), sourceId = item.id;
-        await run("INSERT INTO products(id,seller_id,name,description,category,price_minor,cost_minor,stock,variants_json,fulfillment_type,supplier_name,shipping_info,location,image_url,source_type,source_url,source_external_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,NULL,? ,?,'own_inventory',NULL,NULL,NULL,?,'shopify',?,?, 'paused',?,?) ON CONFLICT(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL DO UPDATE SET name=excluded.name,description=excluded.description,category=excluded.category,price_minor=excluded.price_minor,stock=excluded.stock,variants_json=excluded.variants_json,image_url=excluded.image_url,source_url=excluded.source_url,updated_at=excluded.updated_at", productId, ctx.user.id, item.title.slice(0, 100), String(item.descriptionHtml || "").replace(/<[^>]*>/g, " ").slice(0, 3000), String(item.productType || "Imported").slice(0, 80), Math.round(price * 100), Math.max(0, stock), JSON.stringify(item.variants.edges.map(({node})=>({id:node.id,title:node.title,price:node.price,stock:node.inventoryQuantity,options:node.selectedOptions}))), item.featuredImage?.url || null, `https://${connection.shop_domain}/admin/products/${sourceId.split("/").pop()}`, sourceId, stamp, stamp);
+        const importedVariants = normalizeVariants(item.variants.edges.map(({node})=>({id:node.id,title:node.title,price:node.price,stock:node.inventoryQuantity,options:node.selectedOptions})));
+        const productStock = importedVariants.length && importedVariants.every((item) => item.stock !== null)
+          ? importedVariants.reduce((sum, item) => sum + item.stock, 0)
+          : Math.max(0, stock);
+        await run("INSERT INTO products(id,seller_id,name,description,category,price_minor,cost_minor,stock,variants_json,fulfillment_type,supplier_name,shipping_info,location,image_url,source_type,source_url,source_external_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,NULL,? ,?,'own_inventory',NULL,NULL,NULL,?,'shopify',?,?, 'paused',?,?) ON CONFLICT(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL DO UPDATE SET name=excluded.name,description=excluded.description,category=excluded.category,price_minor=excluded.price_minor,stock=excluded.stock,variants_json=excluded.variants_json,image_url=excluded.image_url,source_url=excluded.source_url,updated_at=excluded.updated_at", productId, ctx.user.id, item.title.slice(0, 100), String(item.descriptionHtml || "").replace(/<[^>]*>/g, " ").slice(0, 3000), String(item.productType || "Imported").slice(0, 80), Math.round(price * 100), productStock, JSON.stringify(importedVariants), item.featuredImage?.url || null, `https://${connection.shop_domain}/admin/products/${sourceId.split("/").pop()}`, sourceId, stamp, stamp);
         imported++;
       }
       cursor = connectionData.pageInfo.endCursor; pages++;
@@ -914,7 +1421,7 @@ async function route(ctx, req, res, method, path, body, query) {
       "supabase_auth_required",
       "Create new EcoVibes IDs with Supabase Auth. Password sign-in is available only to link an existing EcoVibes ID.",
     );
-    rateLimit(`reg:${req.socket.remoteAddress}`, 8, 60 * 60_000);
+    await rateLimit(`reg:${req.socket.remoteAddress}`, 8, 60 * 60_000);
     const ecoId = inputString(body.ecoId, "EcoVibes ID", { min: 3, max: 24 })
       .toLowerCase()
       .replace(/^@/, "");
@@ -964,7 +1471,7 @@ async function route(ctx, req, res, method, path, body, query) {
     return { user: ctx.user, csrfToken: ctx.csrfToken };
   }
   if (method === "POST" && path === "/auth/login") {
-    rateLimit(`login:${req.socket.remoteAddress}`, 12, 15 * 60_000);
+    await rateLimit(`login:${req.socket.remoteAddress}`, 12, 15 * 60_000);
     const ecoId = inputString(body.ecoId, "EcoVibes ID", { min: 3, max: 30 })
       .replace(/^@/, "")
       .toLowerCase();
@@ -994,9 +1501,14 @@ async function route(ctx, req, res, method, path, body, query) {
     return { user: ctx.user, csrfToken: ctx.csrfToken };
   }
   if (method === "GET" && path === "/auth/me")
-    return { user: ctx.user, csrfToken: ctx.csrfToken || null };
+    return {
+      user: ctx.user,
+      csrfToken: ctx.csrfToken || null,
+      assuranceLevel: ctx.authAssurance || null,
+      staffMfaRequired: Boolean(isProduction && ctx.user?.roles?.some((role) => ["admin", "trust_staff", "support_staff"].includes(role)) && ctx.authAssurance !== "aal2"),
+    };
   if (method === "GET" && path === "/auth/supabase/me") {
-    rateLimit(`supabase-auth:${req.socket.remoteAddress}`, 60, 60_000);
+    await rateLimit(`supabase-auth:${req.socket.remoteAddress}`, 60, 60_000);
     const result = await authenticateSupabaseRequest(req);
     if (result.error) {
       fault(
@@ -1007,6 +1519,7 @@ async function route(ctx, req, res, method, path, body, query) {
     }
     return {
       provider: "supabase",
+      assuranceLevel: result.assuranceLevel || "aal1",
       user: {
         id: result.user.id,
         email: result.user.email || null,
@@ -1015,7 +1528,7 @@ async function route(ctx, req, res, method, path, body, query) {
     };
   }
   if (method === "POST" && path === "/auth/supabase/session") {
-    rateLimit(`supabase-session:${req.socket.remoteAddress}`, 12, 15 * 60_000);
+    await rateLimit(`supabase-session:${req.socket.remoteAddress}`, 12, 15 * 60_000);
     const result = await authenticateSupabaseRequest(req);
     if (result.error) {
       fault(
@@ -1024,6 +1537,7 @@ async function route(ctx, req, res, method, path, body, query) {
         result.error.message || "Supabase authentication failed.",
       );
     }
+    ctx.authAssurance = result.assuranceLevel || "aal1";
 
     let userId;
     let created = false;
@@ -1117,10 +1631,13 @@ async function route(ctx, req, res, method, path, body, query) {
     });
 
     ctx.user = await safeUser(userId);
-    await session(ctx, res, req);
+    assert(ctx.user?.status === "active", 403, "account_unavailable", "This EcoVibes account is unavailable. Contact support if you believe this is a mistake.");
+    await session(ctx, res, req, ctx.authAssurance);
     return {
       user: ctx.user,
       csrfToken: ctx.csrfToken,
+      assuranceLevel: ctx.authAssurance || "aal1",
+      staffMfaRequired: Boolean(isProduction && ctx.user?.roles?.some((role) => ["admin", "trust_staff", "support_staff"].includes(role)) && ctx.authAssurance !== "aal2"),
       created,
       linked,
     };
@@ -1257,7 +1774,24 @@ async function route(ctx, req, res, method, path, body, query) {
     );
   if (method === "POST" && path === "/support/reports") {
     const targetType = inputString(body.targetType, "Target type", { max: 30 });
-    const targetId = inputString(body.targetId, "Target ID", { max: 100 });
+    let targetId = inputString(body.targetId, "Target ID", { max: 100 });
+    assert(["account", "job", "order", "seller"].includes(targetType), 400, "invalid_report_target", "Choose a supported report target.");
+    await rateLimit(`support-report:${ctx.user.id}`, 5, 60 * 60_000);
+    if (targetType === "account" || targetType === "seller") {
+      const ecoId = targetId.replace(/^@/, "").toLowerCase();
+      const account = await q("SELECT u.id FROM users u WHERE u.eco_id=? COLLATE NOCASE", ecoId);
+      assert(account, 404, "report_target_not_found", "That EcoVibes account was not found.");
+      if (targetType === "seller") {
+        assert(await q("SELECT 1 ok FROM roles WHERE user_id=? AND role IN ('seller','provider')", account.id), 400, "invalid_report_target", "That account is not a seller or service provider.");
+      }
+      targetId = account.id;
+    } else {
+      assert(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetId), 400, "invalid_report_target", "Enter a valid record ID.");
+      const target = targetType === "job"
+        ? await q("SELECT id FROM jobs WHERE id=?", targetId)
+        : await q("SELECT id FROM orders WHERE id=?", targetId);
+      assert(target, 404, "report_target_not_found", "That job or order was not found.");
+    }
     const reason = inputString(body.reason, "Reason", { max: 100 });
     const details = inputString(body.details, "Details", {
       min: 10,
@@ -1320,14 +1854,24 @@ async function route(ctx, req, res, method, path, body, query) {
     return { ok: true };
   }
   if (method === "GET" && path === "/people/discover") {
-    const rows = await all("SELECT u.id,u.eco_id,u.display_name,p.last_seen_at,(SELECT COUNT(*) FROM people_follows f1 JOIN people_follows f2 ON f1.target_user_id=f2.target_user_id WHERE f1.user_id=? AND f2.user_id=u.id) mutual_count,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=u.id) followed,(SELECT MAX(s.created_at) FROM stories s WHERE s.author_id=u.id AND s.expires_at>?) story_at,(SELECT MAX(r.created_at) FROM reels r WHERE r.author_id=u.id AND r.status='active') reel_at FROM users u LEFT JOIN people_presence p ON p.user_id=u.id WHERE u.id!=? AND u.status='active' LIMIT 300", ctx.user.id, ctx.user.id, now(), ctx.user.id);
+    const rows = await all("SELECT u.id,u.eco_id,u.display_name,p.last_seen_at,(SELECT COUNT(*) FROM people_follows f1 JOIN people_follows f2 ON f1.target_user_id=f2.target_user_id WHERE f1.user_id=? AND f2.user_id=u.id) mutual_count,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=u.id) followed,(SELECT MAX(s.created_at) FROM stories s WHERE s.author_id=u.id AND s.visibility='public' AND s.expires_at>?) story_at,(SELECT MAX(r.created_at) FROM reels r WHERE r.author_id=u.id AND r.status='active') reel_at,(SELECT s.text FROM stories s WHERE s.author_id=u.id AND s.visibility='public' AND s.expires_at>? ORDER BY s.created_at DESC LIMIT 1) latest_story_text,(SELECT r.caption FROM reels r WHERE r.author_id=u.id AND r.status='active' ORDER BY r.created_at DESC LIMIT 1) latest_reel_caption FROM users u LEFT JOIN people_presence p ON p.user_id=u.id WHERE u.id!=? AND u.status='active' LIMIT 300", ctx.user.id, ctx.user.id, now(), now(), ctx.user.id);
+    const [preferences, signals, settings] = await Promise.all([
+      all("SELECT topic FROM recommendation_preferences WHERE user_id=?", ctx.user.id),
+      recommendationSignals(ctx.user.id),
+      q("SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?", ctx.user.id),
+    ]);
+    const personalizationEnabled = Boolean(settings?.personalization_enabled);
+    const topicWeights = recommendationInterestWeights(
+      personalizationEnabled ? preferences.map((item) => item.topic) : [],
+      personalizationEnabled ? signals : [],
+    );
     const stamp=Date.now();
-    const people=rows.filter(person=>!person.followed).map(person=>{const age=person.last_seen_at?stamp-Date.parse(person.last_seen_at):Infinity;let score=0;const reasons=[];if(age<5*60_000){score+=40;reasons.push("Active now");}else if(age<60*60_000){score+=22;reasons.push("Recently active");}else if(age<24*60*60_000){score+=8;reasons.push("Active today");}const mutual=Number(person.mutual_count||0);if(mutual){score+=Math.min(24,mutual*6);reasons.push(`${mutual} shared connection${mutual===1?'':'s'}`);}const storyAge=person.story_at?stamp-Date.parse(person.story_at):Infinity;if(storyAge<24*60*60_000){score+=16;reasons.push("Posted a Story");}const reelAge=person.reel_at?stamp-Date.parse(person.reel_at):Infinity;if(reelAge<7*24*60*60_000){score+=Math.max(2,Math.round(14*(1-reelAge/(7*24*60*60_000))));reasons.push("Shared a Reel");}score+=parseInt(hash(`${ctx.user.id}:${person.id}`).slice(0,2),16)/255;const { last_seen_at: _lastSeen, ...publicPerson }=person;return {...publicPerson,mutual_count:mutual,active:age<5*60_000,score:Math.round(score),reasons};}).sort((a,b)=>b.score-a.score).slice(0,20);
-    return { people, algorithm: "recency + shared follows + active Stories/Reels; online state expires after five minutes" };
+    const people=rows.filter(person=>!person.followed).map(person=>{const age=person.last_seen_at?stamp-Date.parse(person.last_seen_at):Infinity;let score=0;const reasons=[];if(age<5*60_000){score+=40;reasons.push("Active now");}else if(age<60*60_000){score+=22;reasons.push("Recently active");}else if(age<24*60*60_000){score+=8;reasons.push("Active today");}const mutual=Number(person.mutual_count||0);if(mutual){score+=Math.min(24,mutual*6);reasons.push(`${mutual} shared connection${mutual===1?'':'s'}`);}const storyAge=person.story_at?stamp-Date.parse(person.story_at):Infinity;if(storyAge<24*60*60_000){score+=16;reasons.push("Posted a Story");}const reelAge=person.reel_at?stamp-Date.parse(person.reel_at):Infinity;if(reelAge<7*24*60*60_000){score+=Math.max(2,Math.round(14*(1-reelAge/(7*24*60*60_000))));reasons.push("Shared a Reel");}const contentTopics=recommendationTopicsForItem({title:"",category:"",tags:`${person.latest_story_text||""} ${person.latest_reel_caption||""}`});const matches=contentTopics.map(topic=>({topic,weight:topicWeights.get(topic)||0})).filter(match=>match.weight>0).sort((a,b)=>b.weight-a.weight);if(matches.length){score+=Math.min(24,matches.slice(0,3).reduce((sum,match)=>sum+Math.min(8,match.weight),0));reasons.push(`Shares your interest in ${matches[0].topic}`);}score+=parseInt(hash(`${ctx.user.id}:${person.id}`).slice(0,2),16)/255;const { last_seen_at: _lastSeen, latest_story_text: _storyText, latest_reel_caption: _reelCaption, ...publicPerson }=person;return {...publicPerson,mutual_count:mutual,active:age<5*60_000,score:Math.round(score),reasons};}).sort((a,b)=>b.score-a.score).slice(0,20);
+    return { people, algorithm: "shared EcoVibes interest profile + mutual follows + recent activity; private messages and financial details are excluded" };
   }
   let followMatch=path.match(/^\/people\/([a-f0-9-]+)\/follow$/);
   if (method === "POST" && followMatch) {
-    const target=await q("SELECT id FROM users WHERE id=? AND status='active'",followMatch[1]);assert(target&&target.id!==ctx.user.id,404,"person_not_found","Person not found.");const existing=await q("SELECT 1 ok FROM people_follows WHERE user_id=? AND target_user_id=?",ctx.user.id,target.id);if(existing)await run("DELETE FROM people_follows WHERE user_id=? AND target_user_id=?",ctx.user.id,target.id);else await run("INSERT INTO people_follows(user_id,target_user_id,created_at) VALUES(?,?,?)",ctx.user.id,target.id,now());return {followed:!existing};
+    const target=await q("SELECT id FROM users WHERE id=? AND status='active'",followMatch[1]);assert(target&&target.id!==ctx.user.id,404,"person_not_found","Person not found.");const existing=await q("SELECT 1 ok FROM people_follows WHERE user_id=? AND target_user_id=?",ctx.user.id,target.id);if(existing)await run("DELETE FROM people_follows WHERE user_id=? AND target_user_id=?",ctx.user.id,target.id);else await run("INSERT INTO people_follows(user_id,target_user_id,created_at) VALUES(?,?,?)",ctx.user.id,target.id,now());const creatorId=String(target.id);const recentContent=await all("SELECT caption text FROM reels WHERE author_id=? AND status='active' ORDER BY created_at DESC LIMIT 5",creatorId);const recentStories=await all("SELECT text FROM stories WHERE author_id=? AND expires_at>? ORDER BY created_at DESC LIMIT 5",creatorId,now());await recordRecommendationSignals(ctx.user.id,"creator",creatorId,{title:"",category:"",tags:[...recentContent,...recentStories].map(item=>item.text).join(" ")},"followed",!existing);return {followed:!existing};
   }
   if (method === "GET" && path === "/stories") {
     const stories=await all("SELECT s.id,s.author_id,s.text,s.asset_id,s.visibility,s.created_at,s.expires_at,u.eco_id,u.display_name,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id) is_following,(SELECT COUNT(*) FROM story_views v WHERE v.story_id=s.id) view_count,EXISTS(SELECT 1 FROM story_views v WHERE v.story_id=s.id AND v.viewer_id=?) viewed FROM stories s JOIN users u ON u.id=s.author_id WHERE s.expires_at>? AND (s.visibility='public' OR s.author_id=? OR EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id)) ORDER BY CASE WHEN s.author_id=? THEN 0 ELSE 1 END,s.created_at DESC LIMIT 100",ctx.user.id,ctx.user.id,now(),ctx.user.id,ctx.user.id,ctx.user.id);
@@ -1337,17 +1881,18 @@ async function route(ctx, req, res, method, path, body, query) {
     const text=inputString(body.text||"","Story status",{min:0,max:500,optional:true});const assetId=body.assetId?inputString(body.assetId,"Media asset ID",{max:64}):null;assert(text||assetId,400,"empty_story","Write a status or add a photo.");if(assetId)assert(await q("SELECT 1 ok FROM media_assets WHERE id=? AND owner_id=?",assetId,ctx.user.id),404,"media_not_found","Upload your media before posting.");const visibility=body.visibility==="followers"?"followers":"public";const storyId=id(),created=now(),expires=new Date(Date.now()+24*60*60_000).toISOString();await run("INSERT INTO stories(id,author_id,text,asset_id,visibility,created_at,expires_at) VALUES(?,?,?,?,?,?,?)",storyId,ctx.user.id,text,assetId,visibility,created,expires);await event(ctx.user.id,"story",storyId,"STORY_POSTED",{hasMedia:Boolean(assetId),visibility});return {id:storyId,expiresAt:expires};
   }
   let storyMatch=path.match(/^\/stories\/([a-f0-9-]+)\/view$/);
-  if (method === "POST" && storyMatch) {const story=await q("SELECT id FROM stories WHERE id=? AND expires_at>?",storyMatch[1],now());assert(story,404,"story_expired","This Story has expired.");await run("INSERT INTO story_views(story_id,viewer_id,viewed_at) VALUES(?,?,?) ON CONFLICT(story_id,viewer_id) DO UPDATE SET viewed_at=excluded.viewed_at",story.id,ctx.user.id,now());return {ok:true};}
+  if (method === "POST" && storyMatch) {const story=await q("SELECT id,author_id,text,visibility FROM stories WHERE id=? AND expires_at>?",storyMatch[1],now());assert(story,404,"story_expired","This Story has expired.");const canView=story.visibility==="public"||story.author_id===ctx.user.id||Boolean(await q("SELECT 1 ok FROM people_follows WHERE user_id=? AND target_user_id=?",ctx.user.id,story.author_id));assert(canView,404,"story_expired","This Story is not available to your account.");await run("INSERT INTO story_views(story_id,viewer_id,viewed_at) VALUES(?,?,?) ON CONFLICT(story_id,viewer_id) DO UPDATE SET viewed_at=excluded.viewed_at",story.id,ctx.user.id,now());await recordRecommendationSignals(ctx.user.id,"story",String(story.id),{title:"",category:"",tags:story.text},"opened",true);return {ok:true};}
   if (method === "GET" && path === "/reels") {
     const rows=await all("SELECT r.id,r.author_id,r.caption,r.asset_id,r.created_at,u.eco_id,u.display_name,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=r.author_id) is_following,(SELECT COUNT(*) FROM reel_views v WHERE v.reel_id=r.id) view_count,(SELECT COUNT(*) FROM reel_likes l WHERE l.reel_id=r.id) like_count,EXISTS(SELECT 1 FROM reel_views v WHERE v.reel_id=r.id AND v.viewer_id=?) viewed,EXISTS(SELECT 1 FROM reel_likes l WHERE l.reel_id=r.id AND l.user_id=?) liked FROM reels r JOIN users u ON u.id=r.author_id WHERE r.status='active' ORDER BY r.created_at DESC LIMIT 100",ctx.user.id,ctx.user.id,ctx.user.id);
-    const stamp=Date.now();const reels=rows.map(reel=>{const age=Math.max(0,stamp-Date.parse(reel.created_at));const freshness=Math.max(0,28-28*age/(14*24*60*60_000));const popularity=Math.min(24,Math.log2(Number(reel.like_count)+1)*5+Math.log2(Number(reel.view_count)+1)*2);const affinity=reel.is_following?18:0;const unseen=reel.viewed? -35:12;return {...reel,score:Math.round(freshness+popularity+affinity+unseen)};}).sort((a,b)=>b.score-a.score);
-    return {reels,algorithm:"freshness + watch/like signals + followed creators; recently watched Reels are down-ranked"};
+    const [preferences, signals, settings] = await Promise.all([all("SELECT topic FROM recommendation_preferences WHERE user_id=?",ctx.user.id),recommendationSignals(ctx.user.id),q("SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?",ctx.user.id)]);const personalizationEnabled=Boolean(settings?.personalization_enabled);const interestWeights=recommendationInterestWeights(personalizationEnabled?preferences.map(item=>item.topic):[],personalizationEnabled?signals:[]);
+    const stamp=Date.now();const reels=rows.map(reel=>{const age=Math.max(0,stamp-Date.parse(reel.created_at));const freshness=Math.max(0,28-28*age/(14*24*60*60_000));const popularity=Math.min(24,Math.log2(Number(reel.like_count)+1)*5+Math.log2(Number(reel.view_count)+1)*2);const affinity=reel.is_following?18:0;const unseen=reel.viewed? -35:12;const topics=recommendationTopicsForItem({title:"",category:"",tags:reel.caption});const matches=personalizationEnabled?topics.map(topic=>({topic,weight:interestWeights.get(topic)||0})).filter(item=>item.weight>0).sort((a,b)=>b.weight-a.weight):[];const personalizedScore=matches.reduce((sum,item)=>sum+Math.min(8,item.weight),0);return {...reel,score:Math.round(freshness+popularity+affinity+unseen+personalizedScore),recommendation_reason:matches[0]?`Because you explored ${matches[0].topic} across EcoVibes`:reel.is_following?"From a creator you follow":"Fresh from EcoVibes creators"};}).sort((a,b)=>b.score-a.score);
+    return {reels,algorithm:"shared cross-pillar interests + freshness + watch/like signals + followed creators; recently watched Reels are down-ranked"};
   }
   if (method === "POST" && path === "/reels") {
     const assetId=inputString(body.assetId,"Video asset ID",{max:64});const asset=await q("SELECT id,mime_type FROM media_assets WHERE id=? AND owner_id=?",assetId,ctx.user.id);assert(asset&&asset.mime_type.startsWith("video/"),400,"video_required","Upload a video before posting a Reel.");const caption=inputString(body.caption||"","Caption",{max:500,optional:true});const reelId=id();await run("INSERT INTO reels(id,author_id,caption,asset_id,created_at) VALUES(?,?,?,?,?)",reelId,ctx.user.id,caption,assetId,now());await event(ctx.user.id,"reel",reelId,"REEL_POSTED",{assetId});return {id:reelId};
   }
   let reelMatch=path.match(/^\/reels\/([a-f0-9-]+)\/(view|like)$/);
-  if (method === "POST" && reelMatch) {const reel=await q("SELECT id FROM reels WHERE id=? AND status='active'",reelMatch[1]);assert(reel,404,"reel_not_found","Reel not found.");if(reelMatch[2]==="view"){await run("INSERT INTO reel_views(reel_id,viewer_id,viewed_at) VALUES(?,?,?) ON CONFLICT(reel_id,viewer_id) DO UPDATE SET viewed_at=excluded.viewed_at",reel.id,ctx.user.id,now());return {ok:true};}const liked=await q("SELECT 1 ok FROM reel_likes WHERE reel_id=? AND user_id=?",reel.id,ctx.user.id);if(liked)await run("DELETE FROM reel_likes WHERE reel_id=? AND user_id=?",reel.id,ctx.user.id);else await run("INSERT INTO reel_likes(reel_id,user_id,created_at) VALUES(?,?,?)",reel.id,ctx.user.id,now());return {liked:!liked};}
+  if (method === "POST" && reelMatch) {const reel=await q("SELECT id,author_id,caption FROM reels WHERE id=? AND status='active'",reelMatch[1]);assert(reel,404,"reel_not_found","Reel not found.");const item={title:"",category:"",tags:reel.caption};if(reelMatch[2]==="view"){await run("INSERT INTO reel_views(reel_id,viewer_id,viewed_at) VALUES(?,?,?) ON CONFLICT(reel_id,viewer_id) DO UPDATE SET viewed_at=excluded.viewed_at",reel.id,ctx.user.id,now());await recordRecommendationSignals(ctx.user.id,"reel",String(reel.id),item,"watched",true);return {ok:true};}const liked=await q("SELECT 1 ok FROM reel_likes WHERE reel_id=? AND user_id=?",reel.id,ctx.user.id);if(liked)await run("DELETE FROM reel_likes WHERE reel_id=? AND user_id=?",reel.id,ctx.user.id);else await run("INSERT INTO reel_likes(reel_id,user_id,created_at) VALUES(?,?,?)",reel.id,ctx.user.id,now());await recordRecommendationSignals(ctx.user.id,"reel",String(reel.id),item,"liked",!liked);return {liked:!liked};}
   if (path.startsWith("/media/") && path !== "/media/webhook" && path !== "/media/status")
     assert(ctx.user, 401, "authentication_required", "Sign in to use live audio and video.");
   if (method === "GET" && path === "/media/sessions") {
@@ -1356,7 +1901,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   let mediaMatch = path.match(/^\/media\/sessions\/([a-f0-9-]+)\/(join|end|ingress)$/);
   if (method === "POST" && path === "/media/sessions") {
-    requireLiveKit(); rateLimit(`media-create:${ctx.user.id}`, 10, 60_000);
+    requireLiveKit(); await rateLimit(`media-create:${ctx.user.id}`, 10, 60_000);
     const mode = body.mode;
     assert(["voice", "video", "live"].includes(mode), 400, "invalid_mode", "Choose voice, video, or live.");
     const visibility = body.visibility === "public" && mode === "live" ? "public" : "private";
@@ -1380,7 +1925,7 @@ async function route(ctx, req, res, method, path, body, query) {
     return { id: sessionId, mode, title, visibility, status: "active" };
   }
   if (method === "POST" && mediaMatch && mediaMatch[2] === "join") {
-    requireLiveKit(); rateLimit(`media-join:${ctx.user.id}`, 30, 60_000);
+    requireLiveKit(); await rateLimit(`media-join:${ctx.user.id}`, 30, 60_000);
     const media = await q("SELECT * FROM media_sessions WHERE id=? AND status='active'", mediaMatch[1]);
     assert(media, 404, "media_session_not_found", "This room is no longer available.");
     let member = await q("SELECT role FROM media_session_members WHERE session_id=? AND user_id=?", media.id, ctx.user.id);
@@ -1493,11 +2038,17 @@ async function route(ctx, req, res, method, path, body, query) {
     const claimed = await run("UPDATE refunds SET status=?,reviewer_id=?,review_note=?,reviewed_at=? WHERE id=? AND status='requested'", body.status === "approved" ? "approved" : "rejected", ctx.user.id, note, now(), refund.id);
     assert(claimed.changes === 1, 409, "already_reviewed", "This refund was already reviewed.");
     if (body.status === "rejected") {
+      await restoreRefundOrder(refund);
       await notify(refund.requester_id, "refund", "Refund request reviewed", note, "order", refund.order_id);
     } else {
-      const response = await fetch("https://api.paystack.co/refund", { method: "POST", headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ transaction: payment.provider_reference, amount: refund.amount_minor, currency: "GHS", customer_note: refund.reason, merchant_note: note }) });
-      const result = await response.json();
-      if (!response.ok || !result.status) {
+      let response, result;
+      try {
+        response = await fetch("https://api.paystack.co/refund", { method: "POST", headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ transaction: payment.provider_reference, amount: refund.amount_minor, currency: "GHS", customer_note: refund.reason, merchant_note: note }) });
+        result = await response.json();
+      } catch {
+        result = null;
+      }
+      if (!response?.ok || !result?.status) {
         await run("UPDATE refunds SET status='requested',reviewer_id=NULL,review_note=NULL,reviewed_at=NULL WHERE id=? AND status='approved'", refund.id);
         fault(502, "refund_initialization_failed", "Paystack could not start this test refund.");
       }
@@ -1597,9 +2148,7 @@ async function route(ctx, req, res, method, path, body, query) {
       price,
       cost,
       stock,
-      JSON.stringify(
-        Array.isArray(body.variants) ? body.variants.slice(0, 50) : [],
-      ),
+      JSON.stringify(normalizeVariants(body.variants)),
       fulfillment,
       String(body.supplierName || "").slice(0, 120),
       String(body.shippingInfo || "").slice(0, 200),
@@ -1700,9 +2249,7 @@ async function route(ctx, req, res, method, path, body, query) {
             ? null
             : validMinor(item.costMinor, "Cost", { allowZero: true }),
           stock,
-          JSON.stringify(
-            Array.isArray(item.variants) ? item.variants.slice(0, 50) : [],
-          ),
+          JSON.stringify(normalizeVariants(item.variants)),
           ["own_inventory", "supplier_fulfilled", "dropship"].includes(
             item.fulfillmentType,
           )
@@ -1742,7 +2289,7 @@ async function route(ctx, req, res, method, path, body, query) {
       "invalid_items",
       "Add between one and 30 items.",
     );
-    const quantities = new Map();
+    const requestedByProduct = new Map();
     for (const item of body.items) {
       assert(
         typeof item.productId === "string",
@@ -1751,15 +2298,19 @@ async function route(ctx, req, res, method, path, body, query) {
         "Product ID is required.",
       );
       const qty = validMinor(item.quantity, "Quantity");
-      quantities.set(
-        item.productId,
-        (quantities.get(item.productId) || 0) + qty,
-      );
+      const variantId = item.variantId === undefined || item.variantId === null || item.variantId === ""
+        ? null
+        : inputString(item.variantId, "Variant ID", { max: 180 });
+      const lines = requestedByProduct.get(item.productId) || [];
+      const existing = lines.find((line) => line.variantId === variantId);
+      if (existing) existing.qty += qty;
+      else lines.push({ variantId, qty });
+      requestedByProduct.set(item.productId, lines);
     }
     return await transaction(async () => {
       let total = 0;
       const lines = [];
-      for (const [productId, qty] of quantities) {
+      for (const [productId, requestedLines] of requestedByProduct) {
         const product = await q(
           `SELECT * FROM products WHERE id=? AND status='active'${postgresMode ? " FOR UPDATE" : ""}`,
           productId,
@@ -1782,21 +2333,43 @@ async function route(ctx, req, res, method, path, body, query) {
           "external_checkout",
           "This item uses external checkout.",
         );
+        const variants = productVariants(product);
+        const reservationQty = requestedLines.reduce((sum, line) => sum + line.qty, 0);
+        assert(Number.isSafeInteger(reservationQty), 400, "invalid_quantity", "Requested quantity is too large.");
         assert(
-          product.stock >= qty,
+          product.stock >= reservationQty,
           409,
           "stock_changed",
           `${product.name} does not have enough stock.`,
         );
-        const lineTotal = product.price_minor * qty;
-        assert(
-          Number.isSafeInteger(lineTotal),
-          400,
-          "invalid_total",
-          "Order total is too large.",
+        for (const requested of requestedLines) {
+          let variant = null;
+          if (variants.length) {
+            assert(requested.variantId, 400, "variant_required", `Choose an option for ${product.name}.`);
+            variant = variants.find((candidate) => candidate.id === requested.variantId);
+            assert(variant, 400, "variant_unavailable", `That option for ${product.name} is no longer available.`);
+            if (variant.stock !== null) {
+              assert(variant.stock >= requested.qty, 409, "variant_stock_changed", `${product.name} · ${variant.title} does not have enough stock.`);
+              variant.stock -= requested.qty;
+            }
+          } else {
+            assert(!requested.variantId, 400, "variant_unavailable", `${product.name} does not have selectable options.`);
+          }
+          const unitPriceMinor = variant?.priceMinor || product.price_minor;
+          const lineTotal = unitPriceMinor * requested.qty;
+          assert(Number.isSafeInteger(lineTotal), 400, "invalid_total", "Order total is too large.");
+          total += lineTotal;
+          lines.push({ product, qty: requested.qty, variantId: variant?.id || null, variantTitle: variant?.title || null, unitPriceMinor });
+        }
+        const reserved = await run(
+          "UPDATE products SET stock=stock-?,variants_json=?,updated_at=? WHERE id=? AND stock>=?",
+          reservationQty,
+          JSON.stringify(variants),
+          now(),
+          product.id,
+          reservationQty,
         );
-        total += lineTotal;
-        lines.push({ product, qty });
+        assert(reserved.changes === 1, 409, "stock_changed", "Stock changed while your order was being placed.");
       }
       assert(
         total > 0 && Number.isSafeInteger(total),
@@ -1831,28 +2404,17 @@ async function route(ctx, req, res, method, path, body, query) {
         }
         const groupId = groups.get(sellerId);
         await run(
-          "INSERT INTO order_items(id,order_id,group_id,product_id,product_name,quantity,unit_price_minor,seller_id) VALUES(?,?,?,?,?,?,?,?)",
+          "INSERT INTO order_items(id,order_id,group_id,product_id,product_name,variant_id,variant_title,quantity,unit_price_minor,seller_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
           id(),
           orderId,
           groupId,
           line.product.id,
           line.product.name,
+          line.variantId,
+          line.variantTitle,
           line.qty,
-          line.product.price_minor,
+          line.unitPriceMinor,
           sellerId,
-        );
-        const change = await run(
-          "UPDATE products SET stock=stock-?,updated_at=? WHERE id=? AND stock>=?",
-          line.qty,
-          stamp,
-          line.product.id,
-          line.qty,
-        );
-        assert(
-          change.changes === 1,
-          409,
-          "stock_changed",
-          "Stock changed while your order was being placed.",
         );
         await notify(
           sellerId,
@@ -1903,13 +2465,7 @@ async function route(ctx, req, res, method, path, body, query) {
       );
       const order = await getOrder(current.id);
       for (const group of order.groups)
-        for (const item of group.items)
-          await run(
-            "UPDATE products SET stock=stock+?,updated_at=? WHERE id=?",
-            item.quantity,
-            now(),
-            item.product_id,
-          );
+        for (const item of group.items) await restoreReservedProductStock(item);
       await run(
         "UPDATE fulfillment_groups SET status='cancelled',updated_at=? WHERE order_id=? AND status='pending'",
         now(),
@@ -2078,12 +2634,13 @@ async function route(ctx, req, res, method, path, body, query) {
     });
     const refundId = id();
     await run(
-      "INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,created_at) VALUES(?,?,?,?,?,'requested',?)",
+      "INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,previous_order_status,created_at) VALUES(?,?,?,?,?,'requested',?,?)",
       refundId,
       order.id,
       ctx.user.id,
       order.total_minor,
       reason,
+      order.status,
       now(),
     );
     await run(
@@ -2344,6 +2901,12 @@ async function route(ctx, req, res, method, path, body, query) {
       now(),
       job.id,
     );
+    if (next === "completed") {
+      const activity = { title: job.title, category: job.category };
+      await recordRecommendationSignals(job.customer_id, "job", String(job.id), activity, "completed", true);
+      if (job.assigned_provider_id)
+        await recordRecommendationSignals(job.assigned_provider_id, "job", String(job.id), activity, "completed", true);
+    }
     await event(
       ctx.user.id,
       "job",
@@ -2441,9 +3004,14 @@ async function route(ctx, req, res, method, path, body, query) {
   return undefined;
 }
 const server = createServer(async (req, res) => {
+  const requestId = randomUUID();
+  res.setHeader("X-Request-ID", requestId);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (isProduction) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   res.setHeader("Cache-Control", "no-store");
   res.setHeader(
     "Content-Security-Policy",
@@ -2484,7 +3052,13 @@ const server = createServer(async (req, res) => {
       );
       if (record) {
         ctx.user = await safeUser(record.user_id);
+        if (ctx.user && ctx.user.status !== "active") {
+          await run("DELETE FROM sessions WHERE token_hash=?", tokenHash);
+          setCookie(res, "ev_session", "", { httpOnly: true, secure: isProduction, maxAge: 0 });
+          fault(403, "account_unavailable", "This EcoVibes account is unavailable. Contact support if you believe this is a mistake.");
+        }
         ctx.csrfToken = record.csrf_token;
+        ctx.authAssurance = record.auth_assurance || "aal1";
       }
     }
     const legacyMigrationOnly = Boolean(
@@ -2512,6 +3086,8 @@ const server = createServer(async (req, res) => {
           url.pathname,
         )) ||
       (method === "GET" && url.pathname === "/api/v1/health") ||
+      (method === "GET" && url.pathname === "/api/v1/ai/status") ||
+      (method === "POST" && url.pathname === "/api/v1/ai/chat") ||
       (method === "GET" && url.pathname === "/api/v1/media/status") ||
       (method === "GET" && url.pathname === "/api/v1/marketplace/products") ||
       (method === "GET" && url.pathname === "/api/v1/search");
@@ -2546,26 +3122,43 @@ const server = createServer(async (req, res) => {
   } catch (error) {
     const code = error.code || "internal_error";
     const httpStatus = error.status || 500;
-    if (httpStatus >= 500) console.error(error);
+    if (httpStatus >= 500) console.error(JSON.stringify({
+      level: "error",
+      event: "request_failed",
+      requestId,
+      status: httpStatus,
+      method: req.method || "GET",
+      path: String(req.url || "").split("?")[0].slice(0, 200),
+      errorType: error?.name || "Error",
+      errorCode: code,
+      time: now(),
+    }));
     res.statusCode = httpStatus;
     res.end(
       JSON.stringify({
         error: {
           code,
           message:
-            httpStatus >= 500
+            code === "ai_not_configured"
+              ? error.message
+              : httpStatus >= 500
               ? "The server could not complete the request."
               : error.message,
+          requestId,
         },
       }),
     );
   }
 });
 const unpaidOrderExpiry = setInterval(() => {
-  void expireUnpaidOrders().catch((error) => console.error("Unpaid order cleanup failed", error));
+  void expireUnpaidOrders().catch((error) => console.error(JSON.stringify({ level: "error", event: "unpaid_order_cleanup_failed", errorType: error?.name || "Error", time: now() })));
 }, 60_000);
 unpaidOrderExpiry.unref();
-void expireUnpaidOrders().catch((error) => console.error("Initial unpaid order cleanup failed", error));
+const rateLimitCleanup = setInterval(() => {
+  void cleanupRateLimitBuckets().catch((error) => console.error(JSON.stringify({ level: "error", event: "rate_limit_cleanup_failed", errorType: error?.name || "Error", time: now() })));
+}, 5 * 60_000);
+rateLimitCleanup.unref();
+void expireUnpaidOrders().catch((error) => console.error(JSON.stringify({ level: "error", event: "initial_order_cleanup_failed", errorType: error?.name || "Error", time: now() })));
 server.listen(port, isProduction ? "0.0.0.0" : "127.0.0.1", () =>
   console.log(
     `EcoVibes API listening on port ${port} · database ${postgresMode ? "postgres" : dbPath}`,
@@ -2574,6 +3167,7 @@ server.listen(port, isProduction ? "0.0.0.0" : "127.0.0.1", () =>
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
     clearInterval(unpaidOrderExpiry);
+    clearInterval(rateLimitCleanup);
     server.close(() => {
       Promise.resolve(postgresMode ? pool.end() : db.close()).finally(() => process.exit(0));
     });

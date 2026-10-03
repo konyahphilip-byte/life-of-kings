@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, ArrowRight, BadgeCheck, BriefcaseBusiness, CalendarClock, Check, ChevronDown, CircleHelp, Clock3, MapPin, MessageCircle, Plus, Search, ShieldAlert, Star, Users, Wrench, X, Zap } from 'lucide-react';
 import { createServiceRequest, formatGhs, handiDirectory, initialQuickHandiState, matchHandis, saveQuote, transitionJob } from './domain';
 import JobsBoard, { type NewJobInput, type NewOfferInput } from './JobsBoard';
@@ -6,7 +6,8 @@ import { serviceCategories, type CustomJob, type CustomJobEvent, type CustomJobS
 import { apiUrl } from '../../lib/api';
 
 const STORE='ecovibes:quickhandi:v1';
-function loadQuickState():QuickHandiState{const initial=initialQuickHandiState();try{const saved=JSON.parse(localStorage.getItem(STORE)||'{}');return {...initial,...saved,customJobs:saved.customJobs||initial.customJobs,categories:saved.categories||initial.categories};}catch{return initial;}}
+function quickStoreKey(identityId?:string|null){return identityId?`${STORE}:account:${identityId}`:STORE;}
+function loadQuickState(identityId?:string|null):QuickHandiState{const initial=initialQuickHandiState();try{if(identityId){const legacy=localStorage.getItem(STORE);if(legacy&&!localStorage.getItem(`${STORE}:unassigned-backup`))localStorage.setItem(`${STORE}:unassigned-backup`,legacy);if(legacy)localStorage.removeItem(STORE);}const saved=JSON.parse(localStorage.getItem(quickStoreKey(identityId))||'{}');return {...initial,...saved,customJobs:saved.customJobs||initial.customJobs,categories:saved.categories||initial.categories};}catch{return initial;}}
 const statusLabels:Record<JobStatus,string>={requested:'Request sent',quoted:'Quote received',accepted:'Accepted',confirmed:'Booking confirmed',in_progress:'In progress',awaiting_customer:'Confirm completion',completed:'Completed',cancelled:'Cancelled',disputed:'Under review'};
 const areas=['Anywhere in Accra','Osu','East Legon','Adenta','Tema','Madina','Labone','Cape Coast'];
 const statusTone=(status:JobStatus)=>['completed'].includes(status)?'done':['cancelled','disputed'].includes(status)?'muted':['in_progress','awaiting_customer'].includes(status)?'working':'pending';
@@ -14,8 +15,9 @@ type ApiIdentity={id:string;eco_id:string;display_name:string;roles:string[]};
 function toCustomJob(row:Record<string,unknown>):CustomJob{const offers=Array.isArray(row.offers)?row.offers as Array<Record<string,unknown>>:[];const events=Array.isArray(row.events)?row.events as Array<Record<string,unknown>>:[];return {id:String(row.id),ownerEcoId:`@${String(row.customer_eco_id||'unknown')}`,ownerName:String(row.customer_name||'EcoVibes member'),category:(String(row.category||'Other') as ServiceCategory),title:String(row.title),details:String(row.description),area:String(row.area),budgetMinor:Number(row.budget_minor),timing:row.timing==='scheduled'?'scheduled':'asap',scheduledAt:row.scheduled_at?String(row.scheduled_at):undefined,status:String(row.status) as CustomJobStatus,offers:offers.map(offer=>({id:String(offer.id),providerId:'',providerEcoId:`@${String(offer.provider_eco_id||'unknown')}`,providerName:String(offer.provider_name||'EcoVibes Handi'),providerType:'individual',amountMinor:Number(offer.amount_minor),note:String(offer.note),eta:String(offer.eta),status:String(offer.status) as JobOffer['status'],createdAt:String(offer.created_at)})),events:events.map(event=>({id:`${String(event.event_type)}-${String(event.created_at)}`,type:String(event.event_type) as CustomJobEvent['type'],actorEcoId:`@${String(event.actor_eco_id||'')}`,at:String(event.created_at)})),createdAt:String(row.created_at),sample:false};}
 async function handiApi<T>(path:string,csrf:string,init:RequestInit={}){const response=await fetch(apiUrl(path),{...init,credentials:'include',headers:{'Content-Type':'application/json',...(init.method&&init.method!=='GET'?{'X-CSRF-Token':csrf}:{}),...init.headers}});const data=await response.json();if(!response.ok)throw new Error(data.error?.message||'Could not complete the Quick&Handi request.');return data as T;}
 
-export default function QuickHandi(){
- const [store,setStore]=useState<QuickHandiState>(loadQuickState);
+export default function QuickHandi({identityId=null}: {identityId?:string|null}={}){
+ const [store,setStore]=useState<QuickHandiState>(()=>loadQuickState(identityId));
+ const storeOwnerRef=useRef<string|null>(identityId);
  const [experience,setExperience]=useState<'services'|'jobs'>('services');
  const [query,setQuery]=useState('');
  const [area,setArea]=useState('Anywhere in Accra');
@@ -33,10 +35,11 @@ export default function QuickHandi(){
  const [apiIdentity,setApiIdentity]=useState<ApiIdentity|null>(null);
  const [apiCsrf,setApiCsrf]=useState('');
  const [remoteJobs,setRemoteJobs]=useState<CustomJob[]|null>(null);
- useEffect(()=>{try{localStorage.setItem(STORE,JSON.stringify(store));}catch{/* Keep this feature usable when browser storage is unavailable. */}},[store]);
+ useLayoutEffect(()=>{if(storeOwnerRef.current===identityId)return;storeOwnerRef.current=identityId;setStore(loadQuickState(identityId));setApiIdentity(null);setApiCsrf('');setRemoteJobs(null);},[identityId]);
+ useEffect(()=>{if(storeOwnerRef.current!==identityId)return;try{localStorage.setItem(quickStoreKey(identityId),JSON.stringify(store));}catch{/* Keep this feature usable when browser storage is unavailable. */}},[store,identityId]);
  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(''),2800);return()=>clearTimeout(id)},[toast]);
  async function refreshRemoteJobs(){if(!apiIdentity)return;const rows=await handiApi<Array<Record<string,unknown>>>('/jobs',apiCsrf);setRemoteJobs(rows.map(toCustomJob));}
- useEffect(()=>{let active=true;void handiApi<{user:ApiIdentity|null;csrfToken:string|null}>('/auth/me','').then(async me=>{if(!active)return;setApiIdentity(me.user);setApiCsrf(me.csrfToken||'');if(me.user){const rows=await handiApi<Array<Record<string,unknown>>>('/jobs',me.csrfToken||'');if(active)setRemoteJobs(rows.map(toCustomJob));}else setRemoteJobs(null);}).catch(()=>{if(active){setApiIdentity(null);setApiCsrf('');setRemoteJobs(null);}});return()=>{active=false};},[]);
+ useEffect(()=>{let active=true;void handiApi<{user:ApiIdentity|null;csrfToken:string|null}>('/auth/me','').then(async me=>{if(!active)return;setApiIdentity(me.user);setApiCsrf(me.csrfToken||'');if(me.user){const rows=await handiApi<Array<Record<string,unknown>>>('/jobs',me.csrfToken||'');if(active)setRemoteJobs(rows.map(toCustomJob));}else setRemoteJobs(null);}).catch(()=>{if(active){setApiIdentity(null);setApiCsrf('');setRemoteJobs(null);}});return()=>{active=false};},[identityId]);
  const profiles=useMemo(()=>store.ownProfile?[store.ownProfile,...handiDirectory]:handiDirectory,[store.ownProfile]);
  const matches=useMemo(()=>matchHandis(profiles,query,category,area),[profiles,query,category,area]);
  const setMode=(mode:QuickHandiState['mode'])=>setStore(current=>({...current,mode}));

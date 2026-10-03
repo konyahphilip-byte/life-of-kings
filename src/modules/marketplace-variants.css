@@ -1,0 +1,19 @@
+.cloud-variant-select {
+  display: grid;
+  gap: 4px;
+  margin: 7px 0;
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.cloud-variant-select select,
+.backend-product select {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 7px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 7px;
+}

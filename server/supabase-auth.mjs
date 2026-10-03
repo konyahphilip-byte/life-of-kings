@@ -16,11 +16,25 @@ export async function authenticateSupabaseRequest(incomingRequest) {
   const { data: auth, error } = await verifyAuth(request, { auth: 'user', issuer });
   if (error) return { user: null, error };
 
+  // verifyAuth has already validated the signature and issuer. Read only the
+  // signed AAL claim so staff sessions can require a verified second factor.
+  let assuranceLevel = 'aal1';
+  const accessToken = typeof authorization === 'string'
+    ? authorization.replace(/^Bearer\s+/i, '')
+    : '';
+  try {
+    const payload = accessToken.split('.')[1];
+    const claims = payload ? JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) : null;
+    if (claims?.aal === 'aal2') assuranceLevel = 'aal2';
+  } catch {
+    assuranceLevel = 'aal1';
+  }
+
   try {
     const supabase = createContextClient({ auth: { token: auth.token, keyName: auth.keyName } });
     const { data, error: userError } = await supabase.auth.getUser(auth.token);
     if (userError) return { user: null, error: userError };
-    return { user: data.user, error: null };
+    return { user: data.user, assuranceLevel, error: null };
   } catch (clientError) {
     return {
       user: null,
