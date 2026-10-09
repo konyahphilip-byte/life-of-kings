@@ -293,3 +293,8 @@ create table public.media_session_members (
   joined_at timestamptz,
   primary key(session_id,user_id)
 );
+-- Keep fresh installations private from the moment these tables are created.
+alter table public.media_sessions enable row level security;
+alter table public.media_session_members enable row level security;
+revoke all on public.media_sessions from anon, authenticated;
+revoke all on public.media_session_members from anon, authenticated;

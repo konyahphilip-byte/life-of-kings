@@ -83,6 +83,12 @@ export default function Recommendations({
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    const changed = () => { void refresh(); };
+    window.addEventListener('ecovibes:recommendations_changed', changed);
+    return () => window.removeEventListener('ecovibes:recommendations_changed', changed);
+  }, [refresh]);
+
   const saveInterests = async () => {
     if (!csrfToken || saving) return;
     setSaving(true);
@@ -97,6 +103,7 @@ export default function Recommendations({
       setData(next);
       setSelected(next.interests);
       setEditing(false);
+      window.dispatchEvent(new Event('ecovibes:recommendations_changed'));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Your interests could not be saved.');
     } finally {
@@ -116,6 +123,7 @@ export default function Recommendations({
         body: JSON.stringify({ enabled: !data.enabled }),
       }));
       setData(next);
+      window.dispatchEvent(new Event('ecovibes:recommendations_changed'));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Your recommendation setting could not be changed.');
     } finally {
@@ -139,6 +147,7 @@ export default function Recommendations({
       }));
       setData(next);
       setResetArmed(false);
+      window.dispatchEvent(new CustomEvent('ecovibes:recommendations_changed', { detail: { reset: true } }));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Your learned profile could not be cleared.');
     } finally {
@@ -155,7 +164,7 @@ export default function Recommendations({
     });
     if (action === 'opened') {
       onNavigate(item.destination);
-      if (csrfToken) void request().catch(() => {});
+      if (csrfToken) void request().then((response) => { if (response.ok) window.dispatchEvent(new Event('ecovibes:recommendations_changed')); }).catch(() => {});
       return;
     }
     if (!csrfToken || busyItem) return;
@@ -163,7 +172,7 @@ export default function Recommendations({
     setError('');
     try {
       await responseData(await request());
-      await refresh();
+      window.dispatchEvent(new Event('ecovibes:recommendations_changed'));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Your feedback could not be saved.');
     } finally {

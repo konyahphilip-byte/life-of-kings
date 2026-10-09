@@ -98,7 +98,7 @@ export default function WasteHub({identityId:nullIdentity=null}:{identityId?:str
       await wasteApi('/identity/profiles',csrf,{method:'PATCH',body:JSON.stringify({profile:'provider',providerType,businessName,serviceArea})});
       if(wasteVerification?.status==='pending')throw new Error('Your Waste service application is already waiting for staff review.');
       const evidenceNote=`Type: ${providerType}. Service: ${services.slice(0,180)}. Materials: ${materials.slice(0,90)}. Area: ${serviceArea.slice(0,80)}. Business: ${businessName.slice(0,70)}.`;
-      await wasteApi('/trust/verifications',csrf,{method:'POST',body:JSON.stringify({businessType:'Waste services provider',evidenceNote})});
+      await wasteApi('/trust/verifications',csrf,{method:'POST',body:JSON.stringify({targetRole:'provider',businessType:'Waste services provider',evidenceNote})});
       await refresh();setSuccess('Waste provider application submitted. Staff review is required before you can send collection offers.');
     }catch(reason){setError(reason instanceof Error?reason.message:'Could not submit the provider application.');}
     finally{setBusy(false);}

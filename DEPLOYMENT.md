@@ -8,21 +8,23 @@ The API is configured for private Supabase Postgres. The browser talks to the AP
 2. In the Supabase SQL connection settings, copy a PostgreSQL connection string for the API host. Keep the password private.
 3. From this project directory, authenticate with the Supabase CLI and link the project. The project reference is visible in the Supabase project URL and settings.
 4. Apply the checked-in migrations with `npx supabase db push`.
-5. In Supabase, confirm the latest marker `20261002000000_eco_language_core` and API tables exist. Production API startup refuses to run until this marker is present. The migrations enable row-level security and revoke direct browser roles; requests go through the EcoVibes API.
+5. In Supabase, confirm the latest marker `20261008210729_provider_onboarding` and API tables exist. Production API startup refuses to run until this marker is present. The migrations enable row-level security and revoke direct browser roles; requests go through the EcoVibes API.
 6. In **Storage**, create a private bucket named `ecovibes-media`. Keep it private; the API proxies authorized media reads and uploads.
 
 The API needs the database connection string as `DATABASE_URL`. For Render's IPv4 service, use Supabase's shared **session pooler** connection (port 5432); use the direct connection only when your host has IPv6 or you have enabled Supabase's IPv4 add-on. Do not use the browser-facing Supabase anon key for the server database connection. [Supabase documents the connection modes and IP support here](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
-## 2. Deploy API and web app on Render
+## 2. Deploy API and web app together on Render
+
+The default deployment serves the built web app and API from one Render web service. This keeps the HttpOnly `SameSite=Lax` login cookie on the same origin; separate `*.onrender.com` sites are not interchangeable cookie sites. The browser calls relative `/api/v1` URLs. Do not deploy the old separate-site blueprint and assume CORS alone fixes login. Render supports this Node web-service pattern ([documentation](https://render.com/docs/web-services)).
 
 1. Push this project to a Git provider and connect it to Render.
-2. Choose **New > Blueprint** and select this repository. [`render.yaml`](./render.yaml) defines the API service and the static web app.
+2. Choose **New > Blueprint** and select this repository. [`render.yaml`](./render.yaml) defines the `ecovibes-api` Node service, which serves both the web app and API. `ECOVIBES_SERVE_WEB=true` requires a successful web build before startup. The free plan is for deployment verification; assess an always-on plan before real customer operations, with owner-approved cost. If an older two-service Blueprint already exists, inspect its planned changes and keep existing resources until the new deployment is verified.
 3. In the `ecovibes-api` service's **Environment** settings, add the private `DATABASE_URL` value from Supabase.
 4. Set `STORAGE_URL` to the Supabase project URL, `STORAGE_KEY` to a server-only Supabase secret/service key, and `STORAGE_BUCKET` to `ecovibes-media`. The storage key must never use a `VITE_` prefix or be exposed to the browser.
-5. In the `ecovibes-web` static site environment, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from Supabase's API settings. The publishable key is intended for browsers; never use the Supabase secret/service key here.
+5. In the same `ecovibes-api` service environment, set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from Supabase's API settings. Set the URL/key in both server and web build variables, then rebuild. Keep `VITE_API_URL=/api/v1`. The publishable key is intended for browsers; never use the Supabase secret/service key here.
 6. Bootstrap the first admin using the immutable Supabase Auth user UUID (`auth.users.id`) for the owner's signed-in account. Set that UUID in `ECOVIBES_ADMIN_SUPABASE_USER_IDS` in the API service's Render environment. The API grants the linked EcoVibes ID its `admin` role in `staff_access` on sign-in; remove the bootstrap variable after confirming access. Never bootstrap staff from a user-editable EcoVibes ID such as `@username`.
 7. In Supabase **Authentication → URL Configuration**, set the deployed web origin as the Site URL and allow the exact web origin plus its `/?recovery=1` password-recovery redirect. Add localhost only for development.
-8. Deploy both services. The API health check is `/api/v1/health`. The web app uses the configured API URL.
+8. Deploy the service. Use the actual hostname assigned by Render: `/` must return the app and `/api/v1/health` must return API health. Set `APP_ORIGINS` and Supabase Auth redirects to this same actual origin, then redeploy if the hostname differs from the blueprint example. Missing files must return 404, API errors must remain JSON, and the web app must sign in and reload successfully with third-party cookies disabled.
 9. Sign in with each staff ID and open staff review. Production asks staff to enroll or verify a TOTP authenticator; confirm that an AAL1 staff session is denied by the API and that the verified AAL2 session can reach only its role-appropriate queue. Grant trust/support roles through the server-owned `staff_access` table using the API's internal `users.id`; do not grant staff access from browser metadata.
 10. If you attach a custom web domain, update the API's `APP_ORIGINS` value and the Supabase redirect allow-list to that exact origin. Also update the Shopify callback URL if the API domain changes.
 

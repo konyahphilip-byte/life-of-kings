@@ -1,7 +1,9 @@
+# Serve the web build and API together so session cookies stay first-party.
 services:
   - type: web
     name: ecovibes-api
     runtime: node
+    region: frankfurt
     plan: free
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
@@ -9,8 +11,16 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: ECOVIBES_SERVE_WEB
+        value: "true"
+      - key: VITE_API_URL
+        value: /api/v1
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
       - key: APP_ORIGINS
-        value: https://ecovibes-web.onrender.com
+        value: https://ecovibes-api.onrender.com
       - key: DATABASE_URL
         sync: false
       - key: SUPABASE_URL
@@ -41,48 +51,3 @@ services:
         sync: false
       - key: AI_MODEL
         value: gpt-6-astra
-
-  - type: web
-    name: ecovibes-web
-    runtime: static
-    buildCommand: npm ci --include=dev && npm run build
-    staticPublishPath: ./dist
-    headers:
-      - path: /*
-        name: Strict-Transport-Security
-        value: max-age=31536000; includeSubDomains
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-      - path: /*
-        name: Permissions-Policy
-        value: geolocation=(), camera=(self), microphone=(self), payment=(self)
-      - path: /*
-        name: Content-Security-Policy
-        value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; font-src 'self' data:; worker-src 'self' blob:; manifest-src 'self'"
-      - path: /assets/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
-      - path: /sw.js
-        name: Cache-Control
-        value: no-cache
-      - path: /*.html
-        name: Cache-Control
-        value: no-cache
-    envVars:
-      - key: VITE_API_URL
-        value: https://ecovibes-api.onrender.com/api/v1
-      - key: VITE_SUPABASE_URL
-        sync: false
-      - key: VITE_SUPABASE_PUBLISHABLE_KEY
-        sync: false
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html

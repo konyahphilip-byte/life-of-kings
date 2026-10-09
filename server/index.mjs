@@ -19,6 +19,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
 import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
+import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
+import { loadOpenAIEnvironment } from "./openai-env.mjs";
+import { createProviderService } from "./providers.mjs";
+import { createWebHandler } from "./web.mjs";
 import languageCatalog from "../shared/language-catalog.json" with { type: "json" };
 import {
   BASE_RECOMMENDATION_INTERESTS,
@@ -31,6 +35,10 @@ import {
 } from "./recommendations.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const serveWeb = process.env.ECOVIBES_SERVE_WEB === "true"
+  ? await createWebHandler(resolve(root, "dist"))
+  : null;
+loadOpenAIEnvironment(root);
 const dbPath =
   process.env.ECOVIBES_DB_PATH || resolve(root, "server/data/ecovibes.sqlite");
 const port = Number(process.env.PORT || process.env.API_PORT || 8787);
@@ -52,7 +60,7 @@ if (postgresMode) {
   await pool.query("SELECT 1");
   const schema = await pool.query(
     "SELECT 1 FROM public.ecovibes_schema_version WHERE version=$1",
-    ["20261002000000_eco_language_core"],
+    ["20261008210729_provider_onboarding"],
   ).catch(() => null);
   if (!schema?.rowCount) {
     throw new Error(
@@ -131,6 +139,11 @@ if (!postgresMode) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   };
   for (const [table, column, definition] of [
+    ["provider_profiles", "service_json", "TEXT"],
+    ["provider_profiles", "revision", "INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0)"],
+    ["provider_profiles", "updated_at", "TEXT"],
+    ["verification_requests", "target_role", "TEXT CHECK(target_role IN ('seller','provider'))"],
+    ["verification_requests", "profile_version", "INTEGER"],
     ["products", "source_external_id", "TEXT"],
     ["products", "image_url", "TEXT"],
     ["order_items", "variant_id", "TEXT"],
@@ -1062,8 +1075,8 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
   const topics = recommendationTopicsForItem(item);
   const activeValue = postgresMode ? active : active ? 1 : 0;
   await run(
-    "UPDATE recommendation_activity_signals SET active=0,updated_at=? WHERE user_id=? AND item_type=? AND item_id=? AND action=?",
-    stamp, userId, itemType, itemId, action,
+    "UPDATE recommendation_activity_signals SET active=?,updated_at=? WHERE user_id=? AND item_type=? AND item_id=? AND action=?",
+    postgresMode ? false : 0, stamp, userId, itemType, itemId, action,
   );
   for (const topic of topics) {
     await run(
@@ -1072,7 +1085,14 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
     );
   }
 }
+const providers = createProviderService({ q, all, run, transaction, assert, inputString, validMinor, now, id, event, notify, rateLimit, postgresMode });
+
 async function route(ctx, req, res, method, path, body, query) {
+  if (path === '/providers' || path.startsWith('/providers/')) {
+    const result = await providers.route(ctx, method, path, body);
+    if (result !== undefined) return result;
+  }
+
   if (method === "GET" && path === "/language/preferences") {
     assert(ctx.user, 401, "sign_in_required", "Sign in to sync language preferences across your EcoVibes ID.");
     const row = await q("SELECT profile_json,updated_at FROM user_language_preferences WHERE user_id=?", ctx.user.id);
@@ -1167,6 +1187,9 @@ async function route(ctx, req, res, method, path, body, query) {
       configured: isChaleAIConfigured(),
       provider: isChaleAIConfigured() ? "OpenAI" : null,
       model: isChaleAIConfigured() ? process.env.AI_MODEL || "gpt-6-astra" : null,
+      appGuideVersion: APP_GUIDE_VERSION,
+      capabilities: ["app_guidance", "public_catalog", "local_drafts", "shared_opt_in_learning", "guided_diagnostics"],
+      scope: "ecovibes_only",
     };
   }
   if (method === "POST" && path === "/ai/chat") {
@@ -1183,11 +1206,43 @@ async function route(ctx, req, res, method, path, body, query) {
     });
     assert(totalCharacters <= 6000, 400, "messages_too_long", "The conversation is too long. Start a new chat and try again.");
     assert(messages.at(-1).role === "user", 400, "invalid_messages", "The last chat message must be from the user.");
+    let learningEnabled = false;
+    let preferredLanguage = "en-GH";
+    if (ctx.user) {
+      const settings = await q("SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?", ctx.user.id);
+      learningEnabled = Boolean(settings?.personalization_enabled);
+      const language = await q("SELECT profile_json FROM user_language_preferences WHERE user_id=?", ctx.user.id);
+      try {
+        const preferences = typeof language?.profile_json === "string" ? JSON.parse(language.profile_json) : language?.profile_json;
+        if (preferences?.preferredLanguage) preferredLanguage = preferences.preferredLanguage;
+      } catch { /* A damaged preference does not prevent app help. */ }
+    }
+    const appContext = normalizeChaleContext(body.context, {
+      signedIn: Boolean(ctx.user), learningEnabled, preferredLanguage,
+    });
+    const controller = new AbortController();
+    const cancelReply = () => { if (!res.writableEnded) controller.abort(); };
+    res.once("close", cancelReply);
     try {
-      return await generateChaleAIReply(messages, (text) => findPublicCatalogListings(text, ctx.user?.id || null));
+      return await generateChaleAIReply(messages, (text) => findPublicCatalogListings(text, ctx.user?.id || null), appContext, {
+        signal: controller.signal,
+        capabilities: {
+          aiConfigured: isChaleAIConfigured(),
+          liveKitConfigured,
+          mediaStorageConfigured: Boolean((process.env.STORAGE_URL || process.env.SUPABASE_URL) && (process.env.STORAGE_KEY || process.env.SUPABASE_SECRET_KEY)),
+          paymentsTestConfigured: (process.env.PAYSTACK_SECRET_KEY || "").startsWith("sk_test_"),
+          shopifyConfigured: Boolean(process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET && process.env.SHOPIFY_REDIRECT_URI),
+        },
+      });
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.warn(JSON.stringify({ level: "warn", event: "ai_reply_failed", errorType: error?.name || "Error", time: now() }));
+      if (["usage_limit_exceeded", "insufficient_quota", "credit_balance_exhausted", "rate_limit_exceeded"].includes(error?.providerCode)) {
+        fault(503, "ai_usage_limited", "Chale AI's model is temporarily unavailable. The app guide remains available.");
+      }
       fault(502, "ai_unavailable", "Chale AI could not reach its model. Please try again shortly.");
+    } finally {
+      res.off("close", cancelReply);
     }
   }
   if (method === "POST" && path === "/webhooks/paystack") {
@@ -1702,6 +1757,15 @@ async function route(ctx, req, res, method, path, body, query) {
       profile === "seller" ? "seller_profiles" : "provider_profiles";
     const exists = await q(`SELECT 1 ok FROM ${table} WHERE user_id=?`, ctx.user.id);
     assert(exists, 403, "role_required", `Enable your ${profile} role first.`);
+    await transaction(async () => {
+      await providers.lock(ctx.user.id);
+      if (profile === 'provider') {
+        assert(!await providers.profile(ctx.user.id), 409, 'use_service_profile', 'Edit your service profile in Quick&Handi so staff can review the updated details.');
+        await providers.invalidate(ctx.user.id);
+      } else {
+        await run("UPDATE seller_profiles SET verification_state='unverified' WHERE user_id=?", ctx.user.id);
+        await run("UPDATE verification_requests SET status='rejected',review_note='Profile changed. Submit again for review.',reviewed_at=? WHERE user_id=? AND target_role='seller' AND status='pending'", now(), ctx.user.id);
+      }
     if (profile === "seller")
       await run(
         "UPDATE seller_profiles SET business_name=?,location=? WHERE user_id=?",
@@ -1729,6 +1793,8 @@ async function route(ctx, req, res, method, path, body, query) {
         inputString(body.serviceArea || "Accra", "Service area", { max: 120 }),
         ctx.user.id,
       );
+      await event(ctx.user.id, 'identity', ctx.user.id, 'PROFILE_UPDATED', { profile });
+    });
     return { ok: true };
   }
   if (method === "POST" && path === "/trust/verifications") {
@@ -1738,35 +1804,12 @@ async function route(ctx, req, res, method, path, body, query) {
       "role_required",
       "Add a seller or provider role before requesting verification.",
     );
-    const businessType = inputString(
-      body.businessType || "individual",
-      "Business type",
-      { max: 60 },
-    );
-    const evidence = inputString(body.evidenceNote, "Verification note", {
-      min: 10,
-      max: 500,
-    });
-    const requestId = id();
-    await run(
-      "INSERT INTO verification_requests(id,user_id,business_type,evidence_note,created_at) VALUES(?,?,?,?,?)",
-      requestId,
-      ctx.user.id,
-      businessType,
-      evidence,
-      now(),
-    );
-    await notify(
-      ctx.user.id,
-      "verification",
-      "Verification submitted",
-      "Your request is pending review.",
-      "verification",
-      requestId,
-    );
-    await event(ctx.user.id, "verification", requestId, "VERIFICATION_REQUESTED");
-    return { id: requestId, status: "pending" };
+    const roles = (await all("SELECT role FROM roles WHERE user_id=? AND role IN ('seller','provider')", ctx.user.id)).map(row => row.role);
+    const targetRole = body.targetRole || (roles.length === 1 ? roles[0] : null);
+    assert(roles.includes(targetRole), 400, "verification_scope_required", "Choose seller or provider verification explicitly.");
+    return providers.submit(ctx, body, targetRole, inputString(body.businessType || targetRole, "Business type", { max: 60 }));
   }
+
   if (method === "GET" && path === "/trust/verifications")
     return await all(
       "SELECT id,business_type,status,created_at FROM verification_requests WHERE user_id=? ORDER BY created_at DESC",
@@ -1979,7 +2022,7 @@ async function route(ctx, req, res, method, path, body, query) {
   if (method === "GET" && path === "/staff/review/verifications") {
     requireStaff(ctx, "trust_staff");
     return await all(
-      "SELECT v.id,v.business_type,v.evidence_note,v.status,v.created_at,u.eco_id,u.display_name FROM verification_requests v JOIN users u ON u.id=v.user_id WHERE v.status='pending' ORDER BY v.created_at ASC LIMIT 100",
+      "SELECT v.id,v.business_type,v.evidence_note,v.status,v.created_at,v.target_role,v.profile_version,p.service_json AS profile_details,u.eco_id,u.display_name FROM verification_requests v JOIN users u ON u.id=v.user_id LEFT JOIN provider_profiles p ON p.user_id=v.user_id AND v.target_role='provider' WHERE v.status='pending' ORDER BY v.created_at ASC LIMIT 100",
     );
   }
   if (method === "GET" && path === "/staff/review/reports") {
@@ -1999,19 +2042,26 @@ async function route(ctx, req, res, method, path, body, query) {
     const note = inputString(body.note, "Review note", { min: 10, max: 600 });
     const request = await q("SELECT * FROM verification_requests WHERE id=? AND status='pending'", match[1]);
     assert(request, 404, "not_found", "Pending verification request not found.");
-    const updated = await run(
-      "UPDATE verification_requests SET status=?,reviewer_id=?,review_note=?,reviewed_at=? WHERE id=? AND status='pending'",
-      body.status, ctx.user.id, note, now(), request.id,
-    );
-    assert(updated.changes === 1, 409, "already_reviewed", "This request was already reviewed.");
-    const applicantRoles = await all("SELECT role FROM roles WHERE user_id=?", request.user_id);
-    if (applicantRoles.some((item) => item.role === "seller"))
-      await run("UPDATE seller_profiles SET verification_state=? WHERE user_id=?", body.status, request.user_id);
-    if (applicantRoles.some((item) => item.role === "provider"))
-      await run("UPDATE provider_profiles SET verification_state=? WHERE user_id=?", body.status, request.user_id);
-    await run("INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)", id(), ctx.user.id, `VERIFICATION_${body.status.toUpperCase()}`, "verification", request.id, note, now());
-    await notify(request.user_id, "verification", `Verification ${body.status}`, note, "verification", request.id);
-    return { id: request.id, status: body.status };
+    assert(request.user_id !== ctx.user.id, 403, 'self_review_denied', 'A different staff member must review your profile.');
+    return transaction(async () => {
+      await providers.lock(request.user_id);
+      assert(['seller','provider'].includes(request.target_role), 409, 'verification_scope_required', 'This older request has no verified scope. Ask the applicant to submit a new scoped request.');
+      const table = request.target_role === 'provider' ? 'provider_profiles' : 'seller_profiles';
+      const profile = await q(`SELECT * FROM ${table} WHERE user_id=?`, request.user_id);
+      assert(profile && await hasRole(request.user_id, request.target_role), 409, 'profile_unavailable', 'The requested profile is no longer available.');
+      const applicant = await q('SELECT status FROM users WHERE id=?', request.user_id);
+      assert(applicant?.status === 'active', 409, 'account_unavailable', 'This applicant is not active.');
+      if (request.target_role === 'provider') assert(profile.revision === request.profile_version, 409, 'profile_changed', 'The service profile changed. Review the new submission.');
+      const updated = await run(
+        "UPDATE verification_requests SET status=?,reviewer_id=?,review_note=?,reviewed_at=? WHERE id=? AND status='pending'",
+        body.status, ctx.user.id, note, now(), request.id,
+      );
+      assert(updated.changes === 1, 409, 'already_reviewed', 'This request was already reviewed or the profile changed.');
+      await run(`UPDATE ${table} SET verification_state=? WHERE user_id=?`, body.status, request.user_id);
+      await run('INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)', id(), ctx.user.id, `VERIFICATION_${body.status.toUpperCase()}`, 'verification', request.id, note, now());
+      await notify(request.user_id, 'verification', `Verification ${body.status}`, note, 'verification', request.id);
+      return { id: request.id, status: body.status };
+    });
   }
   match = path.match(/^\/staff\/review\/reports\/([a-f0-9-]+)$/);
   if (method === "PATCH" && match) {
@@ -2706,6 +2756,10 @@ async function route(ctx, req, res, method, path, body, query) {
   match = path.match(/^\/jobs\/([a-f0-9-]+)\/offers$/);
   if (method === "POST" && match) {
     await requireRole(ctx, "provider");
+    return transaction(async () => {
+      await providers.lock(ctx.user.id);
+      if (postgresMode) await q('SELECT id FROM jobs WHERE id=? FOR UPDATE', match[1]);
+    assert(await q("SELECT 1 ok FROM provider_profiles WHERE user_id=? AND verification_state='approved'", ctx.user.id), 403, 'provider_verification_required', 'Submit your provider profile for staff approval before offering on jobs.');
     const job = await getJob(match[1]);
     assert(job, 404, "not_found", "Job not found.");
     assert(
@@ -2754,6 +2808,7 @@ async function route(ctx, req, res, method, path, body, query) {
       job.id,
     );
     return visibleJob(await getJob(job.id), ctx);
+    });
   }
   match = path.match(/^\/jobs\/([a-f0-9-]+)\/offers\/([a-f0-9-]+)\/select$/);
   if (method === "POST" && match) {
@@ -2770,6 +2825,8 @@ async function route(ctx, req, res, method, path, body, query) {
     );
     assert(offer, 404, "offer_unavailable", "Offer is not available.");
     return await transaction(async () => {
+      await providers.lock(offer.provider_id);
+      assert(await q("SELECT 1 ok FROM provider_profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND p.verification_state='approved' AND u.status='active'", offer.provider_id), 409, 'provider_unavailable', 'This provider needs current staff approval before you can select their offer.');
       const claim = await run(
         "UPDATE jobs SET status='assigned',assigned_provider_id=?,updated_at=? WHERE id=? AND customer_id=? AND status='open' AND EXISTS (SELECT 1 FROM job_offers WHERE id=? AND job_id=? AND status='pending')",
         offer.provider_id,
@@ -3019,6 +3076,7 @@ const server = createServer(async (req, res) => {
   );
   let status = 200;
   try {
+    if (serveWeb && await serveWeb(req, res)) return;
     const url = new URL(req.url, "http://localhost");
     const method = req.method || "GET";
     const requestOrigin = req.headers.origin;
@@ -3030,7 +3088,7 @@ const server = createServer(async (req, res) => {
     }
     if (method === "OPTIONS") {
       assert(requestOrigin && allowedOrigins.includes(requestOrigin), 403, "bad_origin", "This app origin is not allowed.");
-      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type,X-CSRF-Token,Authorization,apikey");
       res.setHeader("Access-Control-Max-Age", "600");
       res.statusCode = 204;
@@ -3038,7 +3096,7 @@ const server = createServer(async (req, res) => {
     }
     let body = {};
     if (!["GET", "HEAD"].includes(method)) body = await bodyJson(req, url.pathname === "/api/v1/social/assets" ? 20_000_000 : 256_000);
-    if ((method === "POST" || method === "PATCH" || method === "DELETE") && url.pathname !== "/api/v1/media/webhook")
+    if ((["POST", "PUT", "PATCH", "DELETE"].includes(method)) && url.pathname !== "/api/v1/media/webhook")
       originCheck(req);
     let ctx = { user: null, csrfToken: null };
     const cookies = parseCookies(req);
@@ -3092,7 +3150,7 @@ const server = createServer(async (req, res) => {
       (method === "GET" && url.pathname === "/api/v1/marketplace/products") ||
       (method === "GET" && url.pathname === "/api/v1/search");
     const providerWebhook = url.pathname === "/api/v1/webhooks/paystack";
-    if (ctx.user && !authOpen && !providerWebhook && ["POST", "PATCH", "DELETE"].includes(method)) {
+    if (ctx.user && !authOpen && !providerWebhook && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
       const token = req.headers["x-csrf-token"];
       assert(
         token &&
@@ -3115,7 +3173,7 @@ const server = createServer(async (req, res) => {
       body,
       url.searchParams,
     );
-    if (res.writableEnded) return;
+    if (res.writableEnded || res.destroyed) return;
     if (result === undefined) fault(404, "not_found", "Route not found.");
     res.statusCode = status;
     res.end(JSON.stringify(result));
@@ -3139,7 +3197,7 @@ const server = createServer(async (req, res) => {
         error: {
           code,
           message:
-            code === "ai_not_configured"
+            ["ai_not_configured", "ai_usage_limited", "ai_unavailable"].includes(code)
               ? error.message
               : httpStatus >= 500
               ? "The server could not complete the request."

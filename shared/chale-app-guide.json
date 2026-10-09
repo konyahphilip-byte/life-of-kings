@@ -1,0 +1,176 @@
+{
+  "version": "chale-app-guide-v2",
+  "entries": [
+    {
+      "id": "home",
+      "title": "Find your way around EcoVibes",
+      "destination": "Home",
+      "availability": "implemented",
+      "summary": "Home brings together app shortcuts, Stories, discovery and the community preview. Live services need the API and some need sign-in. Local posts are saved on this device.",
+      "steps": ["Open Home to see shortcuts for Marketplace, Waste & Recycling, Gaming and Opportunities.", "Open Ask Chale AI for app guidance or public catalog search.", "Use the discovery controls on Home to choose interests, enable or pause learning, or reset the learned profile."],
+      "keywords": ["home", "start", "navigate", "app", "help", "dashboard", "discover"]
+    },
+    {
+      "id": "marketplace",
+      "title": "Buy or sell in Marketplace",
+      "destination": "Marketplace",
+      "availability": "implemented",
+      "summary": "Marketplace combines curated preview products with Live EcoVibes listings from the database. Live orders reserve stock and start unpaid. Preview bag checkout does not charge money or create a real order. External checkout and most connectors remain previews.",
+      "steps": ["Open Marketplace and look under Live EcoVibes listings for database-backed products.", "Sign in before ordering; choose a variant when required. Review the item and price before placing the unpaid order.", "For selling, open seller studio or EcoVibes ID, add the Seller role and review all fields before saving a listing.", "Use Manage account & orders to view orders. Paystack test checkout requires server provider configuration; Shopify is the configured OAuth connector path, while other connector cards remain previews."],
+      "keywords": ["marketplace", "product", "shop", "buy", "sell", "seller", "order", "stock", "csv", "shopify", "listing", "checkout"]
+    },
+    {
+      "id": "quickhandi",
+      "title": "Request work or offer your skills",
+      "destination": "Quick&Handi",
+      "availability": "implemented",
+      "summary": "Quick&Handi has an account-linked service profile and approved provider directory. Add my service saves your profile to the API; staff approval is required for public listing and job offers. Edited profiles need re-review. Sample profiles are an opt-in device-only preview. Direct provider booking and payouts are not connected.",
+      "steps": ["Open Quick&Handi to browse approved services, or choose Add my service to sign in, save service details and submit them for staff review.", "For a shared job, open EcoVibes ID, sign in and choose the Quick&Handi workspace tab.", "Describe the job, category, service area, budget and timing, then review before choosing Post shared job.", "A different account with a staff-approved Provider / Handi profile can submit an offer. The customer selects an offer; the assigned provider starts and finishes work, and the customer confirms completion or reports an issue."],
+      "keywords": ["quickhandi", "handi", "job", "work", "service", "plumber", "repair", "courier", "request", "offer", "provider", "skills", "hire"]
+    },
+    {
+      "id": "provider-onboarding",
+      "title": "Save and submit your service profile for review",
+      "destination": "Quick&Handi",
+      "availability": "implemented",
+      "summary": "Quick&Handi service profiles are saved to the signed-in EcoVibes account. Saving, submitting for staff review and receiving approval are separate actions. Approved profiles can appear in the public directory and offer on customer jobs; direct provider booking and payouts are not connected. Changing service details requires a new review.",
+      "steps": ["Open Quick&Handi and choose Add my service, or Manage my service for an existing profile. Use Sign in or create account if prompted.", "Complete the service name, category, area, public description and indicative price, then review before choosing Save service. Use an area rather than a private home address.", "Under Submit for review, enter Information for the review team and choose Submit for staff review. This note is for authorized reviewers; exclude passwords, private ID numbers and payment details.", "Use Refresh saved profile to check the displayed Review status. Approval is a staff decision. An approved profile shows Browse customer jobs; edits to service details require review again."],
+      "keywords": ["provider", "onboarding", "service", "profile", "directory", "approval", "approved", "pending", "review", "submit", "save", "handi", "skills", "application"]
+    },
+    {
+      "id": "waste",
+      "title": "Arrange a Waste & Recycling request",
+      "destination": "Waste",
+      "availability": "implemented",
+      "summary": "Waste requests and approved-provider offers use the signed-in job workflow. Waste retains its own Waste services provider application and review display; a general Quick&Handi approval alone does not establish Waste workspace access. Plant maps, dispatch, verified weights, recycling credits, buyer prices and Waste payments are not connected. An offer does not confirm a completed pickup.",
+      "steps": ["Open Waste & Recycling and sign in with your EcoVibes ID. Choose Request a collection or Request service for the collection-request workspace.", "Describe the materials, service area, timing and budget in a collection request, then review before posting. Keep the exact address private until a provider is selected.", "To apply as a Waste provider, choose Offer a service, complete the business name, area, service and accepted-material fields, then review before choosing Apply to provide a service. Do not enter government ID or banking details.", "The Waste services provider application must receive staff approval before Provider work opens for collection offers. A pending application is not approval. Agree the scope and price, then follow the job completion or dispute controls when the work is done."],
+      "keywords": ["waste", "recycling", "recycle", "collection", "pickup", "plastic", "circular", "materials", "collector", "environment"]
+    },
+    {
+      "id": "settings",
+      "title": "Choose data, language and appearance settings",
+      "destination": "Settings",
+      "availability": "implemented",
+      "summary": "Settings saves Standard, Data saver or Extreme saver and appearance choices on the device. Language preferences can sync to a signed-in account, but the capability labels show which languages and features are ready; selecting a language does not enable unfinished translation or voice features.",
+      "steps": ["Open Settings and choose a Data & media mode. Extreme saver favors text.", "Review Eco Language capability labels before choosing preferred and content languages.", "Choose light or dark appearance.", "Under Privacy & safety, use Report a problem or contact support to open the EcoVibes ID support workspace."],
+      "keywords": ["settings", "data", "saver", "offline", "language", "translation", "appearance", "dark", "privacy", "voice", "bandwidth"]
+    },
+    {
+      "id": "identity",
+      "title": "Sign in and manage your EcoVibes ID",
+      "destination": "EcoVibes ID",
+      "availability": "implemented",
+      "summary": "EcoVibes ID provides authentication and account workspaces. Customer, Seller and Provider / Handi actions follow server-checked roles. Staff access is granted separately and requires verified MFA in production.",
+      "steps": ["Open EcoVibes ID and use the available sign-in or account creation form.", "After signing in, use the EcoVibes ID tab to review your linked identity and add Seller or Provider / Handi roles when relevant.", "Choose Quick&Handi, Marketplace or Trust & inbox for account tasks.", "Use Sign out when finished on a shared device. Never share your password, authentication code or payment code with Chale."],
+      "keywords": ["identity", "account", "sign", "login", "register", "role", "password", "ecovibes", "id", "permission", "verification"]
+    },
+    {
+      "id": "wallet",
+      "title": "Understand Wallet availability",
+      "destination": "Wallet",
+      "availability": "preview",
+      "summary": "Wallet is a demo with no real funds. Add funds and Send are disabled; payment services are not connected to Wallet. Marketplace Paystack test checkout is a separate server workflow, not a live wallet transfer.",
+      "steps": ["Open Wallet to read its service notice.", "Treat the displayed demo balance as a preview.", "For a marketplace test order, use EcoVibes ID → Marketplace after provider configuration; do not expect Wallet funding or transfers."],
+      "keywords": ["wallet", "money", "funds", "balance", "transfer", "send", "payment", "ecopay"]
+    },
+    {
+      "id": "rewards",
+      "title": "Understand recognition points and badges",
+      "destination": "Rewards",
+      "availability": "preview",
+      "summary": "Rewards displays preview recognition points and badges. They have no cash value and cannot be exchanged for money or goods. Do not claim a real reward was earned or paid out.",
+      "steps": ["Open Rewards to view the recognition preview.", "Read the notice that points and badges cannot be exchanged for money or goods."],
+      "keywords": ["rewards", "points", "badges", "cash", "earn", "recognition", "payout"]
+    },
+    {
+      "id": "opportunities",
+      "title": "Explore the opportunities preview",
+      "destination": "Opportunities",
+      "availability": "preview",
+      "summary": "Opportunities uses sample seeded cards and device-local saved items. Current grant availability, organizer details, deadlines, applications and alert delivery are not verified live by this page. There is no live opportunities search tool.",
+      "steps": ["Open Opportunities to inspect the sample cards.", "Use Save to bookmark a card on this device.", "Verify current eligibility, deadlines and the organizer through an authoritative source before applying or sharing personal information. Chale cannot submit applications or enable delivered alerts."],
+      "keywords": ["opportunity", "opportunities", "grant", "scholarship", "freelance", "education", "learn", "application", "deadline", "alerts"]
+    },
+    {
+      "id": "communities",
+      "title": "Explore community previews",
+      "destination": "Communities",
+      "availability": "preview",
+      "summary": "Community cards and member counts are previews. Membership sync and community creation are not connected, so opening a card does not join a real group.",
+      "steps": ["Open Communities to browse the sample interest groups.", "Treat View community and Start a community as preview controls; neither completes a live membership action.", "Use Explore for the app's signed-in people discovery where available."],
+      "keywords": ["community", "communities", "group", "join", "people", "membership", "makers", "collaborate"]
+    },
+    {
+      "id": "gaming",
+      "title": "Understand the gaming preview",
+      "destination": "Gaming",
+      "availability": "preview",
+      "summary": "Gaming shows sample game tiles and a challenge concept. Playable game integrations, game profiles, challenge lobbies and delivered launch notifications are not connected.",
+      "steps": ["Open Gaming to view the community game concepts.", "Treat game tiles and View challenge as previews; no live tournament entry or gameplay is started.", "Chale can help draft a small game experiment, but cannot claim a lobby, score or prize exists."],
+      "keywords": ["gaming", "game", "play", "tournament", "challenge", "arena", "mancala", "leaderboard"]
+    },
+    {
+      "id": "calls-live",
+      "title": "Start a call or live room when configured",
+      "destination": "Calls & Live",
+      "availability": "provider_required",
+      "summary": "Audio, video and live rooms have an implemented LiveKit workflow that requires server credentials, sign-in and device media permissions. The page shows provider configuration status and disables room actions when unavailable.",
+      "steps": ["Open Calls & Live and sign in with EcoVibes ID.", "Check the provider notice; a maintainer must configure LiveKit before room actions work.", "Choose voice, video or live, enter a title and relevant invitees, then review before creating a room.", "Use Join or Leave for rooms you can access. A host can end the room for everyone. Keep OBS stream keys private."],
+      "keywords": ["call", "calls", "live", "voice", "video", "room", "stream", "livekit", "audio", "obs"]
+    },
+    {
+      "id": "messages",
+      "title": "Understand Messages and job conversations",
+      "destination": "Messages",
+      "availability": "preview",
+      "summary": "The main Messages page contains sample conversations. Its Send control does not deliver a message. Actual job participant messages are in the signed-in Quick&Handi workspace and require ownership or assignment.",
+      "steps": ["Open Messages to inspect the conversation preview.", "To contact the other participant in a shared job, open EcoVibes ID → Quick&Handi and locate your own or assigned job.", "Review the participant and text before using that job's Send control. Chale only drafts text and never sends it."],
+      "keywords": ["messages", "message", "chat", "inbox", "conversation", "contact", "send", "participant"]
+    },
+    {
+      "id": "profile",
+      "title": "Manage your profile and local activity",
+      "destination": "Profile",
+      "availability": "implemented",
+      "summary": "Profile shows the signed-in identity when available and posts saved on this device. Local posts are not public posts. Follower counts are pending profile sync. Manage EcoVibes ID opens the authenticated workspace.",
+      "steps": ["Open Profile to review your identity and device-local activity.", "Choose Manage EcoVibes ID or Create EcoVibes ID for account tasks.", "For support, open EcoVibes ID → Trust & inbox and the Contact support or report a problem form.", "Use Settings or Rewards tabs to reach those sections."],
+      "keywords": ["profile", "activity", "name", "saved", "posts", "manage", "support", "identity"]
+    },
+    {
+      "id": "reels",
+      "title": "Watch or publish Reels when media is available",
+      "destination": "Reels",
+      "availability": "provider_required",
+      "summary": "Reels uses database records and signed-in upload/view/like actions. Uploads require media storage in production. Shared learning influences ranking only when the account opts in; Chale cannot upload, like or publish for the user.",
+      "steps": ["Open Reels and sign in when prompted.", "Review available Reels or use the upload form when media storage is configured.", "Review your video and caption before posting. Use Home discovery controls to pause or reset personalization."],
+      "keywords": ["reels", "reel", "video", "watch", "upload", "creator", "caption", "media"]
+    },
+    {
+      "id": "explore",
+      "title": "Discover people and app sections",
+      "destination": "Explore",
+      "availability": "implemented",
+      "summary": "Explore offers navigation cards, a preview feed and signed-in people discovery. Follow actions use the API; example feed content is not evidence of current opportunities or actual community membership.",
+      "steps": ["Open Explore to find navigation cards and browse the preview feed.", "Sign in for People to follow, then review a creator before following.", "Use the navigation cards to open Marketplace, Gaming, Communities or Opportunities and read each section's availability notice."],
+      "keywords": ["explore", "discover", "people", "creator", "follow", "feed", "social", "search"]
+    },
+    {
+      "id": "support",
+      "title": "Report a problem through the support workspace",
+      "destination": "EcoVibes ID",
+      "availability": "implemented",
+      "summary": "The authenticated Trust & inbox workspace contains Contact support or report a problem. A report is submitted only when the user reviews and sends the actual form. Chale's support draft remains local to the chat and is not a submitted report.",
+      "steps": ["Open Profile → Manage EcoVibes ID and sign in, or use Settings → Report a problem or contact support.", "In EcoVibes ID, choose Trust & inbox, then Contact support or report a problem.", "Choose the area and enter the relevant record ID, a short reason and useful details. Exclude passwords, authentication codes and payment credentials.", "Review the report before choosing Send private report. Staff review does not guarantee a particular resolution or timing."],
+      "keywords": ["support", "problem", "report", "error", "broken", "issue", "dispute", "refund", "trust", "safety", "helpdesk"]
+    },
+    {
+      "id": "learning",
+      "title": "Control recommendation learning",
+      "destination": "Home",
+      "availability": "implemented",
+      "summary": "Home discovery controls manage one opt-in account profile. Eligible saved, explored, purchased and social signals influence relevant recommendations with time decay. This changes ranking, not model training. Private activity records are not sent to Chale's model.",
+      "steps": ["Open Home and sign in to use the discovery interests and learning controls.", "Choose Tune interests, select up to 12 available interests and choose Save interests. Use Resume personalization only if you want the app to learn from eligible activity.", "Use Pause personalization to stop new learning signals and remove profile influence from recommendations.", "Use Reset learned activity and review Confirm reset to delete learned signals; your chosen interests and the enabled/paused setting stay separate. Chale cannot change consent from a chat instruction."],
+      "keywords": ["learning", "recommendation", "recommendations", "personalization", "interest", "interests", "consent", "pause", "reset", "algorithm", "privacy"]
+    }
+  ]
+}
