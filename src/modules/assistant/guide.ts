@@ -14,7 +14,7 @@ export type GuideEntry = {
 const destinations = new Set<AssistantDestination>([
   'Home', 'Explore', 'Create', 'Messages', 'Calls & Live', 'Reels', 'Profile',
   'Marketplace', 'Opportunities', 'Gaming', 'Communities', 'Quick&Handi', 'Waste',
-  'EcoVibes ID', 'Rewards', 'Wallet', 'Settings',
+  'EcoVibes ID', 'Rewards', 'Wallet', 'Money & Trust', 'Settings',
 ]);
 
 export function isAssistantDestination(value: unknown): value is AssistantDestination {
@@ -67,6 +67,7 @@ export function localAppGuides(query: string, currentPage: AssistantDestination)
 }
 
 export function pagePrompts(page: AssistantDestination): string[] {
+  if (page === 'Money & Trust') return ['Explain the Money & Trust test records', 'How do I report a record problem?', 'What does Trust Passport support now?'];
   if (page === 'Waste') return ['How do I request a waste collection?', 'Help me solve a collection problem', 'Suggest a way to improve recycling'];
   if (page === 'Marketplace') return ['Help me find a product', 'How do I start selling?', 'Help improve my product idea'];
   if (page === 'Quick&Handi') return ['How do I request a local service?', 'Help me describe a job', 'How can I grow as a provider?'];

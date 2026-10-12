@@ -43,7 +43,8 @@ Supabase's current plan backup schedule, restore behavior and Storage exclusions
 1. Create or use a Paystack account and switch to test mode.
 2. Copy the test secret key from Paystack's developer settings into Render's `PAYSTACK_SECRET_KEY` setting. The application rejects keys that do not begin with `sk_test_`.
 3. Set the Paystack webhook URL to `https://ecovibes-api.onrender.com/api/v1/webhooks/paystack` (replace the hostname if you use a custom API domain).
-4. Keep the API service deployed while Paystack sends a test `charge.success` callback. The API verifies the signature, then independently verifies the transaction, amount, currency, and reference before marking the order paid. Refund requests require staff approval and remain pending until a refund callback arrives.
+4. Keep the API service deployed while Paystack sends a test `charge.success` callback. The API verifies the signature, then independently verifies the transaction, amount, currency, reference and test environment before marking the order paid. Refund requests require staff approval. Callbacks or an authorized staff recheck fetch the exact stored provider refund before updating completion; partial refunds retain the remaining payment amount.
+5. Use **Recheck with Paystack** for pending or provider-reported failed refunds. An uncertain submission is held for dashboard reconciliation, never automatically resubmitted. See the [refund handling and verification receipt](docs/releases/2026-10-10-refund-reconciliation.md) before testing refunds. Keep live payments disabled until hosted callbacks, refund outcomes and recovery are verified.
 
 ## 5. Connect the first Shopify store
 

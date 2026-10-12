@@ -15,7 +15,8 @@
     "dev:web": "vite --host 0.0.0.0",
     "dev:api": "node --env-file-if-exists=.env server/index.mjs",
     "start": "node --env-file-if-exists=.env server/index.mjs",
-    "test:providers": "node scripts/test-provider-workflow.mjs"
+    "test:providers": "node scripts/test-provider-workflow.mjs",
+    "test:payments": "node scripts/test-paystack-workflow.mjs"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.24",

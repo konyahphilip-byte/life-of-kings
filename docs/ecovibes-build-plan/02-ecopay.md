@@ -8,6 +8,8 @@ EcoPay is the payment orchestration and transaction-history layer for supported 
 
 The API contains Paystack test checkout, signed callback handling, event deduplication, refund request/staff approval paths and Shopify/market order records. Hosted callbacks/refunds are not verified; test mode is not real money; there is no usable stored-value ledger, transfer or withdrawal product.
 
+October 10 local hardening adds exact provider refund reads, partial-refund accounting, replay protection, staff rechecks and uncertain-submission holds. See the [check receipt](../releases/2026-10-10-refund-reconciliation.md). Missing-ID recovery, durable inbox/outbox processing, multi-capture resolution and hosted provider checks remain unfinished.
+
 ## User flows
 
 Buyer/customer selects an order or booking → server snapshots amount/currency/fees → EcoPay chooses a provider/method supported for the account’s country → user completes provider checkout → signed webhook/provider verification confirms success → domain transaction advances → transaction receipt and notifications appear. Cancellation/refund follows the domain policy, staff decision when required, provider refund request, verified callback/reconciliation, then final receipt.

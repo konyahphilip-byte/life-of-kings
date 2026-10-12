@@ -1,6 +1,6 @@
 # EcoVibes continuation
 
-Updated: 2026-10-09. Provider onboarding is implemented and hosted migrations are applied. Current priority: GitHub synchronization, Render deployment, and hosted flow checks. Combined Chale/provider verification passed on October 9.
+Updated: 2026-10-11. Provider onboarding, Chale diagnostics and same-origin hosting were published to GitHub main at `e0b9f71f2f9a592430a2112d13455a920d5373da`. All eight hosted migrations are applied. Money & Trust is implemented, locally verified and committed. Paystack test refund hardening and staff reconciliation are also locally verified and committed; publication remains blocked by terminal GitHub credentials and an unresponsive connector attempt. Render deployment and hosted flow checks remain blocked on setup.
 
 Latest user steering: the October 9 **Money & Trust + Chale AI Economic Intelligence** directive adds an independent financial evidence/remittance/consent pillar. Start with a source-evidenced audit and shared financial records; preserve Marketplace, Quick&Handi, Waste and Chale. No live remittance, underwriting, lender disclosure or regulated payments may be activated without the required agreements, approvals and separate authorization. Read the source attachment at `/Users/philipkonyah/.codex/attachments/8551e8e4-f32a-4e7a-8bb9-f2cd57237e40/Pasted text.txt`. Three scoped read-only workers started auditing backend, UI and regulatory dependencies, then failed at an account usage limit. Their partial notes are not a completed audit; they made no edits. Main agent resumes directly.
 
@@ -10,7 +10,19 @@ Read [master strategy](ECOVIBES_MASTER_STRATEGY.md), [build plan](ecovibes-build
 
 Preserve existing Chale AI changes and all unrelated local edits. HEAD at initial inspection was `dcc6b66` with substantial uncommitted Chale AI integration. Three attempted parallel workers hit account usage limits and made no changes. Main agent continued directly. Do not claim their reviews passed.
 
-## Current slice
+## Current slice: Paystack test refund reconciliation
+
+Implemented `server/paystack-refunds.mjs`, integrated callback/approval/customer-request changes and a staff `RefundReviewCard`. Callbacks verify canonical provider refund and transaction IDs, exact amounts, currency and test environment; partial refunds retain the remaining payment amount. Duplicate/reordered notifications do not repeat financial transitions. Failed provider records remain reviewable; needs-attention remains pending. An uncertain submission keeps its approved claim, preventing another submission. Staff rechecks read provider data only and are audited. Self-review and over-refunding are denied. No migration or live activation was performed.
+
+The original wrong-refund behavior was reproduced in an isolated HTTP test before integration. Read [the refund receipt and recovery limits](releases/2026-10-10-refund-reconciliation.md). Missing canonical IDs remain held for a future audited recovery process; do not reset them to requested or guess IDs. Durable inbox/outbox processing, autonomous reconciliation, multi-capture resolution and hosted PostgreSQL/Paystack verification are still unfinished.
+
+## Previous completed slice: Money & Trust
+
+Read [the source audit](MONEY_TRUST_AUDIT.md) and [layer 11](ecovibes-build-plan/11-money-and-trust.md). Implemented `server/money.mjs`, `/api/v1/money/overview`, a separate lazy-loaded UI and shared Chale guide entry. Personal records use the authenticated account only, reject selector queries, have no staff override, and generate a minimal access audit. Test payments/refunds use exact minor-unit totals, separate currencies and conservative reconciliation exclusions; completed jobs are nonfinancial counts. Latest 100 attempts only. Private records are not sent to AI or partners. No migration was needed.
+
+The Trust Passport is an evidence preview, not a certified report or score. Consent exchange, remittance adapters, organization financial permissions, immutable evidence reports, the full policy package and model-provider abstraction remain unbuilt. Exact refund matching and local reconciliation are now hardened as described above; hosted source integrity and recovery must still be verified before evidence certification or live payments.
+
+## Previous completed slice: provider onboarding
 
 - `server/providers.mjs`: account-owned service profile, public approved directory, save and scoped review submission.
 - `server/index.mjs`: integrate provider routes, SQLite columns, updated schema gate, PUT CSRF/origin enforcement, scoped staff decisions, reject stale/self-review, approval checks for job offers/selection.
@@ -46,7 +58,7 @@ October 9 at approximately 15:45 UTC: Render is now installed and connected. Wor
 
 The previous GitHub tree creation was rejected by automatic approval review because of account usage limits; the tool explicitly reported that the action did not execute. Usage recovered on October 9. Remote main was rechecked at `dcc6b66adc93067fc9b9a31b4581dbc3198545a7`; all 36 changed/untracked files exactly matched the verified snapshot before this documentation update. A normal connector retry is authorized; do not work around approval failures. No active project subagents or Chale writer were found during this check.
 
-The normal GitHub retry succeeded in creating tree `bd57b6c7ac91bd74d98268f766a0835545d9c609`; a tree is not a published commit or branch update. Main has not been moved at this point.
+The normal GitHub retry first created tree `bd57b6c7ac91bd74d98268f766a0835545d9c609`; it did not publish a commit at that stage. Later, the hosting correction below was included in tree `0477b4b4cf029cf45d3ffae0d9e07ab4c201bf01` and commit `e0b9f71f2f9a592430a2112d13455a920d5373da`. The connector advanced main with an expected-parent guard, then a fresh remote read verified the commit. A normal local fetch and guarded index/history update matched this commit while verifying every working file was preserved.
 
 October 9 deployment correction: the old separate `onrender.com` web/API hosts conflict with the API's `SameSite=Lax` session cookie. Added optional `ECOVIBES_SERVE_WEB=true` serving of `dist` on the API origin, retained HttpOnly/Secure/Lax settings, and changed the default Render blueprint to one Node service. The handler rejects dot/traversal/symlink-escape paths and writes, preserves real API responses and security headers, and handles missing assets as 404. Development Vite proxy remains available. Existing Render resources must be inspected before applying blueprint changes. No hosted resource has been changed.
 
@@ -54,9 +66,41 @@ Checks after this correction: **102 unit/component tests passed** (11 files, inc
 
 ## Next actions
 
-1. Save the verified combined changes to GitHub; avoid overwriting any new changes from other chats. Runtime visual review remains unverified because browser control was unavailable.
+1. Publish the verified Money & Trust commit and subsequent refund hardening when GitHub authentication or the connector recovers. Recheck remote main before retrying. Preserve later edits; provider/hosting changes are already published and no new migration is required.
 2. Do not reapply the eight migrations: they are already hosted and history matches local filenames. Recheck the schema and proceed to private storage/Auth/hosting configuration.
 3. Deploy via Render when authenticated hosting access and required secrets are available. Keep test payments visibly test-only.
 4. Verify hosted sign-up/login/provider onboarding, staff MFA and core transaction flows.
 5. Add genuine organization memberships, tenant-scoped data and explicit cross-organization denial tests before enabling team administration.
 6. Continue the guide's transaction, support, backups and security release gates. Do not label the app ready for real money prematurely.
+
+## Latest check record
+
+October 9, approximately 21:54 UTC: **119 tests passed in 13 files**, production build passed, **44 provider/ownership/static-host HTTP checks passed**, and **15 Chale HTTP checks passed**. The initial HTTP attempt failed to bind due to sandbox permissions; the later authorized rerun passed. Tests used temporary SQLite and a mocked model, never the hosted database or live payment service. Communications still produces a large-chunk build warning.
+
+The local app was restarted on ports 5173/8787, both returned HTTP 200. Browser control became available. The new Money & Trust guest view was inspected on desktop and at 390×844. The phone review found a cramped assistant card; its layout was adjusted on October 10. Also added rejection of unsafe numeric financial input, truthful unsupported-source labels and currency-specific minor-unit formatting. Authenticated UI remains covered by component/HTTP tests, not a hosted browser session.
+
+October 10, approximately 06:32 UTC: **122 tests passed in 13 files**, production build passed, **44 provider/ownership/static-host HTTP checks passed**, **15 Chale HTTP checks passed**, and `git diff --check` passed. The development server needed a restart to clear stale transformed CSS. After restart, browser review confirmed the corrected phone card, the sign-in link opening EcoVibes ID, and the mobile Home → Earn → Money & Trust entry. The temporary phone viewport was reset. The current local preview is `http://localhost:5173/#money-trust`. See [the Money & Trust check receipt](releases/2026-10-10-money-trust.md). No hosted or real-provider flow was tested.
+
+Automatic approval review blocked one read-only terminal call on October 9 because the account hit usage limits; that rejected action did not run. The regular tool path recovered October 10. No approval control was bypassed. No active workers were found on resumption.
+
+Render still requires a reply to the pending confirmation to use **ECOVIBES's workspace** (`tea-db4bebnlk1mc73fgahtg`). No service has been created or deployed. Keep required secrets in provider settings; do not ask for passwords or keys in chat.
+
+October 10 publication attempt: the GitHub `create_tree` connector did not return after several minutes and the waiting cell was terminated. It may have created unreferenced objects, but no commit/ref update was requested through that attempt. The verified 19-file slice was committed locally as **Add private Money and Trust activity with verified account isolation**. The normal Git push then failed because no GitHub username/credential was available and terminal prompting was disabled. The local commit remains preserved; do not count this slice as published. Recheck the remote branch before retrying; latest verified remote main is still `e0b9f71f2f9a592430a2112d13455a920d5373da`.
+
+
+October 10 refund work: automatic approval review rejected the earlier test-expansion command at an account usage limit; the tool confirmed it did not execute. Normal access recovered on the later heartbeat. The first resumed HTTP attempt could not bind a port because its earlier permission had expired; the authorized rerun used a local loopback listener. No approval control was bypassed, and neither failure counts as a passing application check.
+
+
+October 10 refund verification, approximately 12:49 UTC: the new isolated **24-check Paystack HTTP workflow passed**, including exact matching, partial/remaining amounts, duplicate/reordered callbacks, provider-read failure/retry, uncertain-submission holds, staff/CSRF/ownership denial, self-review denial, failed-record queue visibility, valid test charges and late-charge review. The provider/ownership/static-host HTTP suite passed **44 checks**; Chale passed **15 checks** with a mocked model. Production build and syntax/diff checks passed. No new migration was needed and no hosted provider was contacted.
+
+The initial full unit/component run passed **139 tests in 15 files**. After adding failed-refund queue coverage, the later full run had **138 passing tests and two existing App identity tests timing out at five seconds**. An unchanged focused rerun of those two identity tests plus the five refund-card tests passed **7/7** without increasing timeouts. Do not describe that full run as wholly green; the timing instability remains recorded. The communications chunk still triggers the existing large-bundle warning. Hosted PostgreSQL concurrency, Supabase Auth, production MFA, real webhook delivery and refund settlement remain unverified.
+
+Automatic approval review then rejected the command intended to record these results and prepare a local commit because the account had hit its usage limit; it explicitly reported that no action executed. The refund changes remained uncommitted. On October 11 normal terminal access recovered; no active project workers were found. The original files were preserved and another complete local verification was started before recording a commit. No approval controls were bypassed.
+
+The Money & Trust commit and these refund changes remain local until publication is confirmed. Last verified remote main remains `e0b9f71f2f9a592430a2112d13455a920d5373da`. The Render workspace confirmation is still pending. See [the refund receipt](releases/2026-10-10-refund-reconciliation.md) for safe handling of uncertain submissions and remaining recovery limitations.
+
+
+October 11, approximately 18:40 UTC: fresh combined verification passed **140 tests in 15 files**, production build, **24 payment HTTP checks**, **44 provider/ownership/static-host HTTP checks** and **15 Chale HTTP checks**. This rerun used the same test timeouts and preserved the earlier timeout history above. All HTTP fixtures used temporary SQLite and mocked providers; no application .env or hosted database was loaded. The large communications bundle warning remains. The verified refund slice was committed locally as `e739012` (`Harden test refund reconciliation and staff review`); publication/deployment is not implied.
+
+
+October 11 publication check: a fresh remote branch read confirmed main is still `e0b9f71f2f9a592430a2112d13455a920d5373da`. The normal, non-force Git push was attempted once and rejected because terminal GitHub authentication is unavailable. No remote branch was updated. Local Money & Trust commit `fda8b50` and refund commit `e739012` are preserved. No provider keys or passwords were printed or committed. Render and hosted transaction verification remain blocked as above.

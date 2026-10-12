@@ -15,6 +15,7 @@ flowchart TB
   Core[EcoVibes Core: ID · roles · consent · trust · notifications · audit]
   AI[EcoAI: permissioned action engine]
   Pay[EcoPay: provider payments · refunds · ledger]
+  Money[Money & Trust: personal activity · evidence · consent]
   Maps[EcoMaps: places · layers · routes · location consent]
   Games[Eco Games: casual play · tournaments]
   Services[Eco Services: local providers · bookings]
@@ -25,6 +26,8 @@ flowchart TB
   Market[Eco Market: direct · CSV · curated catalog]
   Core --> AI
   Core --> Pay
+  Core --> Money
+  Pay --> Money
   Core --> Maps
   Core --> Games
   Core --> Services
@@ -51,7 +54,9 @@ flowchart TB
 
 ## What exists today
 
-The repo currently has a React 19 + TypeScript + Vite PWA; a Node API in `server/index.mjs`; Supabase Auth integration with an EcoVibes cookie-session bridge; versioned Supabase/Postgres migrations and local SQLite development; a Marketplace with direct listings, CSV and a Shopify connector; Quick&Handi job/offer flows; a Waste collection-request/provider-application entry point; test-mode Paystack paths; a permission-aware Chale AI search path and shared recommendations. These features still need hosted migration/deployment and production-flow verification. Check the audit for finer limits.
+The repo currently has a React 19 + TypeScript + Vite PWA; a Node API in `server/index.mjs`; Supabase Auth integration with an EcoVibes cookie-session bridge; versioned Supabase/Postgres migrations and local SQLite development; a Marketplace with direct listings, CSV and a Shopify connector; Quick&Handi job/offer flows; a Waste collection-request/provider-application entry point; test-mode Paystack paths; a permission-aware Chale AI search path and shared recommendations. All eight current Supabase migrations were applied and verified on October 9; deployment and hosted-flow verification remain unfinished. See [the migration receipt](../releases/2026-10-09-supabase.md) and [continuation log](../CONTINUATION.md).
+
+Provider onboarding now has an account-owned profile, scoped staff review and an approved public directory. Money & Trust adds a personal test-transaction view and an evidence preview; it has no real balance, remittance, certified report or private AI/partner disclosure. See [the Money & Trust audit](../MONEY_TRUST_AUDIT.md).
 
 There is no live EcoMaps facility network, real EcoPay wallet balance, Eco Games suite, persisted Eco Learn/course system, complete Eco Jobs engine, separate general-pickup product, or complete recyclable-material settlement flow yet. Treat mock screens and sample cards as previews.
 
@@ -65,6 +70,7 @@ There is no live EcoMaps facility network, real EcoPay wallet balance, Eco Games
 | 2 | [Eco Services](05-eco-services.md) | Complete Quick&Handi’s quote/booking/completion/dispute journey for a bounded service set. | Customer/provider finish or dispute a real test booking; availability and provider verification are server-owned. |
 | 3 | [Eco Market](09-eco-market.md) | Complete seller listing, stock, order, cancellation/refund and CSV flow. Keep curated product provenance separate. | Stock and order invariants pass in sandbox; signed callbacks and staff refund flow reconcile. |
 | 4 | [EcoPay](02-ecopay.md) | Upgrade test payments only after one transaction journey is operational. | Approved live business, production keys in provider settings, webhook verification, refund/reconciliation and support runbook. |
+| 4.5 | [Money & Trust](11-money-and-trust.md) | Reuse EcoPay and work records for private activity and evidence; add consent and partner adapters only after source integrity. | Ownership tests, reconciled source evidence, purpose/recipient/expiry grants and reviewed provider/legal arrangements before disclosure or transfers. |
 | 5 | [EcoVibes Collect](08-ecovibes-collect.md) and [Waste-to-Money](07-waste-to-money.md) | Reuse trust, EcoMaps, service jobs and payment adapters while keeping distinct transaction semantics. | Pickup requests and material trades have separate statuses, records, participant permissions and end-to-end evidence. |
 | 6 | [Eco Jobs + Eco Learn](06-eco-jobs-learn.md) | Skills, assessments and employer requirements can connect to real job records only after both sides are sourced and moderated. | Employers/listings verified, course completion evidence is real, application and referral outcomes are traceable. |
 | 7 | [Eco Games](04-eco-games.md) | Launch small, low-data games with non-cash rewards before a developer marketplace. | Anti-cheat, age/privacy, moderation and rewards ledger are ready; no real-money wagering. |
@@ -116,3 +122,4 @@ Each file below is meant to stand on its own in a coding agent. Pass one layer p
 - [08 · EcoVibes Collect](08-ecovibes-collect.md)
 - [09 · Eco Market](09-eco-market.md)
 - [10 · Eco Language and Voice](10-eco-language-and-voice.md)
+- [11 · Money & Trust](11-money-and-trust.md)

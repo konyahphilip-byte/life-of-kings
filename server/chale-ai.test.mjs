@@ -322,7 +322,7 @@ describe('Chale app workflow', () => {
 
 describe('canonical app guide', () => {
   it('contains real allowlisted routes with explicit availability and offline-readable steps', () => {
-    const expected = ['Home', 'Marketplace', 'Quick&Handi', 'Waste', 'Settings', 'EcoVibes ID', 'Wallet', 'Rewards', 'Opportunities', 'Communities', 'Gaming', 'Calls & Live', 'Messages', 'Profile', 'Reels', 'Explore'];
+    const expected = ['Home', 'Marketplace', 'Quick&Handi', 'Waste', 'Settings', 'EcoVibes ID', 'Wallet', 'Money & Trust', 'Rewards', 'Opportunities', 'Communities', 'Gaming', 'Calls & Live', 'Messages', 'Profile', 'Reels', 'Explore'];
     assert.deepEqual([...CHALE_DESTINATIONS].sort(), expected.sort());
     assert.equal(CHALE_DESTINATIONS.includes('Create'), false);
     assert.equal(new Set(CHALE_GUIDE.entries.map((entry) => entry.id)).size, CHALE_GUIDE.entries.length);

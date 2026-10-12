@@ -23,6 +23,8 @@ import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
 import { createProviderService } from "./providers.mjs";
 import { createWebHandler } from "./web.mjs";
+import { createMoneyService } from "./money.mjs";
+import { createPaystackRefundService, paystackEventKey, paymentMinor } from "./paystack-refunds.mjs";
 import languageCatalog from "../shared/language-catalog.json" with { type: "json" };
 import {
   BASE_RECOMMENDATION_INTERESTS,
@@ -1087,7 +1089,13 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
 }
 const providers = createProviderService({ q, all, run, transaction, assert, inputString, validMinor, now, id, event, notify, rateLimit, postgresMode });
 
+const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
+
 async function route(ctx, req, res, method, path, body, query) {
+  if (method === 'GET' && path === '/money/overview') {
+    assert([...query.keys()].length === 0, 400, 'invalid_query', 'This view accepts no account or organization selectors.');
+    return createMoneyService({ all, q, run, assert, rateLimit, id, now }).overview(ctx);
+  }
   if (path === '/providers' || path.startsWith('/providers/')) {
     const result = await providers.route(ctx, method, path, body);
     if (result !== undefined) return result;
@@ -1250,21 +1258,25 @@ async function route(ctx, req, res, method, path, body, query) {
     assert(secret.startsWith("sk_test_"), 503, "test_provider_unavailable", "Paystack test mode is not configured.");
     const signature = req.headers["x-paystack-signature"];
     const expected = createHmac("sha512", secret).update(req.rawBody || Buffer.alloc(0)).digest("hex");
-    assert(typeof signature === "string" && signature.length === expected.length && timingSafeEqual(Buffer.from(signature), Buffer.from(expected)), 401, "invalid_signature", "Webhook signature is invalid.");
+    assert(typeof signature === "string" && /^[a-f0-9]{128}$/i.test(signature) && timingSafeEqual(Buffer.from(signature.toLowerCase()), Buffer.from(expected)), 401, "invalid_signature", "Webhook signature is invalid.");
     let hook;
     try { hook = JSON.parse((req.rawBody || Buffer.alloc(0)).toString("utf8")); } catch { fault(400, "invalid_webhook", "Webhook payload is invalid."); }
-    const eventId = String(hook.data?.id || (hook.event?.startsWith("refund.") ? `${hook.event}:${hook.data?.refund_reference || hook.data?.transaction_reference || ""}` : hook.data?.reference) || "");
-    assert(eventId, 400, "invalid_webhook", "Webhook event reference is missing.");
+    assert(hook && typeof hook.event === 'string' && /^[a-z.-]{1,80}$/.test(hook.event) && hook.data && typeof hook.data === 'object' && !Array.isArray(hook.data), 400, 'invalid_webhook', 'Webhook payload is invalid.');
+    const eventId = paystackEventKey(hook.event, req.rawBody);
     await transaction(async () => {
       const inserted = await run("INSERT OR IGNORE INTO payment_webhook_events(provider,event_id,event_type,received_at) VALUES('paystack',?,?,?)", eventId, String(hook.event || "unknown"), now());
-      if (!inserted.changes) return;
+      // Refund callbacks can have identical bodies for distinct partial refunds.
+      // Recheck authoritative IDs even on replay; state transitions are idempotent.
+      if (!inserted.changes && !hook.event.startsWith('refund.')) return;
+      let outcome = "ignored";
       if (hook.event === "charge.success") {
-        const reference = String(hook.data.reference || "");
-        const verifyResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${secret}` } });
+        outcome = "processed";
+        const reference = inputString(hook.data.reference, "Payment reference", { min: 1, max: 200 });
+        const verifyResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) });
         const verified = await verifyResponse.json();
         const payment = await q("SELECT * FROM payments WHERE provider='paystack' AND provider_reference=?", reference);
         if (!verifyResponse.ok || !verified.status) fault(502, "payment_verification_unavailable", "Paystack verification is temporarily unavailable.");
-        if (!payment || verified.data?.reference !== reference || verified.data?.status !== "success" || Number(verified.data.amount) !== payment.amount_minor || verified.data.currency !== payment.currency) {
+        if (!payment || verified.data?.reference !== reference || verified.data?.status !== "success" || !paymentMinor(payment.amount_minor) || paymentMinor(verified.data.amount) !== paymentMinor(payment.amount_minor) || verified.data.currency !== payment.currency || verified.data.domain !== "test") {
           await run("UPDATE payment_webhook_events SET processed_at=?,outcome='verification_failed' WHERE provider='paystack' AND event_id=?", now(), eventId);
           return;
         }
@@ -1272,6 +1284,12 @@ async function route(ctx, req, res, method, path, body, query) {
           `SELECT * FROM orders WHERE id=?${postgresMode ? " FOR UPDATE" : ""}`,
           payment.order_id,
         );
+        // Lock then reread: a stale/repeated charge must not reopen a refund.
+        const freshPayment = await q('SELECT state FROM payments WHERE id=?', payment.id);
+        if (['paid', 'refunded'].includes(freshPayment?.state) || ['paid', 'partially_refunded', 'refunded'].includes(order?.payment_status)) {
+          await run("UPDATE payment_webhook_events SET processed_at=?,outcome='already_captured' WHERE provider='paystack' AND event_id=?", now(), eventId);
+          return;
+        }
         if (order?.status === "cancelled") {
           await run("UPDATE payments SET state='paid' WHERE id=?", payment.id);
           await run("UPDATE orders SET status='disputed',payment_status='paid',updated_at=? WHERE id=?", now(), order.id);
@@ -1307,25 +1325,11 @@ async function route(ctx, req, res, method, path, body, query) {
           for (const group of groups) await notify(group.seller_id, "order", "Paid order ready", `Order ${order.id.slice(0, 8)} is paid and ready to fulfill.`, "order", order.id);
         }
       }
-      if (hook.event?.startsWith("refund.")) {
-        const paymentReference = String(hook.data?.transaction_reference || "");
-        const payment = await q("SELECT * FROM payments WHERE provider='paystack' AND provider_reference=?", paymentReference);
-        const refund = payment && await q("SELECT * FROM refunds WHERE order_id=? AND status='provider_pending' ORDER BY created_at DESC LIMIT 1", payment.order_id);
-        if (refund) {
-          if (hook.event === "refund.processed") {
-            await run("UPDATE refunds SET status='refunded',provider_reference=?,reviewed_at=? WHERE id=?", String(hook.data.refund_reference || ""), now(), refund.id);
-            await run("UPDATE orders SET payment_status='refunded',updated_at=? WHERE id=?", now(), refund.order_id);
-            await restoreRefundOrder(refund);
-            await run("UPDATE payments SET state='refunded' WHERE order_id=? AND provider='paystack'", refund.order_id);
-            await notify(refund.requester_id, "refund", "Refund processed", `Refund for order ${refund.order_id.slice(0, 8)} was processed.`, "order", refund.order_id);
-          } else if (hook.event === "refund.failed" || hook.event === "refund.needs-attention") {
-            await run("UPDATE refunds SET status='rejected',review_note=? WHERE id=?", `Paystack refund ${hook.data.status || hook.event}. Contact support if you need help.`, refund.id);
-            await restoreRefundOrder(refund);
-            await notify(refund.requester_id, "refund", "Refund needs attention", `The provider could not complete the refund for order ${refund.order_id.slice(0, 8)}.`, "order", refund.order_id);
-          }
-        }
+      if (['refund.pending', 'refund.processing', 'refund.processed', 'refund.failed', 'refund.needs-attention'].includes(hook.event)) {
+        const paymentReference = inputString(hook.data.transaction_reference, 'Payment reference', { min: 1, max: 200 });
+        outcome = (await paystackRefunds.reconcile(paymentReference)).outcome;
       }
-      await run("UPDATE payment_webhook_events SET processed_at=?,outcome=? WHERE provider='paystack' AND event_id=?", now(), hook.event === "charge.success" ? "processed" : "ignored", eventId);
+      await run("UPDATE payment_webhook_events SET processed_at=?,outcome=? WHERE provider='paystack' AND event_id=?", now(), outcome, eventId);
     });
     return { received: true };
   }
@@ -2033,7 +2037,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "GET" && path === "/staff/review/refunds") {
     requireStaff(ctx, "support_staff");
-    return await all("SELECT r.id,r.order_id,r.amount_minor,r.reason,r.status,r.created_at,u.eco_id requester_eco_id,o.payment_status FROM refunds r JOIN users u ON u.id=r.requester_id JOIN orders o ON o.id=r.order_id WHERE r.status IN ('requested','approved','provider_pending') ORDER BY r.created_at ASC LIMIT 100");
+    return await all("SELECT r.id,r.order_id,r.amount_minor,r.reason,r.status,r.review_note,r.created_at,u.eco_id requester_eco_id,o.payment_status,o.currency FROM refunds r JOIN users u ON u.id=r.requester_id JOIN orders o ON o.id=r.order_id WHERE r.status IN ('requested','approved','provider_pending') OR (r.status='rejected' AND r.provider_reference IS NOT NULL) ORDER BY r.created_at ASC LIMIT 100");
   }
   match = path.match(/^\/staff\/review\/verifications\/([a-f0-9-]+)$/);
   if (method === "PATCH" && match) {
@@ -2076,36 +2080,70 @@ async function route(ctx, req, res, method, path, body, query) {
     await run("INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)", id(), ctx.user.id, `REPORT_${body.status.toUpperCase()}`, "support_report", match[1], note, now());
     return { id: match[1], status: body.status };
   }
+  match = path.match(/^\/staff\/review\/refunds\/([a-f0-9-]+)\/reconcile$/);
+  if (method === 'POST' && match) {
+    requireStaff(ctx, 'support_staff');
+    await rateLimit(`refund-reconcile:${ctx.user.id}`, 30, 60_000);
+    const refund = await q('SELECT * FROM refunds WHERE id=?', match[1]);
+    assert(refund, 404, 'not_found', 'Refund not found.');
+    const payment = await q("SELECT * FROM payments WHERE order_id=? AND provider='paystack' AND state IN ('paid','refunded') ORDER BY created_at DESC LIMIT 1", refund.order_id);
+    assert(payment, 409, 'payment_not_refundable', 'A captured test payment is required for reconciliation.');
+    return transaction(async () => {
+      const result = await paystackRefunds.reconcile(payment.provider_reference);
+      await run('INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)', id(), ctx.user.id, 'REFUND_PROVIDER_RECHECKED', 'refund', refund.id, result.outcome, now());
+      return result;
+    });
+  }
   match = path.match(/^\/staff\/review\/refunds\/([a-f0-9-]+)$/);
-  if (method === "PATCH" && match) {
-    requireStaff(ctx, "support_staff");
-    assert(["approved", "rejected"].includes(body.status), 400, "invalid_review", "Choose approved or rejected.");
-    const note = inputString(body.note, "Review note", { min: 10, max: 800 });
-    const refund = await q("SELECT * FROM refunds WHERE id=? AND status='requested'", match[1]);
-    assert(refund, 404, "not_found", "Requested refund not found.");
-    const payment = await q("SELECT * FROM payments WHERE order_id=? AND provider='paystack' AND state='paid' ORDER BY created_at DESC LIMIT 1", refund.order_id);
-    assert(body.status === "rejected" || (payment && (process.env.PAYSTACK_SECRET_KEY || "").startsWith("sk_test_")), 409, "payment_not_refundable", "No paid Paystack test transaction is available to refund.");
-    const claimed = await run("UPDATE refunds SET status=?,reviewer_id=?,review_note=?,reviewed_at=? WHERE id=? AND status='requested'", body.status === "approved" ? "approved" : "rejected", ctx.user.id, note, now(), refund.id);
-    assert(claimed.changes === 1, 409, "already_reviewed", "This refund was already reviewed.");
-    if (body.status === "rejected") {
-      await restoreRefundOrder(refund);
-      await notify(refund.requester_id, "refund", "Refund request reviewed", note, "order", refund.order_id);
-    } else {
-      let response, result;
-      try {
-        response = await fetch("https://api.paystack.co/refund", { method: "POST", headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ transaction: payment.provider_reference, amount: refund.amount_minor, currency: "GHS", customer_note: refund.reason, merchant_note: note }) });
-        result = await response.json();
-      } catch {
-        result = null;
+  if (method === 'PATCH' && match) {
+    requireStaff(ctx, 'support_staff');
+    assert(['approved', 'rejected'].includes(body.status), 400, 'invalid_review', 'Choose approved or rejected.');
+    const note = inputString(body.note, 'Review note', { min: 10, max: 800 });
+    const { refund, payment } = await transaction(async () => {
+      const initial = await q('SELECT * FROM refunds WHERE id=?', match[1]);
+      assert(initial, 404, 'not_found', 'Requested refund not found.');
+      const order = await q(`SELECT * FROM orders WHERE id=?${postgresMode ? ' FOR UPDATE' : ''}`, initial.order_id);
+      const refund = await q("SELECT * FROM refunds WHERE id=? AND status='requested'", initial.id);
+      assert(refund, 409, 'already_reviewed', 'This refund has already been reviewed. Do not submit it again.');
+      assert(refund.requester_id !== ctx.user.id, 403, 'self_review_denied', 'Another authorized staff member must review your refund.');
+      let payment = null;
+      if (body.status === 'approved') {
+        const captures = await all("SELECT * FROM payments WHERE order_id=? AND state IN ('paid','refunded')", refund.order_id);
+        payment = captures[0];
+        assert(captures.length === 1 && payment.provider === 'paystack' && payment.state === 'paid'
+          && ['paid', 'partially_refunded'].includes(order?.payment_status) && order.currency === payment.currency
+          && (process.env.PAYSTACK_SECRET_KEY || '').startsWith('sk_test_'), 409, 'payment_not_refundable', 'No unambiguous paid Paystack test transaction is available.');
+        const amount = paymentMinor(refund.amount_minor), paid = paymentMinor(payment.amount_minor);
+        const reserved = await all("SELECT amount_minor FROM refunds WHERE order_id=? AND id!=? AND (status IN ('approved','provider_pending','refunded') OR provider_reference IS NOT NULL)", refund.order_id, refund.id);
+        const amounts = reserved.map(row => paymentMinor(row.amount_minor));
+        assert(amount && paid && amount <= BigInt(Number.MAX_SAFE_INTEGER) && amounts.every(value => value !== null)
+          && amounts.reduce((sum, value) => sum + value, 0n) + amount <= paid,
+        409, 'refund_exceeds_payment', 'The refund exceeds the remaining unreserved payment amount. Reconcile existing refunds first.');
       }
-      if (!response?.ok || !result?.status) {
-        await run("UPDATE refunds SET status='requested',reviewer_id=NULL,review_note=NULL,reviewed_at=NULL WHERE id=? AND status='approved'", refund.id);
-        fault(502, "refund_initialization_failed", "Paystack could not start this test refund.");
+      const claimed = await run("UPDATE refunds SET status=?,reviewer_id=?,review_note=?,reviewed_at=? WHERE id=? AND status='requested'", body.status, ctx.user.id, note, now(), refund.id);
+      assert(claimed.changes === 1, 409, 'already_reviewed', 'This refund was already reviewed.');
+      await run('INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)', id(), ctx.user.id, `REFUND_${body.status.toUpperCase()}`, 'refund', refund.id, note, now());
+      if (body.status === 'rejected') {
+        const remaining = await q("SELECT COUNT(*) AS count FROM refunds WHERE order_id=? AND status IN ('requested','approved','provider_pending')", refund.order_id);
+        if (Number(remaining.count) === 0) await restoreRefundOrder(refund);
+        await notify(refund.requester_id, 'refund', 'Refund request reviewed', note, 'order', refund.order_id);
       }
-      await run("UPDATE refunds SET status='provider_pending',provider_reference=? WHERE id=?", String(result.data?.refund_reference || result.data?.id || ""), refund.id);
+      return { refund, payment };
+    });
+    if (body.status === 'rejected') return { id: refund.id, status: 'rejected' };
+    let providerReference;
+    try { providerReference = await paystackRefunds.initiate(refund, payment, note); }
+    catch (error) {
+      // A timeout or malformed response may follow a successful provider write.
+      // Retain the claim so a staff retry cannot issue a second refund.
+      await transaction(async () => {
+        await run("UPDATE refunds SET review_note=? WHERE id=? AND status='approved'", 'Provider submission is uncertain. Review this payment in the Paystack test dashboard before further action; do not submit another refund.', refund.id);
+        await run('INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)', id(), ctx.user.id, 'REFUND_CONFIRMATION_PENDING', 'refund', refund.id, 'Provider submission could not be confirmed; retained claim to prevent a duplicate.', now());
+      });
+      throw error;
     }
-    await run("INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)", id(), ctx.user.id, `REFUND_${body.status.toUpperCase()}`, "refund", refund.id, note, now());
-    return { id: refund.id, status: body.status === "approved" ? "provider_pending" : "rejected" };
+    await run("UPDATE refunds SET status='provider_pending',provider_reference=? WHERE id=? AND status='approved'", providerReference, refund.id);
+    return { id: refund.id, status: 'provider_pending' };
   }
   if (method === "GET" && path === "/marketplace/products") {
     await expireUnpaidOrders();
@@ -2657,55 +2695,24 @@ async function route(ctx, req, res, method, path, body, query) {
     return visibleOrder(await getOrder(order.id), ctx);
   }
   match = path.match(/^\/marketplace\/orders\/([a-f0-9-]+)\/refund$/);
-  if (method === "POST" && match) {
-    const order = await getOrder(match[1]);
-    assert(
-      order && order.buyer_id === ctx.user.id,
-      404,
-      "not_found",
-      "Order not found.",
-    );
-    assert(
-      order.payment_status === "paid" ||
-        order.payment_status === "partially_refunded",
-      409,
-      "no_captured_payment",
-      "No captured payment exists. Cancel the unpaid order instead; live refunds require a connected payment provider.",
-    );
-    assert(
-      ["delivered", "disputed"].includes(order.status),
-      409,
-      "invalid_transition",
-      "Refunds can only be requested after delivery or an order issue.",
-    );
-    const reason = inputString(body.reason, "Refund reason", {
-      min: 5,
-      max: 500,
+  if (method === 'POST' && match) {
+    const reason = inputString(body.reason, 'Refund reason', { min: 5, max: 500 });
+    return transaction(async () => {
+      const order = await q(`SELECT * FROM orders WHERE id=?${postgresMode ? ' FOR UPDATE' : ''}`, match[1]);
+      assert(order && order.buyer_id === ctx.user.id, 404, 'not_found', 'Order not found.');
+      assert(['paid', 'partially_refunded'].includes(order.payment_status), 409, 'no_captured_payment', 'No captured payment exists. Cancel the unpaid order instead.');
+      assert(['delivered', 'disputed'].includes(order.status), 409, 'invalid_transition', 'Refunds can only be requested after delivery or an order issue.');
+      const previous = await all("SELECT amount_minor FROM refunds WHERE order_id=? AND status='refunded'", order.id);
+      const amounts = previous.map(row => paymentMinor(row.amount_minor)), total = paymentMinor(order.total_minor);
+      assert(total && amounts.every(value => value !== null), 409, 'reconciliation_required', 'This order needs payment reconciliation before a new refund request.');
+      const remaining = total - amounts.reduce((sum, value) => sum + value, 0n);
+      assert(remaining > 0n && remaining <= BigInt(Number.MAX_SAFE_INTEGER), 409, 'no_refundable_amount', 'There is no remaining refundable amount.');
+      const refundId = id();
+      await run("INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,previous_order_status,created_at) VALUES(?,?,?,?,?,'requested',?,?)", refundId, order.id, ctx.user.id, Number(remaining), reason, order.status, now());
+      await run("UPDATE orders SET status='refund_requested',updated_at=? WHERE id=?", now(), order.id);
+      await event(ctx.user.id, 'refund', refundId, 'REFUND_REQUESTED', { orderId: order.id });
+      return { id: refundId, status: 'requested', message: 'Request recorded for staff review. Paystack test confirmation is required before it is marked refunded.' };
     });
-    const refundId = id();
-    await run(
-      "INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,previous_order_status,created_at) VALUES(?,?,?,?,?,'requested',?,?)",
-      refundId,
-      order.id,
-      ctx.user.id,
-      order.total_minor,
-      reason,
-      order.status,
-      now(),
-    );
-    await run(
-      "UPDATE orders SET status='refund_requested',updated_at=? WHERE id=?",
-      now(),
-      order.id,
-    );
-    await event(ctx.user.id, "refund", refundId, "REFUND_REQUESTED", {
-      orderId: order.id,
-    });
-    return {
-      id: refundId,
-      status: "requested",
-      message: "Request recorded; provider refund processing is not connected.",
-    };
   }
   if (method === "GET" && path === "/jobs") {
     const rows = await all(

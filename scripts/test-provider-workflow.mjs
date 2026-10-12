@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
 
 // No application .env, hosted account or production database is loaded.
 const temp = await mkdtemp(resolve(tmpdir(), 'ecovibes-provider-'));
@@ -114,7 +115,27 @@ try {
   await expect(`/staff/review/verifications/${submitted.verification.id}`,{method:'PATCH',account:staff,body:{status:'approved',note:'Current profile verified for test.'}});
   await expect(`/jobs/${job.id}/offers/${offerId}/select`,{method:'POST',account:other,body:{}});
   await expect(`/jobs/${job.id}/offers/${offerId}/select`,{method:'POST',account:other,body:{}},409);
+  // Financial view uses the authenticated account, not body/query IDs or staff privilege.
+  await expect('/money/overview', {}, 401);
+  await expect(`/money/overview?userId=${other.id}`, {account:owner}, 400);
+  const paymentFixture = (buyer, amount) => {
+    const orderId=randomUUID(), paymentId=randomUUID(), stamp=new Date().toISOString();
+    db.prepare("INSERT INTO orders(id,buyer_id,currency,total_minor,status,payment_status,created_at,updated_at) VALUES(?,?,'GHS',?,'delivered','paid',?,?)").run(orderId,buyer.id,amount,stamp,stamp);
+    db.prepare("INSERT INTO payments(id,order_id,provider,provider_reference,amount_minor,currency,state,created_at) VALUES(?,?,'paystack',?,?,'GHS','paid',?)").run(paymentId,orderId,`synthetic-${paymentId}`,amount,stamp);
+    return orderId;
+  };
+  const ownOrder=paymentFixture(owner,10000), otherOrder=paymentFixture(other,99999);
+  db.prepare("INSERT INTO refunds(id,order_id,requester_id,amount_minor,reason,status,created_at) VALUES(?,?,?,2500,'Synthetic refund','refunded',?)").run(randomUUID(),ownOrder,owner.id,new Date().toISOString());
+  const finance=await expect('/money/overview',{account:owner});
+  assert.equal(finance.activity.length,1); assert.equal(finance.activity[0].orderId,ownOrder);
+  assert.equal(finance.totals[0].netRecordedMinor,'7500');
+  assert(!JSON.stringify(finance).includes(otherOrder));
+  assert.equal(finance.capabilities.partnerSharing,false); assert.equal(finance.environment,'test');
+  assert.deepEqual((await expect('/money/overview',{account:staff})).activity,[]);
+  assert.equal((await expect('/money/overview',{account:other})).totals[0].capturedMinor,'99999');
+  assert(db.prepare("SELECT COUNT(*) n FROM audit_logs WHERE actor_id=? AND action='MONEY_ACTIVITY_VIEWED'").get(owner.id).n>=1);
   db.prepare("UPDATE users SET status='suspended' WHERE id=?").run(owner.id);
+  await expect('/money/overview',{account:owner},403);
   assert.deepEqual((await expect('/providers')).providers,[]);
   assert(db.prepare("SELECT COUNT(*) n FROM audit_logs WHERE action='VERIFICATION_APPROVED'").get().n>=2);
   console.log(`PASS: ${checks} provider workflow checks. Isolated SQLite, synthetic users, real HTTP routes. Hosted Auth/Postgres/MFA not covered.`);

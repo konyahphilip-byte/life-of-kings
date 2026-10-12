@@ -1,6 +1,6 @@
 import { ArrowRight, Fingerprint, Gamepad2, Search, ShoppingBag, Sparkles, Users, Wallet, BriefcaseBusiness, type LucideIcon } from 'lucide-react';
 
-type EcoVibesDestination = 'Communities' | 'Reels' | 'Gaming' | 'Marketplace' | 'Opportunities' | 'Wallet' | 'EcoVibes ID';
+type EcoVibesDestination = 'Communities' | 'Reels' | 'Gaming' | 'Marketplace' | 'Opportunities' | 'Wallet' | 'Money & Trust' | 'EcoVibes ID';
 type Pillar = { name: string; detail: string; icon: LucideIcon; destination: EcoVibesDestination; position: string; tone: string };
 
 const pillars: Pillar[] = [
@@ -9,7 +9,7 @@ const pillars: Pillar[] = [
   { name: 'Play', detail: 'Games · tournaments', icon: Gamepad2, destination: 'Gaming', position: 'play', tone: 'lilac' },
   { name: 'Trade', detail: 'Products · services', icon: ShoppingBag, destination: 'Marketplace', position: 'trade', tone: 'peach' },
   { name: 'Grow', detail: 'Jobs · grants · skills', icon: BriefcaseBusiness, destination: 'Opportunities', position: 'grow', tone: 'sky' },
-  { name: 'Earn', detail: 'Wallet · rewards', icon: Wallet, destination: 'Wallet', position: 'earn', tone: 'gold' },
+  { name: 'Earn', detail: 'Money & Trust', icon: Wallet, destination: 'Money & Trust', position: 'earn', tone: 'gold' },
 ];
 
 const styles = `

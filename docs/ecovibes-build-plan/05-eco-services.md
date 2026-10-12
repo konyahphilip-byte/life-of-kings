@@ -6,7 +6,7 @@ Eco Services connects customers to local, independent service providers—initia
 
 ## What exists now
 
-Quick&Handi already supports API-backed custom jobs, offers, offer selection, participant messages and status events. Its provider directory, sample availability/reviews, geospatial matching, real dispatch and complete dispute resolution are not yet a verified live service marketplace.
+Quick&Handi supports API-backed custom jobs, offers, offer selection, participant messages and status events. Provider onboarding now persists an account-owned service profile and scoped staff review; public discovery and offers require current approval and an active account. Editing a reviewed profile requires fresh approval. Sample profiles are opt-in previews. Organization teams, schedules, geospatial matching, direct booking, dispatch and complete dispute resolution remain unfinished; no hosted service marketplace has been verified.
 
 ## User flow
 
