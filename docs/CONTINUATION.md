@@ -1,3 +1,15 @@
+# EcoVibes continuation — backend release checkpoint
+
+14 October 2026: the candidate based on published `9caecd6` contains the atomic job transitions and conflict-safe, atomic support review fixes. Read [the exact candidate verification](releases/2026-10-14-backend-release.md) before treating local test results as hosted evidence. No new migration, live payment activation or hosted deployment is claimed.
+
+Current game steering: Rumble African replaces the earlier Rumble Rush concept. The user requires Phase 0 research followed by written Gate A approval, with separate later plan, vehicle, world and integration gates. A reference compilation supplied October 14 has been studied locally; supplying it does not approve game implementation. Unpublished game changes remain excluded from this backend release and preserved locally.
+
+Render workspace confirmation remains pending. Continue hosted setup only through authorized provider access, keep secrets in provider settings, and verify hosted identity, partner onboarding, PostgreSQL transaction behavior and payment/refund journeys before claiming launch readiness.
+
+The following is the historical handoff from the published baseline; its older pending-publication statements do not override this checkpoint or a fresh remote branch read.
+
+---
+
 # EcoVibes continuation
 
 Updated: 2026-10-11. Provider onboarding, Chale diagnostics and same-origin hosting were published to GitHub main at `e0b9f71f2f9a592430a2112d13455a920d5373da`. All eight hosted migrations are applied. Money & Trust is implemented, locally verified and committed. Paystack test refund hardening and staff reconciliation are also locally verified and committed; publication remains blocked by terminal GitHub credentials and an unresponsive connector attempt. Render deployment and hosted flow checks remain blocked on setup.

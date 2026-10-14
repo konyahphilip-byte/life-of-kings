@@ -16,7 +16,9 @@
     "dev:api": "node --env-file-if-exists=.env server/index.mjs",
     "start": "node --env-file-if-exists=.env server/index.mjs",
     "test:providers": "node scripts/test-provider-workflow.mjs",
-    "test:payments": "node scripts/test-paystack-workflow.mjs"
+    "test:payments": "node scripts/test-paystack-workflow.mjs",
+    "test:jobs": "node scripts/test-job-workflow.mjs",
+    "test:support": "node scripts/test-support-workflow.mjs"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.24",

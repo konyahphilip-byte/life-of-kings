@@ -1845,22 +1845,24 @@ async function route(ctx, req, res, method, path, body, query) {
       max: 1000,
     });
     const reportId = id();
-    await run(
-      "INSERT INTO support_reports(id,reporter_id,target_type,target_id,reason,details,created_at) VALUES(?,?,?,?,?,?,?)",
-      reportId,
-      ctx.user.id,
-      targetType,
-      targetId,
-      reason,
-      details,
-      now(),
-    );
-    await event(ctx.user.id, "support_report", reportId, "REPORT_CREATED", {
-      targetType,
-      targetId,
-      reason,
+    return transaction(async () => {
+      await run(
+        "INSERT INTO support_reports(id,reporter_id,target_type,target_id,reason,details,created_at) VALUES(?,?,?,?,?,?,?)",
+        reportId,
+        ctx.user.id,
+        targetType,
+        targetId,
+        reason,
+        details,
+        now(),
+      );
+      await event(ctx.user.id, "support_report", reportId, "REPORT_CREATED", {
+        targetType,
+        targetId,
+        reason,
+      });
+      return { id: reportId, status: "open" };
     });
-    return { id: reportId, status: "open" };
   }
   const assetMatch = path.match(/^\/social\/assets\/([a-f0-9-]+)$/);
   if (method === "GET" && assetMatch) {
@@ -2072,13 +2074,28 @@ async function route(ctx, req, res, method, path, body, query) {
     requireStaff(ctx, "support_staff");
     assert(["reviewing", "resolved"].includes(body.status), 400, "invalid_review", "Choose reviewing or resolved.");
     const note = inputString(body.note, "Resolution note", { min: 10, max: 800 });
-    const updated = await run(
-      "UPDATE support_reports SET status=?,reviewer_id=?,resolution_note=?,reviewed_at=? WHERE id=? AND status IN ('open','reviewing')",
-      body.status, ctx.user.id, note, now(), match[1],
-    );
-    assert(updated.changes === 1, 404, "not_found", "Open support report not found.");
-    await run("INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)", id(), ctx.user.id, `REPORT_${body.status.toUpperCase()}`, "support_report", match[1], note, now());
-    return { id: match[1], status: body.status };
+    return transaction(async () => {
+      const report = await q(`SELECT * FROM support_reports WHERE id=?${postgresMode ? ' FOR UPDATE' : ''}`, match[1]);
+      assert(report, 404, "not_found", "Support report not found.");
+      const isReportedAccount = ['account', 'seller'].includes(report.target_type) && report.target_id === ctx.user.id;
+      const isJobParticipant = report.target_type === 'job' && await q('SELECT 1 ok FROM jobs WHERE id=? AND (customer_id=? OR assigned_provider_id=?)', report.target_id, ctx.user.id, ctx.user.id);
+      const isOrderParticipant = report.target_type === 'order' && await q('SELECT 1 ok FROM orders o WHERE o.id=? AND (o.buyer_id=? OR EXISTS (SELECT 1 FROM order_items i WHERE i.order_id=o.id AND i.seller_id=?))', report.target_id, ctx.user.id, ctx.user.id);
+      assert(report.reporter_id !== ctx.user.id && !isReportedAccount && !isJobParticipant && !isOrderParticipant, 403, 'self_review_denied', 'Another authorized staff member must review this report.');
+      assert(report.status === 'open' || (report.status === 'reviewing' && body.status === 'resolved'), 409, 'report_already_updated', 'This report has already changed. Refresh the review queue.');
+      const stamp = now();
+      const updated = await run(
+        "UPDATE support_reports SET status=?,reviewer_id=?,resolution_note=?,reviewed_at=? WHERE id=? AND status=?",
+        body.status, ctx.user.id, note, stamp, report.id, report.status,
+      );
+      assert(updated.changes === 1, 409, 'report_already_updated', 'This report has already changed. Refresh the review queue.');
+      await run("INSERT INTO audit_logs(id,actor_id,action,target_type,target_id,reason,created_at) VALUES(?,?,?,?,?,?,?)", id(), ctx.user.id, `REPORT_${body.status.toUpperCase()}`, "support_report", report.id, note, stamp);
+      // Staff notes can contain private investigation details. Only the reporter
+      // receives a generic status notice, never the reported account or partner.
+      await notify(report.reporter_id, 'support', body.status === 'resolved' ? 'Support report closed' : 'Support review started',
+        `Case ${report.id}: ${body.status === 'resolved' ? 'the support review is closed. Any related job, order or refund has its own status.' : 'a support team member is reviewing your report.'}`,
+        'support_report', report.id);
+      return { id: report.id, status: body.status };
+    });
   }
   match = path.match(/^\/staff\/review\/refunds\/([a-f0-9-]+)\/reconcile$/);
   if (method === 'POST' && match) {
@@ -2868,127 +2885,133 @@ async function route(ctx, req, res, method, path, body, query) {
     /^\/jobs\/([a-f0-9-]+)\/(start|finish|complete|dispute|cancel)$/,
   );
   if (method === "POST" && match) {
-    const job = await getJob(match[1]);
-    assert(job, 404, "not_found", "Job not found.");
-    const action = match[2];
-    let next;
-    const provider = ctx.user.id === job.assigned_provider_id;
-    const customer = ctx.user.id === job.customer_id;
-    if (action === "start") {
-      assert(
-        provider,
-        403,
-        "forbidden",
-        "Only the assigned provider can start this job.",
+    // Re-read participants and state under the same lock as all side effects.
+    // A failed support, audit, notification or learning write rolls back the job.
+    return transaction(async () => {
+      const job = await q(`SELECT * FROM jobs WHERE id=?${postgresMode ? ' FOR UPDATE' : ''}`, match[1]);
+      assert(job, 404, "not_found", "Job not found.");
+      const action = match[2];
+      let next, reason;
+      const provider = ctx.user.id === job.assigned_provider_id;
+      const customer = ctx.user.id === job.customer_id;
+      if (action === "start") {
+        assert(
+          provider,
+          403,
+          "forbidden",
+          "Only the assigned provider can start this job.",
+        );
+        assert(
+          job.status === "assigned",
+          409,
+          "invalid_transition",
+          "Only an assigned job can start.",
+        );
+        next = "in_progress";
+      } else if (action === "finish") {
+        assert(
+          provider,
+          403,
+          "forbidden",
+          "Only the assigned provider can mark work finished.",
+        );
+        assert(
+          job.status === "in_progress",
+          409,
+          "invalid_transition",
+          "Start the job before marking it finished.",
+        );
+        next = "awaiting_customer";
+      } else if (action === "complete") {
+        assert(
+          customer,
+          403,
+          "forbidden",
+          "Only the customer can confirm completion.",
+        );
+        assert(
+          job.status === "awaiting_customer",
+          409,
+          "invalid_transition",
+          "The provider must mark the job finished first.",
+        );
+        next = "completed";
+      } else if (action === "dispute") {
+        assert(
+          customer || provider,
+          403,
+          "forbidden",
+          "Only participants can report a job issue.",
+        );
+        assert(
+          ["in_progress", "awaiting_customer", "completed"].includes(job.status),
+          409,
+          "invalid_transition",
+          "This job cannot be disputed now.",
+        );
+        next = "disputed";
+        reason = inputString(body.reason, "Issue details", {
+          min: 5,
+          max: 700,
+        });
+        await run(
+          "INSERT INTO support_reports(id,reporter_id,target_type,target_id,reason,details,created_at) VALUES(?,?,?,?,?,?,?)",
+          id(),
+          ctx.user.id,
+          "job",
+          job.id,
+          "job_dispute",
+          reason,
+          now(),
+        );
+      } else {
+        assert(
+          customer,
+          403,
+          "forbidden",
+          "Only the customer can cancel this job.",
+        );
+        assert(
+          ["open", "assigned"].includes(job.status),
+          409,
+          "invalid_transition",
+          "Work already started; report an issue instead.",
+        );
+        next = "cancelled";
+      }
+      const change = await run(
+        "UPDATE jobs SET status=?,updated_at=? WHERE id=? AND status=?",
+        next,
+        now(),
+        job.id,
+        job.status,
       );
-      assert(
-        job.status === "assigned",
-        409,
-        "invalid_transition",
-        "Only an assigned job can start.",
-      );
-      next = "in_progress";
-    } else if (action === "finish") {
-      assert(
-        provider,
-        403,
-        "forbidden",
-        "Only the assigned provider can mark work finished.",
-      );
-      assert(
-        job.status === "in_progress",
-        409,
-        "invalid_transition",
-        "Start the job before marking it finished.",
-      );
-      next = "awaiting_customer";
-    } else if (action === "complete") {
-      assert(
-        customer,
-        403,
-        "forbidden",
-        "Only the customer can confirm completion.",
-      );
-      assert(
-        job.status === "awaiting_customer",
-        409,
-        "invalid_transition",
-        "The provider must mark the job finished first.",
-      );
-      next = "completed";
-    } else if (action === "dispute") {
-      assert(
-        customer || provider,
-        403,
-        "forbidden",
-        "Only participants can report a job issue.",
-      );
-      assert(
-        ["in_progress", "awaiting_customer", "completed"].includes(job.status),
-        409,
-        "invalid_transition",
-        "This job cannot be disputed now.",
-      );
-      next = "disputed";
-      const reason = inputString(body.reason, "Issue details", {
-        min: 5,
-        max: 700,
-      });
-      await run(
-        "INSERT INTO support_reports(id,reporter_id,target_type,target_id,reason,details,created_at) VALUES(?,?,?,?,?,?,?)",
-        id(),
+      assert(change.changes === 1, 409, 'invalid_transition', 'This job has already changed. Refresh it before trying again.');
+      if (next === "completed") {
+        const activity = { title: job.title, category: job.category };
+        await recordRecommendationSignals(job.customer_id, "job", String(job.id), activity, "completed", true);
+        if (job.assigned_provider_id)
+          await recordRecommendationSignals(job.assigned_provider_id, "job", String(job.id), activity, "completed", true);
+      }
+      await event(
         ctx.user.id,
         "job",
         job.id,
-        "job_dispute",
-        reason,
-        now(),
+        `JOB_${next.toUpperCase()}`,
+        action === "dispute" ? { reason } : {},
       );
-    } else {
-      assert(
-        customer,
-        403,
-        "forbidden",
-        "Only the customer can cancel this job.",
-      );
-      assert(
-        ["open", "assigned"].includes(job.status),
-        409,
-        "invalid_transition",
-        "Work already started; report an issue instead.",
-      );
-      next = "cancelled";
-    }
-    await run(
-      "UPDATE jobs SET status=?,updated_at=? WHERE id=?",
-      next,
-      now(),
-      job.id,
-    );
-    if (next === "completed") {
-      const activity = { title: job.title, category: job.category };
-      await recordRecommendationSignals(job.customer_id, "job", String(job.id), activity, "completed", true);
-      if (job.assigned_provider_id)
-        await recordRecommendationSignals(job.assigned_provider_id, "job", String(job.id), activity, "completed", true);
-    }
-    await event(
-      ctx.user.id,
-      "job",
-      job.id,
-      `JOB_${next.toUpperCase()}`,
-      action === "dispute" ? { reason: body.reason } : {},
-    );
-    const other = customer ? job.assigned_provider_id : job.customer_id;
-    if (other)
-      await notify(
-        other,
-        "job",
-        `Job ${next.replaceAll("_", " ")}`,
-        `${job.title} was updated.`,
-        "job",
-        job.id,
-      );
-    return visibleJob(await getJob(job.id), ctx);
+      const other = customer ? job.assigned_provider_id : job.customer_id;
+      if (other)
+        await notify(
+          other,
+          "job",
+          `Job ${next.replaceAll("_", " ")}`,
+          `${job.title} was updated.`,
+          "job",
+          job.id,
+        );
+      return visibleJob(await getJob(job.id), ctx);
+    });
   }
   match = path.match(/^\/jobs\/([a-f0-9-]+)\/messages$/);
   if (method === "POST" && match) {
