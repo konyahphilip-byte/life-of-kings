@@ -1726,27 +1726,30 @@ async function route(ctx, req, res, method, path, body, query) {
       "invalid_role",
       "Choose seller or provider.",
     );
-    if (!await hasRole(ctx.user.id, role))
-      await run(
-        "INSERT INTO roles(user_id,role,created_at) VALUES(?,?,?)",
-        ctx.user.id,
-        role,
-        now(),
+    ctx.user = await transaction(async () => {
+      // Share the applicant lock with profile edits and verification decisions.
+      // Retries must neither create partial accounts nor duplicate role events.
+      await providers.lock(ctx.user.id);
+      const owner = await q('SELECT status FROM users WHERE id=?', ctx.user.id);
+      assert(owner?.status === 'active', 403, 'account_unavailable', 'This EcoVibes account is unavailable.');
+      const stamp = now();
+      const granted = await run(
+        'INSERT OR IGNORE INTO roles(user_id,role,created_at) VALUES(?,?,?)',
+        ctx.user.id, role, stamp,
       );
-    if (role === "seller")
-      await run(
-        "INSERT OR IGNORE INTO seller_profiles(user_id,created_at) VALUES(?,?)",
-        ctx.user.id,
-        now(),
+      const table = role === 'seller' ? 'seller_profiles' : 'provider_profiles';
+      const profile = await run(
+        `INSERT OR IGNORE INTO ${table}(user_id,created_at) VALUES(?,?)`,
+        ctx.user.id, stamp,
       );
-    if (role === "provider")
-      await run(
-        "INSERT OR IGNORE INTO provider_profiles(user_id,created_at) VALUES(?,?)",
-        ctx.user.id,
-        now(),
-      );
-    await event(ctx.user.id, "identity", ctx.user.id, "ROLE_ADDED", { role });
-    ctx.user = await safeUser(ctx.user.id);
+      if (granted.changes === 1) {
+        await event(ctx.user.id, 'identity', ctx.user.id, 'ROLE_ADDED', { role });
+      } else if (profile.changes === 1) {
+        // Recover an older partial grant with a distinct, atomic audit record.
+        await event(ctx.user.id, 'identity', ctx.user.id, 'ROLE_PROFILE_REPAIRED', { role });
+      }
+      return safeUser(ctx.user.id);
+    });
     return { user: ctx.user };
   }
   if (method === "PATCH" && path === "/identity/profiles") {
