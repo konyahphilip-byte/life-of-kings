@@ -70,5 +70,5 @@ globalThis.fetch = async (input, options = {}) => {
         : 'Your safe app context has been checked.';
     output = [{ type: 'message', id: 'msg_fixture', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text }] }];
   }
-  return Response.json({ id: `resp_fixture_${calls.length}`, output });
+  return Response.json({ id: `resp_fixture_${calls.length}`, status: 'completed', output });
 };

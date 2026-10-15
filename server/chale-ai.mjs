@@ -48,6 +48,7 @@ async function requestOpenAI(payload, signal) {
   const value = await response.json();
   signal?.throwIfAborted();
   if (!value || !Array.isArray(value.output)) throw new Error('Chale AI returned an invalid response.');
+  if (value.status !== 'completed') throw new Error('Chale AI did not complete its response.');
   return value;
 }
 

@@ -18,7 +18,7 @@ function mockResponses(...responses) {
     const response = queued.shift();
     assert.ok(response, 'Unexpected additional provider request');
     if (response instanceof Error) throw response;
-    return new Response(JSON.stringify(response.value || response), { status: response.status || 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify(response.value || { status: 'completed', ...response }), { status: typeof response.status === 'number' ? response.status : 200, headers: { 'Content-Type': 'application/json' } });
   };
 }
 
@@ -293,6 +293,27 @@ describe('Chale app workflow', () => {
     await assert.rejects(generateChaleAIReply(conversation, async () => []), /invalid response/);
     mockResponses(finalResponse('x'.repeat(6001)));
     await assert.rejects(generateChaleAIReply(conversation, async () => []), /invalid response/);
+  });
+
+  it('rejects partial or unfinished guidance without presenting it as a completed model answer', async () => {
+    for (const status of ['incomplete', 'failed', 'cancelled', 'queued', 'in_progress']) {
+      mockResponses({ ...finalResponse('Open EcoVibes ID and then'), status, incomplete_details: { reason: 'max_output_tokens' } });
+      await assert.rejects(generateChaleAIReply(conversation, async () => []), /did not complete/);
+    }
+    assert.equal(requests.length, 5);
+  });
+
+  it('does not execute tool calls from an incomplete response', async () => {
+    mockResponses({ status: 'incomplete', output: [call('search_ecovibes_catalog', { query: 'tote' })] });
+    let catalogCalls = 0;
+    await assert.rejects(generateChaleAIReply(conversation, async () => { catalogCalls += 1; return []; }), /did not complete/);
+    assert.equal(catalogCalls, 0);
+    assert.equal(requests.length, 1);
+  });
+
+  it('rejects a provider payload that omits its completion status', async () => {
+    mockResponses({ value: finalResponse() });
+    await assert.rejects(generateChaleAIReply(conversation, async () => []), /did not complete/);
   });
 
   it('does not retain an unrecognized provider error code or body and rejects calls without an ID', async () => {
