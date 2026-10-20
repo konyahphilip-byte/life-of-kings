@@ -25,10 +25,22 @@ export function chaleConfig(env = process.env) {
     timeoutMs: bounded(env.CHALE_TIMEOUT_MS, 60000, 1000, 75000),
   };
   if (provider === 'disabled') return config;
-  if (!['ollama', 'compatible', 'openai', 'bedrock'].includes(provider)) throw new Error('Unsupported Chale provider.');
-  config.model = env.AI_MODEL?.trim();
+  if (!['ollama', 'compatible', 'openai', 'bedrock', 'cloudflare-free'].includes(provider)) throw new Error('Unsupported Chale provider.');
+  config.model = provider === 'cloudflare-free' ? '@cf/meta/llama-3.1-8b-instruct-fp8-fast' : env.AI_MODEL?.trim();
   if (!config.model || config.model.length > 160 || /[\u0000-\u001f]/.test(config.model)) return config;
-  if (provider === 'openai') {
+  if (provider === 'cloudflare-free') {
+    // Operator attestation is required: the API cannot enforce the account plan.
+    // Keep Cloudflare on Workers Free, with no prepaid AI Gateway or paid upgrade.
+    if (env.CHALE_ALLOW_PAID === 'true' || env.CHALE_REMOTE_APPROVED !== 'true'
+      || env.CHALE_CLOUDFLARE_FREE_PLAN_CONFIRMED !== 'true') return config;
+    const account = env.CLOUDFLARE_ACCOUNT_ID || '';
+    if (!/^[a-f0-9]{32}$/.test(account)) throw new Error('Invalid Cloudflare account configuration.');
+    config.key = env.CHALE_INFERENCE_KEY?.trim();
+    if (!config.key) return config;
+    config.endpoint = `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`;
+    config.hosting = 'remote';
+    config.billingPolicy = 'free-tier-only';
+  } else if (provider === 'openai') {
     // A key alone must never turn on a billable model.
     if (env.CHALE_ALLOW_PAID !== 'true') return config;
     config.key = env.AI_PROVIDER_KEY?.trim() || env.OPENAI_API_KEY?.trim();
@@ -74,7 +86,7 @@ export function chaleStatus() {
       configured: c.configured, provider: c.configured ? c.provider : null,
       model: c.configured ? c.model : null, hosting: c.configured ? c.hosting : null,
       mode: c.mode, dailyRequests: c.dailyRequests, guestDailyRequests: c.guestDailyRequests,
-      paidFallback: false,
+      paidFallback: false, ...(c.billingPolicy ? { billingPolicy: c.billingPolicy } : {}),
     };
   } catch {
     return { configured: false, provider: null, model: null, hosting: null, paidFallback: false };
@@ -128,6 +140,8 @@ export async function requestChaleModel(payload, signal, config = chaleConfig())
     const messages = [{ role: 'system', content: payload.instructions }, ...payload.input];
     body = config.provider === 'ollama'
       ? { model: config.model, messages, stream: false, think: false, keep_alive: '5m', options: { num_predict: config.maxOutputTokens, num_ctx: 4096, temperature: 0.2 } }
+      : config.provider === 'cloudflare-free'
+      ? { model: config.model, messages, stream: false, max_tokens: config.maxOutputTokens, temperature: 0.2, options: { rejectIfBusy: true } }
       : { model: config.model, messages, stream: false, max_tokens: config.maxOutputTokens, temperature: 0.2, chat_template_kwargs: { enable_thinking: false } };
   }
   const timeout = AbortSignal.timeout(config.timeoutMs);
@@ -145,6 +159,7 @@ export async function requestChaleModel(payload, signal, config = chaleConfig())
     if (!response.ok) {
       const error = new Error('Chale inference request failed.');
       error.status = response.status;
+      if (config.provider === 'cloudflare-free' && response.status === 429) error.providerCode = 'rate_limit_exceeded';
       try { const result = await boundedJson(response); if (safeCodes.has(result?.error?.code)) error.providerCode = result.error.code; } catch { /* Never return provider bodies or secrets. */ }
       throw error;
     }
