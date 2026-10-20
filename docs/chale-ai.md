@@ -1,6 +1,6 @@
 # Chale AI in EcoVibes
 
-Chale AI is part of the existing React app and Node API. Open **Ask Chale AI** from any screen to get help with the current page, find public listings, work through a problem, or draft an improvement. Live replies use OpenAI's Responses API through `POST /api/v1/ai/chat`; no separate agent service is required. Chale’s sole product scope is EcoVibes: its app workflows, public listings and community ideas. It is instructed to redirect unrelated requests to an EcoVibes task; this instruction still needs behavioral evaluation with a funded live model.
+Chale AI is part of the existing React app and Node API. Open **Ask Chale AI** from any screen to get help with the current page, find public listings, work through a problem, or draft an improvement. Replies use the server-controlled inference gateway through `POST /api/v1/ai/chat`. Free Core supports local/self-hosted open-weight inference; AWS Bedrock and the existing OpenAI workflow are optional paid adapters, disabled by default. See [the Free Core setup and actual evidence](ai/CHALE_FREE_CORE.md). Chale’s sole product scope is EcoVibes: its app workflows, public listings and community ideas. It is instructed to redirect unrelated requests to an EcoVibes task; the local model has limited real-inference checks, while a wider quality evaluation remains outstanding.
 
 ## Instructions and app knowledge
 
@@ -12,7 +12,7 @@ The browser supplies only the current page and data mode. The API validates thes
 
 ## Tools and limits
 
-All six tools have strict schemas. The server also validates arguments, rejects unknown tools or extra fields, strips control characters and bounds text lengths.
+The optional OpenAI tool workflow retains six tools with strict schemas. Free Core instead performs one server-owned public guide/catalog retrieval and at most one model request, without delegating tool choice to the small model. The server also validates arguments, rejects unknown tools or extra fields, strips control characters and bounds text lengths.
 
 | Tool | Purpose | Effect |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ All six tools have strict schemas. The server also validates arguments, rejects 
 | `draft_support_request` | Prepare a title and useful problem details. | Creates a review draft in the reply; nothing is submitted. |
 | `propose_improvement` | Describe a problem, benefit, experiment and risk. | Creates a review draft in the reply; nothing is published or implemented. |
 
-A reply allows at most three provider requests and six tool calls. Duplicate tool calls reuse their result. Chat input allows up to eight messages, 1,200 characters per message and 6,000 characters total. Requests are limited to 10 per minute per API client address. The frontend offers **Stop answer**. Closing the active request aborts the server’s provider fetch and stops further tool calls or provider rounds. A provider may already have processed part of the request; cancellation does not guarantee a refund or remote termination.
+The optional OpenAI workflow allows at most three provider requests and six tool calls; Free Core allows one request. Duplicate tool calls reuse their result. Chat input allows up to eight messages, 1,200 characters per message and 6,000 characters total. Requests are limited to 10 per minute per API client address. The frontend offers **Stop answer**. Closing the active request aborts the server’s provider fetch and stops further tool calls or provider rounds. A provider may already have processed part of the request; cancellation does not guarantee a refund or remote termination.
 
 Catalog results contain public listing fields only. Signed-in users with learning enabled may receive ranked public matches, but the underlying private interest and activity profile is not sent to the model. User messages, listing text and tool text are untrusted data. Diagnostic flags include only booleans for relevant server configuration, sign-in and learning. They never include service URLs, credentials, private records or provider approval. Diagnostics distinguish requirements met, missing configuration and unknowns; a configured key is not proof of available credits. The model cannot post, purchase, message, apply, book, alter settings or balances, approve staff actions, or run arbitrary code.
 
@@ -43,24 +43,15 @@ When online model generation fails, the UI labels its fallback **App guide** and
 
 ## Server configuration and privacy
 
-Set a server-side key and optional model in the API process environment:
+Inference defaults to disabled; existing keys alone do not enable paid calls. Use `.env.example` and [Free Core setup](ai/CHALE_FREE_CORE.md) for `CHALE_PROVIDER`, model, endpoint and operator-owned limits. `npm run dev:chale-local` starts the existing built app with a local model and isolated test data; it loads no application credentials. The optional `openai` adapter requires an explicit model and `CHALE_ALLOW_PAID=true`. Bedrock additionally requires remote approval, region and a host-secret bearer token. No provider fallback silently changes billing or data destination.
 
-```dotenv
-AI_PROVIDER_KEY=your_openai_api_key
-AI_MODEL=gpt-6-astra
-```
+Keep remote credentials in provider/hosting secret settings, never `VITE_*`, source control or chat. Status reports configuration, not verified model health. Recent messages, safe context and selected public evidence reach the configured model host; private account records and identifiers do not. Provider retention controls still need review for remote deployments. Local numerical usage logs omit prompts and replies; no shared answer cache or training pipeline is enabled.
 
-`OPENAI_API_KEY` is accepted when `AI_PROVIDER_KEY` is absent. Alternatively, set `OPENAI_ENV_FILE` to an administrator-controlled environment file containing `OPENAI_API_KEY`. An absolute path is accepted; a relative path resolves from the app root. The loader reads only that key assignment and does not apply other variables from the file. An existing process key takes precedence. Keep the file outside public assets, restrict access to the API account, and keep it out of version control.
-
-For local development, use the ignored project `.env` file and restart `npm run dev` or `npm run dev:api`. For deployment, use the host's server secret environment configuration. Do not prefix secrets or the key-file path with `VITE_`, include them in client code, commit them, or paste them into chat. The web app never receives the key. `AI_MODEL` must name a model available to the API project.
-
-`GET /api/v1/ai/status` reports key configuration, selected model, app-guide version and capabilities. `configured: true` is a configuration check; it does not verify model access, billing or a successful generation. Complete a chat request to test those separately.
-
-Live replies send the recent bounded conversation, safe app context, and any returned public listing details to OpenAI. Responses requests set `store: false`. This does not disable all provider abuse monitoring or account-level retention; apply the API project's data controls as appropriate. Users should keep passwords, authentication codes, payment codes and private identifiers out of chat and review drafts before sharing.
+Default daily request limits are 20 per signed-in account, 5 per guest socket address and 200 platform-wide, with a UTC date reset. Attempts count, including busy/failure/guide-only outcomes. One generation at a time is allowed per API process. These are request limits, not a monthly dollar guarantee. See the setup document for proxy and multi-instance constraints.
 
 ## Test the workflow
 
-Use Node.js 22.13 or newer. From the app root, run:
+Use Node.js 22.13 or newer. `npm run test:chale-local` explicitly checks real local inference against the private preview; ordinary unit/HTTP tests use simulated models. From the app root, run:
 
 ```sh
 npm test -- server/chale-diagnostics.test.mjs server/chale-ai.test.mjs server/openai-env.test.mjs src/modules/assistant/Sidekick.test.tsx server/recommendations.test.mjs
@@ -76,11 +67,11 @@ Test the following in the running app, using a test account and test listings wh
 
 1. Open Waste, launch Chale, and ask “How do I request a waste collection?” Confirm the page context and guide steps. Use **Open Waste** and confirm it opens that section.
 2. Ask about Wallet or Calls & Live. Confirm that guide cards disclose preview or connected-provider requirements and do not claim a payment or call happened.
-3. With a configured, funded API project, ask Chale to find a real product or job. Confirm its results against the actual listing, then use the card to open Marketplace or Quick&Handi. No matches should produce an honest empty result.
+3. With an explicitly configured local or approved remote model, ask Chale to find a real product or job. Confirm its results against the actual listing, then use the card to open Marketplace or Quick&Handi. No matches should produce an honest empty result.
 4. Sign in, use **Tune learning on Home**, enable personalization and choose an interest. Ask for listings, use **Save** or **Show less**, and confirm the Home learning feed refreshes. Pause learning and verify no feedback is recorded. Resume, reset learned activity and verify chosen interests remain.
 5. Ask “Help me report a collection problem” or “Help me improve a recycling idea.” Review the draft and use **Copy draft**. Confirm no support request, post or account change is created by chat.
 6. Disconnect after loading the app and repeat a guide or draft request. Confirm the **App guide** label and no new network requests. Reconnect and test a model failure; guidance should remain available.
-7. Ask “My video call will not start.” Check that diagnostics distinguish configuration from live operation and show only verified app steps. Ask an unrelated question and check the funded model redirects to EcoVibes without answering the unrelated task.
+7. Ask “My video call will not start.” Check that diagnostics distinguish configuration from live operation and show only verified app steps. Ask an unrelated question and check the selected model redirects to EcoVibes without answering the unrelated task.
 8. Start a request and use **Stop answer**. Start another, then sign out or switch test accounts. Confirm pending requests are aborted and the old conversation and drafts do not appear for the new account. Press Escape to close Chale and return focus to its launcher.
 
 If a live request returns `usage_limit_exceeded`, `insufficient_quota`, `credit_balance_exhausted` or `rate_limit_exceeded`, the API returns `ai_usage_limited` and the app uses its guide fallback. Live verification encountered exhausted API credits (`credit_balance_exhausted`), and an earlier hosted-agent check encountered an organization usage limit; that is provider access evidence, not an app-test failure or proof that every deployment is limited. Check the API organization's billing and project limits, then repeat one bounded live request. Other provider failures return `ai_unavailable`; check the server's non-secret error classification and model configuration.

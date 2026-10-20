@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 
@@ -28,6 +29,7 @@ const child = spawn(process.execPath, ['--import', resolve(scripts, 'chale-test-
     PATH: process.env.PATH, TMPDIR: process.env.TMPDIR || '/tmp', NODE_ENV: 'test',
     PORT: String(port), API_PORT: String(port), ECOVIBES_DB_PATH: resolve(temp, 'isolated.sqlite'),
     AI_PROVIDER_KEY: 'synthetic-chale-http-fixture', AI_MODEL: 'mock-workflow-fixture',
+    CHALE_PROVIDER: 'openai', CHALE_ALLOW_PAID: 'true', CHALE_GUEST_DAILY_REQUESTS: '50',
     OPENAI_ENV_FILE: '', SUPABASE_URL: '', DATABASE_URL: '', STORAGE_URL: '', STORAGE_KEY: '',
     CHALE_SMOKE_CAPTURE: capturePath,
     ...(socketPath ? { CHALE_SMOKE_SOCKET: socketPath } : {}),
@@ -267,6 +269,43 @@ try {
   assert(!JSON.stringify(result.body).includes('RAW_PROVIDER_PRIVATE_MARKER_DO_NOT_EXPOSE'));
   assert(!log.includes('RAW_PROVIDER_PRIVATE_MARKER_DO_NOT_EXPOSE'));
   record('credit_balance_error_safe_contract', 'Mock exhausted credit error classified503 ai_usage_limited; provider details absent from responses and logs.');
+
+  // Exhaust only selected durable buckets; the synthetic database is owned by
+  // this test. This checks server enforcement without sending hundreds of calls.
+  const quotaDb = new DatabaseSync(resolve(temp, 'isolated.sqlite'));
+  const day = new Date().toISOString().slice(0, 10);
+  const seedBucket = (key, hits) => quotaDb.prepare('INSERT OR REPLACE INTO rate_limit_buckets(bucket_key,window_started_at,expires_at,hits) VALUES(?,?,?,?)').run(
+    createHash('sha256').update(`ecovibes:rate-limit:${key}`).digest('hex'), new Date().toISOString(), new Date(Date.now() + 2 * 86400000).toISOString(), hits);
+  try {
+    quotaDb.prepare('DELETE FROM rate_limit_buckets').run();
+    seedBucket(`chale-daily:${day}:user:${member.id}`, 20);
+    const before = (await captures()).length;
+    result = await request('/ai/chat', { method: 'POST', account: member, body: { messages: [{ role: 'user', content: 'GUEST_CONTEXT_FIXTURE' }], userId: seller.id } });
+    assert.equal(result.status, 429); assert.equal(result.body.error.code, 'ai_daily_limit');
+    assert.equal((await captures()).length, before);
+    await chat('GUEST_CONTEXT_FIXTURE', seller);
+    record('daily_account_quota', 'Exhausted member denied before inference despite forged account selector; a different authenticated account retains its own allowance.');
+
+    seedBucket(`chale-daily:${day}:guest:127.0.0.1`, 50);
+    const beforeGuest = (await captures()).length;
+    result = await request('/ai/chat', { method: 'POST', body: { messages: [{ role: 'user', content: 'GUEST_CONTEXT_FIXTURE' }] } });
+    assert.equal(result.status, 429); assert.equal(result.body.error.code, 'ai_daily_limit');
+    assert.equal((await captures()).length, beforeGuest);
+    record('daily_guest_quota', 'Guest quota uses the trusted socket address and is enforced before inference.');
+
+    seedBucket(`chale-global:${day}`, 200);
+    result = await request('/ai/chat', { method: 'POST', account: seller, body: { messages: [{ role: 'user', content: 'GUEST_CONTEXT_FIXTURE' }] } });
+    assert.equal(result.status, 429); assert.equal(result.body.error.code, 'ai_daily_limit');
+    record('global_daily_cap', 'Shared durable platform cap denies inference even when an individual has remaining allowance.');
+
+    quotaDb.prepare('DELETE FROM rate_limit_buckets').run();
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    seedBucket(`chale-global:${yesterday}`, 200);
+    seedBucket(`chale-daily:${yesterday}:user:${member.id}`, 20);
+    await chat('GUEST_CONTEXT_FIXTURE', member);
+    record('utc_date_allowance', 'Exhausted prior UTC-date buckets do not block the current-date allowance. No clock or real database is modified.');
+  } finally { quotaDb.close(); }
+
 } catch (error) {
   failure = { name: error.name, message: error.message };
 } finally {

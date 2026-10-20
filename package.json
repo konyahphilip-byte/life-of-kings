@@ -11,7 +11,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
+    "test:chale-local": "node scripts/test-chale-local.mjs",
     "test:chale-workflow": "node scripts/test-chale-workflow.mjs",
+    "dev:chale-local": "node scripts/dev-chale-local.mjs",
     "dev:web": "vite --host 0.0.0.0",
     "dev:api": "node --env-file-if-exists=.env server/index.mjs",
     "start": "node --env-file-if-exists=.env server/index.mjs",
@@ -22,10 +24,12 @@
     "test:identity-roles": "node scripts/test-identity-roles.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "3.1153.0",
     "@livekit/components-react": "^2.9.24",
     "@livekit/components-styles": "^1.2.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
+    "@smithy/node-http-handler": "4.12.1",
     "@supabase/server": "^1.9.0",
     "@supabase/supabase-js": "^2.117.2",
     "@vitejs/plugin-react": "6.1.1",

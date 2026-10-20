@@ -1,0 +1,22 @@
+# Positive allowlist: no local configuration, credentials, history or work data.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!tsconfig*.json
+!vite.config.*
+!index.html
+!server/
+!server/**
+!shared/
+!shared/**
+!src/
+!src/**
+!public/
+!public/**
+**/.env*
+**/*.pem
+**/*.key
+**/node_modules/**
+**/work/**

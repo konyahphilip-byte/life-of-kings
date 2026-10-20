@@ -19,6 +19,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
 import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
+import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
 import { createProviderService } from "./providers.mjs";
@@ -538,7 +539,7 @@ function originCheck(req) {
     "Cross-origin write rejected.",
   );
 }
-async function rateLimit(key, maximum, windowMs) {
+async function rateLimit(key, maximum, windowMs, failure = {}) {
   const startedAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + windowMs).toISOString();
   const bucketKey = hash(`ecovibes:rate-limit:${key}`);
@@ -557,8 +558,8 @@ async function rateLimit(key, maximum, windowMs) {
   assert(
     Number(bucket?.hits || 0) <= maximum,
     429,
-    "rate_limited",
-    "Too many attempts. Wait before trying again.",
+    failure.code || "rate_limited",
+    failure.message || "Too many attempts. Wait before trying again.",
   );
 }
 async function cleanupRateLimitBuckets() {
@@ -1192,9 +1193,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "GET" && path === "/ai/status") {
     return {
-      configured: isChaleAIConfigured(),
-      provider: isChaleAIConfigured() ? "OpenAI" : null,
-      model: isChaleAIConfigured() ? process.env.AI_MODEL || "gpt-6-astra" : null,
+      ...chaleStatus(),
       appGuideVersion: APP_GUIDE_VERSION,
       capabilities: ["app_guidance", "public_catalog", "local_drafts", "shared_opt_in_learning", "guided_diagnostics"],
       scope: "ecovibes_only",
@@ -1202,7 +1201,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "POST" && path === "/ai/chat") {
     await rateLimit(`chale-ai:${req.socket.remoteAddress}`, 10, 60_000);
-    assert(isChaleAIConfigured(), 503, "ai_not_configured", "Chale AI's OpenAI model is not configured yet.");
+    assert(isChaleAIConfigured(), 503, "ai_not_configured", "Chale AI inference is not configured yet. The app guide remains available.");
     assert(Array.isArray(body.messages), 400, "invalid_messages", "Messages must be provided as a list.");
     assert(body.messages.length >= 1 && body.messages.length <= 8, 400, "invalid_messages", "Send between 1 and 8 chat messages.");
     let totalCharacters = 0;
@@ -1214,6 +1213,14 @@ async function route(ctx, req, res, method, path, body, query) {
     });
     assert(totalCharacters <= 6000, 400, "messages_too_long", "The conversation is too long. Start a new chat and try again.");
     assert(messages.at(-1).role === "user", 400, "invalid_messages", "The last chat message must be from the user.");
+    const aiLimits = chaleConfig();
+    const day = new Date().toISOString().slice(0, 10);
+    const dailyFailure = { code: "ai_daily_limit", message: "Today's free Chale allowance has been used. The app guide remains available; model access resets at 00:00 UTC." };
+    // UTC date keys and database upserts apply across API processes. Never trust
+    // a caller-provided account ID or forwarded IP to select the allowance.
+    await rateLimit(`chale-daily:${day}:${ctx.user ? `user:${ctx.user.id}` : `guest:${req.socket.remoteAddress}`}`,
+      ctx.user ? aiLimits.dailyRequests : aiLimits.guestDailyRequests, 2 * 86_400_000, dailyFailure);
+    await rateLimit(`chale-global:${day}`, aiLimits.globalDailyRequests, 2 * 86_400_000, dailyFailure);
     let learningEnabled = false;
     let preferredLanguage = "en-GH";
     if (ctx.user) {
@@ -1232,7 +1239,7 @@ async function route(ctx, req, res, method, path, body, query) {
     const cancelReply = () => { if (!res.writableEnded) controller.abort(); };
     res.once("close", cancelReply);
     try {
-      return await generateChaleAIReply(messages, (text) => findPublicCatalogListings(text, ctx.user?.id || null), appContext, {
+      const reply = await generateChaleAIReply(messages, (text) => findPublicCatalogListings(text, ctx.user?.id || null), appContext, {
         signal: controller.signal,
         capabilities: {
           aiConfigured: isChaleAIConfigured(),
@@ -1242,8 +1249,12 @@ async function route(ctx, req, res, method, path, body, query) {
           shopifyConfigured: Boolean(process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET && process.env.SHOPIFY_REDIRECT_URI),
         },
       });
+      console.info(JSON.stringify({ level: "info", event: "chale_inference", provider: aiLimits.provider,
+        model: aiLimits.model, usage: reply.usage, time: now() }));
+      return reply;
     } catch (error) {
       if (controller.signal.aborted) return;
+      if (error?.providerCode === "chale_busy") fault(429, "ai_busy", "Chale is helping someone else. Try again shortly; the app guide remains available.");
       console.warn(JSON.stringify({ level: "warn", event: "ai_reply_failed", errorType: error?.name || "Error", time: now() }));
       if (["usage_limit_exceeded", "insufficient_quota", "credit_balance_exhausted", "rate_limit_exceeded"].includes(error?.providerCode)) {
         fault(503, "ai_usage_limited", "Chale AI's model is temporarily unavailable. The app guide remains available.");
