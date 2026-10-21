@@ -34,8 +34,9 @@ try {
     assert(denied.error?.code, `${path}: expected a structured denial`);
   }
   await get('/assets/ecovibes-release-check-missing.js', 404);
-  const missing = await (await get('/api/v1/ecovibes-release-check-missing', 404)).json();
-  assert(missing.error?.code, 'Missing API routes must remain JSON errors');
+  // Non-public API paths pass through authentication before route lookup.
+  const missing = await (await get('/api/v1/ecovibes-release-check-missing', 401)).json();
+  assert.equal(missing.error?.code, 'sign_in_required', 'Unknown protected paths must remain structured authentication denials');
   console.log(`PASS: ${checks} anonymous hosted checks. Sign-in, staff MFA, ownership, storage, payment callbacks/refunds and real AI still require separate verification.`);
 } catch (error) {
   console.error(`FAIL after ${checks} hosted checks: ${error instanceof Error ? error.message : 'Request failed'}`);
