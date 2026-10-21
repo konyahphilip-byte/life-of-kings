@@ -112,7 +112,30 @@ try {
   // An unchanged resubmission uses the current review, never the prior rejection.
   submitted = await expect('/providers/me/submit',{method:'POST',account:owner,body:{evidenceNote:'Area explanation supplied to reviewer.'}});
   assert.equal(submitted.review.status,'pending'); assert.equal(submitted.review.feedback,null);
+  const approvalPath=`/staff/review/verifications/${submitted.verification.id}`;
+  const approval={method:'PATCH',account:staff,body:{status:'approved',note:'Synthetic verification completed.'}};
+  const decisionAudit=()=>db.prepare("SELECT count(*) total FROM audit_logs WHERE target_id=? AND action='VERIFICATION_APPROVED'").get(submitted.verification.id).total;
+  const decisionNotice=()=>db.prepare("SELECT count(*) total FROM notifications WHERE target_id=? AND title='Verification approved'").get(submitted.verification.id).total;
+  const assertApprovalRolledBack=()=>{
+    const request=db.prepare('SELECT status,reviewer_id,reviewed_at FROM verification_requests WHERE id=?').get(submitted.verification.id);
+    assert.equal(request.status,'pending'); assert.equal(request.reviewer_id,null); assert.equal(request.reviewed_at,null);
+    assert.equal(db.prepare('SELECT verification_state FROM provider_profiles WHERE user_id=?').get(owner.id).verification_state,'pending');
+    assert.equal(decisionAudit(),0); assert.equal(decisionNotice(),0);
+  };
+  // A decision cannot become effective without its audit record.
+  db.exec("CREATE TRIGGER synthetic_verification_audit_failure BEFORE INSERT ON audit_logs WHEN NEW.action='VERIFICATION_APPROVED' BEGIN SELECT RAISE(ABORT,'synthetic verification audit failure'); END");
+  await expect(approvalPath,approval,500);
+  assertApprovalRolledBack();
+  db.exec('DROP TRIGGER synthetic_verification_audit_failure');
+  // A notification failure also rolls back the already-written decision/audit.
+  db.exec("CREATE TRIGGER synthetic_verification_notice_failure BEFORE INSERT ON notifications WHEN NEW.title='Verification approved' BEGIN SELECT RAISE(ABORT,'synthetic verification notification failure'); END");
+  await expect(approvalPath,approval,500);
+  assertApprovalRolledBack();
+  db.exec('DROP TRIGGER synthetic_verification_notice_failure');
   await expect(`/staff/review/verifications/${submitted.verification.id}`,{method:'PATCH',account:staff,body:{status:'approved',note:'Synthetic verification completed.'}});
+  assert.equal(decisionAudit(),1); assert.equal(decisionNotice(),1);
+  await expect(approvalPath,approval,404);
+  assert.equal(decisionAudit(),1); assert.equal(decisionNotice(),1);
   // Even a newer seller review on the same Eco ID is not provider feedback.
   db.prepare("INSERT INTO verification_requests(id,user_id,business_type,evidence_note,status,target_role,profile_version,review_note,created_at) VALUES(?,?,'Seller','Private seller evidence','approved','seller',?,'Private seller decision','2099-01-01T00:00:00.000Z')").run(randomUUID(),owner.id,submitted.profile.revision);
   const approved = await expect('/providers/me',{account:owner});
