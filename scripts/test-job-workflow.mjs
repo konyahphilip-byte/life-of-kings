@@ -65,6 +65,17 @@ function postingSnapshot(account) {
     audit: db.prepare("SELECT * FROM audit_logs WHERE actor_id=? AND action='JOB_POSTED' ORDER BY id").all(account.id),
   };
 }
+function conversationSnapshot(jobId) {
+  return {
+    job: db.prepare('SELECT * FROM jobs WHERE id=?').get(jobId),
+    messages: db.prepare('SELECT * FROM job_messages WHERE job_id=? ORDER BY id').all(jobId),
+    // Include all message events/audits so an orphan event cannot hide behind
+    // a join to a message row that has already been rolled back.
+    events: db.prepare("SELECT * FROM domain_events WHERE event_type='MESSAGE_SENT' ORDER BY id").all(),
+    audit: db.prepare("SELECT * FROM audit_logs WHERE action='MESSAGE_SENT' ORDER BY id").all(),
+    notifications: db.prepare("SELECT * FROM notifications WHERE type='message' ORDER BY id").all(),
+  };
+}
 const act = (jobId, action, account, body = {}) => ({path: `/jobs/${jobId}/${action}`, options: {method: 'POST', account, body}});
 async function transition(jobId, action, account, status = 200, body = {}) {
   const call = act(jobId, action, account, body);
@@ -205,6 +216,82 @@ try {
   assert.deepEqual(attempts.map(item=>item.status).sort(),[200,409]); checks++;
   const raceCase = snapshot(disputedRace);
   assert.equal(raceCase.reports.length,1); assert.equal(raceCase.events.length,1); assert.equal(raceCase.audit.length,1); checks++;
+  // A failed send must commit none of the message, event, audit or notification.
+  const conversation = fixture(), closedConversation = fixture('cancelled');
+  const messagePath = `/jobs/${conversation}/messages`;
+  const send = {method:'POST',account:customer,body:{body:'Synthetic private coordination message.'}};
+  const beforeMessage = conversationSnapshot(conversation);
+  await expect(messagePath,{...send,account:undefined},401);
+  await expect(messagePath,{...send,csrf:false},403);
+  await expect(messagePath,{...send,requestOrigin:'https://untrusted.example'},403);
+  await expect(messagePath,{...send,account:outsider},404);
+  await expect(messagePath,{...send,account:staff},404);
+  await expect(`/jobs/${randomUUID()}/messages`,send,404);
+  await expect(messagePath,{...send,body:{body:''}},400);
+  await expect(`/jobs/${closedConversation}/messages`,send,409);
+  await expect(`/jobs/${closedConversation}/messages`,{...send,account:provider},409);
+  assert.deepEqual(conversationSnapshot(conversation),beforeMessage); checks++;
+
+  for(const [name,sql] of [
+    ['message_audit',"CREATE TRIGGER fail_message_audit BEFORE INSERT ON audit_logs WHEN NEW.action='MESSAGE_SENT' BEGIN SELECT RAISE(ABORT,'Synthetic message audit failure'); END"],
+    ['message_event',"CREATE TRIGGER fail_message_event BEFORE INSERT ON domain_events WHEN NEW.event_type='MESSAGE_SENT' BEGIN SELECT RAISE(ABORT,'Synthetic message event failure'); END"],
+    ['message_notification',"CREATE TRIGGER fail_message_notification BEFORE INSERT ON notifications WHEN NEW.type='message' BEGIN SELECT RAISE(ABORT,'Synthetic message notification failure'); END"],
+    ['message_insert',"CREATE TRIGGER fail_message_insert BEFORE INSERT ON job_messages BEGIN SELECT RAISE(ABORT,'Synthetic message insert failure'); END"],
+  ]) {
+    db.exec(sql);
+    await expect(messagePath,send,500);
+    assert.deepEqual(conversationSnapshot(conversation),beforeMessage,`Failed ${name} must roll back the whole send`); checks++;
+    db.exec(`DROP TRIGGER fail_${name}`);
+  }
+  const sent = await expect(messagePath,{...send,body:{...send.body,senderId:outsider.id,
+    sender_id:outsider.id,jobId:closedConversation,recipientId:outsider.id}});
+  assert.equal(sent.messages.length,1);
+  assert.equal(sent.messages[0].body,send.body.body);
+  assert.equal(sent.messages[0].sender_eco_id,'jobs.customer');
+  assert(!('sender_id' in sent.messages[0])); checks++;
+  const committedMessage = conversationSnapshot(conversation);
+  assert.equal(committedMessage.messages[0].sender_id,customer.id);
+  assert.equal(committedMessage.messages.length,1);
+  assert.equal(committedMessage.events.length-beforeMessage.events.length,1);
+  assert.equal(committedMessage.audit.length-beforeMessage.audit.length,1);
+  assert.equal(committedMessage.notifications.length-beforeMessage.notifications.length,1);
+  assert.equal(committedMessage.events[0].aggregate_id,committedMessage.messages[0].id);
+  assert.equal(committedMessage.audit[0].target_id,committedMessage.messages[0].id);
+  assert.equal(committedMessage.notifications[0].user_id,provider.id);
+  assert.equal(committedMessage.notifications[0].target_id,conversation);
+  assert.deepEqual(JSON.parse(committedMessage.events[0].details_json),{jobId:conversation});
+  assert(!committedMessage.notifications[0].body.includes(send.body.body));
+  assert.equal(db.prepare('SELECT count(*) n FROM job_messages WHERE job_id=?').get(closedConversation).n,0); checks++;
+
+  const reply = await expect(messagePath,{method:'POST',account:provider,body:{body:'Synthetic reply from the assigned provider.'}});
+  assert.equal(reply.messages.length,2);
+  assert(reply.messages.some(item=>item.sender_eco_id==='jobs.provider'));
+  assert(reply.messages.every(item=>!('sender_id' in item)));
+  const afterReply=conversationSnapshot(conversation);
+  assert.equal(afterReply.events.length,2); assert.equal(afterReply.audit.length,2);
+  assert.equal(afterReply.notifications.filter(item=>item.user_id===customer.id&&item.target_id===conversation).length,1); checks++;
+  for(const account of [customer,provider]) {
+    const visible = await expect(`/jobs/${conversation}`,{account});
+    assert.equal(visible.messages.length,2); checks++;
+  }
+  for(const account of [outsider,staff]) await expect(`/jobs/${conversation}`,{account},404);
+
+  // Local concurrent arrivals exercise allowed ordering, not hosted PG locking.
+  const cancelRace=fixture(),raceBefore=conversationSnapshot(cancelRace);
+  const [messageAttempt,cancelAttempt]=await Promise.all([
+    request(`/jobs/${cancelRace}/messages`,{method:'POST',account:provider,body:{body:'Synthetic send racing cancellation.'}}),
+    request(`/jobs/${cancelRace}/cancel`,{method:'POST',account:customer,body:{}}),
+  ]);
+  assert.equal(cancelAttempt.status,200);
+  assert([200,409].includes(messageAttempt.status));
+  const raceAfter=conversationSnapshot(cancelRace),accepted=messageAttempt.status===200?1:0;
+  assert.equal(raceAfter.job.status,'cancelled');
+  assert.equal(raceAfter.messages.length,accepted);
+  assert.equal(raceAfter.events.length-raceBefore.events.length,accepted);
+  assert.equal(raceAfter.audit.length-raceBefore.audit.length,accepted);
+  assert.equal(raceAfter.notifications.length-raceBefore.notifications.length,accepted); checks++;
+  await expect(`/jobs/${cancelRace}/messages`,{method:'POST',account:provider,body:{body:'Too late after cancellation.'}},409);
+  assert.deepEqual(conversationSnapshot(cancelRace),raceAfter); checks++;
   console.log(`PASS: ${checks} job workflow checks. Isolated SQLite, synthetic fixtures, real HTTP routes. Hosted Postgres contention/Auth/MFA not covered.`);
 } finally {
   db?.close(); child.kill('SIGTERM');
