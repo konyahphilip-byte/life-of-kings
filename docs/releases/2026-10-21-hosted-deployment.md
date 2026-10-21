@@ -28,12 +28,21 @@ Configured `/api/v1/health` in Render. Runtime logs reported `database postgres`
 
 The first smoke run passed seven checks then incorrectly expected 404 from the unknown protected API path. The existing route authenticates before its final route lookup and correctly returned 401 `sign_in_required`. Corrected the smoke assertion and reran all eight successfully; no application authorization behavior was weakened or changed.
 
-Chale status returned `configured: false`, no provider/model, and `paidFallback: false`. Both paid-use and remote-approval flags remain false. Media/live-call status also returned unconfigured. No paid inference, real payment, new account, provider submission or staff action was performed.
+Chale status returned `configured: false`, no provider/model, and `paidFallback: false`. Both paid-use and remote-approval flags remain false. Media/live-call status also returned unconfigured. No paid inference, real payment, review submission or staff decision was performed.
+
+## Authenticated account and provider checks
+
+Browser access returned and the owner-approved hosted account became visibly authenticated. A full page reload retained the signed-in identity. The owner entered credentials. Account creation and email confirmation were not independently verified; the observed result establishes hosted sign-in/session persistence, not every authentication journey.
+
+Opened Quick&Handi and Add my service. Saved a private synthetic profile named **EcoVibes QA - not accepting jobs**, explicitly described as a non-operating test service. A zero indicative price was rejected by browser validation; GHS 1 with quote-after-discussion pricing was accepted. The profile remained **unverified**. Changing the service field without saving disabled Submit for staff review. Refresh saved profile reloaded the original persisted service value and discarded the unsaved edit.
+
+An independent anonymous GET confirmed HTTP 200 with zero public providers and no QA profile; anonymous `/providers/me` returned 401. The QA profile remains private on the test account and was not submitted for staff review or offered to customers. These observations do not establish cross-account or cross-organization isolation, staff approval/MFA, or a completed booking.
+
+The approved Supabase Site URL and one exact allowed redirect are saved and visibly verified as `https://ecovibes-api.onrender.com`, with no wildcard. Confirmation/recovery email delivery and callback completion remain untested.
 
 ## Still blocked or unverified
 
-- Browser access was temporarily unavailable and later restored after the owner opened the app. The owner approved changing Supabase Site URL and exact redirect to `https://ecovibes-api.onrender.com`. Both settings are now saved and visibly verified in Supabase, with one exact allowed URL and no wildcard. This is configuration evidence, not a completed confirmation/recovery email journey.
-- The owner reported successful test sign-in, but the hosted EcoVibes tab inspected afterward still displayed **Signed out** with empty sign-in fields. Browser/account-context clarification is pending; do not record login as passed. Real hosted sign-up/email confirmation/login, session revocation, provider save/review, cross-account isolation and staff MFA still require the authenticated test workflow. Anonymous denials and local tests do not establish these journeys.
+- Real sign-up/email confirmation, session revocation, provider review/approval, cross-account/organization isolation and staff MFA still require dedicated hosted verification. The later authenticated observations supersede the initial signed-out/browser-context blocker; provider save/reload and sign-in persistence are now observed.
 - Storage configuration/access tests, account recovery and an isolated backup restore remain launch gates.
 - Payment callback, reconciliation and refund journeys remain unverified on hosting. Real merchant setup/payment activation remains gated.
 - Public Chale inference, real answer quality, quotas and availability remain gated.
