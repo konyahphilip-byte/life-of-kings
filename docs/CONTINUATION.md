@@ -22,6 +22,16 @@ The following is the historical handoff from the published baseline; its older p
 
 # EcoVibes continuation
 
+## October 21 — staging candidate includes saved-profile review guard
+
+Overlaid the two reviewed provider UI/test files and Vitest work-directory exclusion onto candidate 3bfbeee. The exact updated candidate passed **194 unit/component tests in 18 files** and its production build (1650 modules). The Communications bundle warning remains. No backend/workflow source changed; the 240 HTTP checks remain prior-candidate evidence rather than newly rerun checks. No hosted access, credential setup, publication, deployment, real model inference or payment verification occurred. Git history and source hashes exclude unpublished Games.
+
+## October 21 — verified staging candidate prepared
+
+Reconciled the Chale review branch and hosted state with the main build chat. See [the staging candidate receipt](releases/2026-10-21-staging-candidate.md). An isolated release excluding unpublished Games passed 193 unit/component tests, the production build, and 49 provider, 27 payment, 39 identity-role, 48 job, 58 support and 19 Chale HTTP checks. The current full working copy separately passed 236 tests. The ninth hosted runtime-role migration is now checked in from its byte-matched source; no database mutation was performed. Prepared automated release checks and an anonymous hosted smoke script.
+
+Owner confirmed the existing ECOVIBES Render workspace and Free service. Last deploy remains failed on old main; runtime role login is disabled. Exact private setup steps were supplied after the owner said credentials were not yet saved. Hosted sign-in, ownership/MFA, storage, real provider callbacks/refunds, backup restore and live Chale remain unverified. No inference, paid service or real payment was activated. Do not claim staging or production is live.
+
 Updated: 2026-10-11. Provider onboarding, Chale diagnostics and same-origin hosting were published to GitHub main at `e0b9f71f2f9a592430a2112d13455a920d5373da`. All eight hosted migrations are applied. Money & Trust is implemented, locally verified and committed. Paystack test refund hardening and staff reconciliation are also locally verified and committed; publication remains blocked by terminal GitHub credentials and an unresponsive connector attempt. Render deployment and hosted flow checks remain blocked on setup.
 
 Latest user steering: the October 9 **Money & Trust + Chale AI Economic Intelligence** directive adds an independent financial evidence/remittance/consent pillar. Start with a source-evidenced audit and shared financial records; preserve Marketplace, Quick&Handi, Waste and Chale. No live remittance, underwriting, lender disclosure or regulated payments may be activated without the required agreements, approvals and separate authorization. Read the source attachment at `/Users/philipkonyah/.codex/attachments/8551e8e4-f32a-4e7a-8bb9-f2cd57237e40/Pasted text.txt`. Three scoped read-only workers started auditing backend, UI and regulatory dependencies, then failed at an account usage limit. Their partial notes are not a completed audit; they made no edits. Main agent resumes directly.

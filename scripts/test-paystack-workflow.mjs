@@ -277,6 +277,37 @@ try {
   assert.equal((await webhook({ ...lateHook, data: { ...lateHook.data, retry: true } })).status, 200);
   assert.equal(count('refunds', 'order_id', late.order), 1);
   record('late charge after cancellation creates one staff review request');
+  for (const failure of ['connection', 'rejected']) {
+    const orderId = randomUUID(), stamp = new Date().toISOString();
+    database.prepare("INSERT INTO orders(id,buyer_id,total_minor,status,payment_status,created_at,updated_at) VALUES(?,?,10000,'pending','unpaid',?,?)").run(orderId, buyer.id, stamp, stamp);
+    fixtures['POST /transaction/initialize'] = { delayMs: 1500, ...(failure === 'connection' ? { throw: true } : { status: 502, body: { status: false } }) };
+    await writeFile(fixturePath, JSON.stringify(fixtures));
+    const initializing = request(`/marketplace/orders/${orderId}/pay`, { method: 'POST', account: buyer, body: { email: 'synthetic@example.test' } });
+    let payment;
+    const deadline = Date.now() + 1000;
+    while (!payment && Date.now() < deadline) {
+      payment = database.prepare('SELECT * FROM payments WHERE order_id=?').get(orderId);
+      if (!payment) await delay(10);
+    }
+    assert(payment, 'Payment reservation must exist before callback');
+    await fixture(`/transaction/verify/${payment.provider_reference}`, { id: ++nextProviderId, reference: payment.provider_reference, amount: 10000, currency: 'GHS', domain: 'test', status: 'success' });
+    assert.equal((await webhook({ event: 'charge.success', data: { reference: payment.provider_reference } })).status, 200);
+    assert.equal((await initializing).status, 502);
+    assert.equal(get('orders', orderId).payment_status, 'paid');
+    assert.equal(get('payments', payment.id).state, 'paid');
+    assert.equal((await request(`/marketplace/orders/${orderId}/pay`, { method: 'POST', account: buyer, body: { email: 'synthetic@example.test' } })).status, 409);
+    record(`capture survives delayed initialization ${failure}; another payment denied`);
+  }
+  const unresolvedOrder = randomUUID(), unresolvedStamp = new Date().toISOString();
+  database.prepare("INSERT INTO orders(id,buyer_id,total_minor,status,payment_status,created_at,updated_at) VALUES(?,?,10000,'pending','unpaid',?,?)").run(unresolvedOrder, buyer.id, unresolvedStamp, unresolvedStamp);
+  fixtures['POST /transaction/initialize'] = { throw: true };
+  await writeFile(fixturePath, JSON.stringify(fixtures));
+  const unresolvedPath = `/marketplace/orders/${unresolvedOrder}/pay`;
+  assert.equal((await request(unresolvedPath, { method: 'POST', account: buyer, body: { email: 'synthetic@example.test' } })).status, 502);
+  assert.equal(get('orders', unresolvedOrder).payment_status, 'pending');
+  assert.equal((await request(unresolvedPath, { method: 'POST', account: buyer, body: { email: 'synthetic@example.test' } })).status, 409);
+  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM payments WHERE order_id=?').get(unresolvedOrder).n, 1);
+  record('uncertain initialization without a callback preserves reservation and prevents retry');
   console.log(`Paystack workflow: ${checks.length} checks passed (isolated SQLite; mocked provider; no live payments).`);
 } finally {
   database?.close(); child.kill('SIGTERM');

@@ -1470,17 +1470,16 @@ async function route(ctx, req, res, method, path, body, query) {
     });
     let response, result;
     try {
-      response = await fetch("https://api.paystack.co/transaction/initialize", { method: "POST", headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ email, amount: order.total_minor, currency: "GHS", reference, metadata: { orderId: order.id, paymentId }, ...(process.env.PAYSTACK_CALLBACK_URL ? { callback_url: process.env.PAYSTACK_CALLBACK_URL } : {}) }) });
+      response = await fetch("https://api.paystack.co/transaction/initialize", { method: "POST", signal: AbortSignal.timeout(8000), headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ email, amount: order.total_minor, currency: "GHS", reference, metadata: { orderId: order.id, paymentId }, ...(process.env.PAYSTACK_CALLBACK_URL ? { callback_url: process.env.PAYSTACK_CALLBACK_URL } : {}) }) });
       result = await response.json();
     } catch {
-      await run("UPDATE payments SET state='failed' WHERE id=?", paymentId);
-      await run("UPDATE orders SET payment_status='unpaid',updated_at=? WHERE id=?", now(), order.id);
-      fault(502, "payment_initialization_failed", "Paystack could not be reached. You can try checkout again.");
+      // A transport/parse failure does not prove that no transaction exists.
+      // Preserve the reservation and any concurrent verified callback state.
+      fault(502, "payment_initialization_uncertain", "Checkout could not be confirmed. Do not pay again; check this order or contact support.");
     }
-    if (!response.ok || !result.status || !result.data?.authorization_url) {
-      await run("UPDATE payments SET state='failed' WHERE id=?", paymentId);
-      await run("UPDATE orders SET payment_status='unpaid',updated_at=? WHERE id=? AND payment_status='pending'", now(), order.id);
-      fault(502, "payment_initialization_failed", "Paystack could not start this test payment.");
+    if (!response.ok || result?.status !== true || !result.data?.authorization_url) {
+      // Even an error response must not overwrite a successful callback.
+      fault(502, "payment_initialization_uncertain", "Checkout could not be confirmed. Do not pay again; check this order or contact support.");
     }
     return { authorizationUrl: result.data.authorization_url, reference };
   }

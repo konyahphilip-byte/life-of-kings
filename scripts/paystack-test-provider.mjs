@@ -17,6 +17,7 @@ globalThis.fetch = async (input, options = {}) => {
   const key = `${method} ${url.pathname}`;
   appendFileSync(process.env.PAYSTACK_TEST_CAPTURE, JSON.stringify({ method, path: url.pathname }) + '\n', { mode: 0o600 });
   const fixture = fixtures[key];
+  if (fixture?.delayMs) await new Promise(resolve => setTimeout(resolve, fixture.delayMs));
   if (!fixture || fixture.throw) throw new Error('Synthetic provider connection failure');
   return Response.json(fixture.body, { status: fixture.status || 200 });
 };
