@@ -3049,6 +3049,11 @@ async function route(ctx, req, res, method, path, body, query) {
         "This conversation is closed.",
       );
       const text = inputString(body.body, "Message", { max: 1000 });
+      // One allowance across conversations; failed sends roll it back too.
+      await rateLimit(`job-message:${ctx.user.id}`, 20, 60_000, {
+        code: 'message_rate_limited',
+        message: 'You have sent several messages quickly. Wait one minute before sending another.',
+      });
       const messageId = id();
       await run(
         "INSERT INTO job_messages(id,job_id,sender_id,body,created_at) VALUES(?,?,?,?,?)",
