@@ -58,6 +58,13 @@ function snapshot(jobId) {
     learning: db.prepare('SELECT * FROM recommendation_activity_signals WHERE item_id=? ORDER BY user_id,topic').all(jobId),
   };
 }
+function postingSnapshot(account) {
+  return {
+    jobs: db.prepare('SELECT * FROM jobs WHERE customer_id=? ORDER BY id').all(account.id),
+    events: db.prepare("SELECT * FROM domain_events WHERE actor_id=? AND event_type='JOB_POSTED' ORDER BY id").all(account.id),
+    audit: db.prepare("SELECT * FROM audit_logs WHERE actor_id=? AND action='JOB_POSTED' ORDER BY id").all(account.id),
+  };
+}
 const act = (jobId, action, account, body = {}) => ({path: `/jobs/${jobId}/${action}`, options: {method: 'POST', account, body}});
 async function transition(jobId, action, account, status = 200, body = {}) {
   const call = act(jobId, action, account, body);
@@ -77,6 +84,48 @@ try {
   customer = await signup('jobs.customer'); provider = await signup('jobs.provider');
   outsider = await signup('jobs.outsider'); staff = await signup('jobs.staff');
   db.prepare("INSERT INTO staff_access(user_id,staff_role,created_at) VALUES(?,'support_staff',?)").run(staff.id,new Date().toISOString());
+
+  // Posting must commit the job and both records of its origin together.
+  // Removing that transaction leaves an open job after an HTTP 500.
+  const postBody = { title: 'Synthetic atomically posted job', description: 'Only for local job-posting failure checks.',
+    category: 'Cleaning', area: 'Tema', budgetMinor: 14000, timing: 'asap' };
+  const postingBefore = postingSnapshot(customer), outsiderBefore = postingSnapshot(outsider);
+  const post = { method: 'POST', account: customer, body: postBody };
+  await expect('/jobs', { ...post, account: undefined }, 401);
+  await expect('/jobs', { ...post, csrf: false }, 403);
+  await expect('/jobs', { ...post, requestOrigin: 'https://untrusted.example' }, 403);
+  assert.deepEqual(postingSnapshot(customer), postingBefore); checks++;
+
+  db.exec("CREATE TRIGGER fail_posted_job_audit BEFORE INSERT ON audit_logs WHEN NEW.action='JOB_POSTED' BEGIN SELECT RAISE(ABORT,'Synthetic posting audit failure'); END");
+  await expect('/jobs', post, 500);
+  assert.deepEqual(postingSnapshot(customer), postingBefore, 'A failed posting audit must not leave a job or domain event'); checks++;
+  db.exec('DROP TRIGGER fail_posted_job_audit');
+  db.exec("CREATE TRIGGER fail_posted_job_event BEFORE INSERT ON domain_events WHEN NEW.event_type='JOB_POSTED' BEGIN SELECT RAISE(ABORT,'Synthetic posting event failure'); END");
+  await expect('/jobs', post, 500);
+  assert.deepEqual(postingSnapshot(customer), postingBefore, 'A failed posting event must not leave an unaudited job'); checks++;
+  db.exec('DROP TRIGGER fail_posted_job_event');
+  db.exec("CREATE TRIGGER fail_posted_job_insert BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT,'Synthetic job insertion failure'); END");
+  await expect('/jobs', post, 500);
+  assert.deepEqual(postingSnapshot(customer), postingBefore); checks++;
+  db.exec('DROP TRIGGER fail_posted_job_insert');
+
+  const posted = await expect('/jobs', { ...post, body: { ...postBody, customerId: outsider.id,
+    customer_id: outsider.id, assignedProviderId: provider.id, status: 'completed' } });
+  assert.equal(posted.customer_eco_id, 'jobs.customer'); assert.equal(posted.status, 'open');
+  assert.equal(posted.assigned_provider_eco_id, null);
+  assert(!('customer_id' in posted)); assert(!('assigned_provider_id' in posted));
+  const postingAfter = postingSnapshot(customer);
+  assert.equal(postingAfter.jobs.length - postingBefore.jobs.length, 1);
+  assert.equal(postingAfter.events.length - postingBefore.events.length, 1);
+  assert.equal(postingAfter.audit.length - postingBefore.audit.length, 1);
+  assert.equal(postingAfter.jobs[0].customer_id, customer.id);
+  assert.equal(postingAfter.jobs[0].assigned_provider_id, null);
+  assert.equal(postingAfter.events[0].aggregate_id, posted.id);
+  assert.equal(postingAfter.audit[0].target_id, posted.id);
+  assert.deepEqual(postingSnapshot(outsider), outsiderBefore); checks++;
+  assert.equal((await expect(`/jobs/${posted.id}`, { account: customer })).id, posted.id);
+  assert((await expect('/jobs', { account: customer })).some(item => item.id === posted.id)); checks++;
+
   const jobId = fixture();
   await transition(jobId,'start',undefined,401);
   const start = act(jobId,'start',provider);
