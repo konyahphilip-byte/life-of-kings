@@ -356,7 +356,8 @@ describe('canonical app guide', () => {
     assert.equal(CHALE_GUIDE.entries.find((entry) => entry.id === 'wallet').availability, 'preview');
     assert.equal(CHALE_GUIDE.entries.find((entry) => entry.id === 'calls-live').availability, 'provider_required');
     assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'support').steps.join(' '), /Trust & inbox/);
-    assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'messages').summary, /does not deliver/);
+    assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'messages').summary, /cannot send or receive/);
+    assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'messages').summary, /sending disabled/);
   });
 
   it('finds useful module guides and leaves unmatched features without invented instructions', () => {

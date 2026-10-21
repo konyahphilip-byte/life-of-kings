@@ -1,10 +1,11 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
 vi.mock('./HomeDepth', () => ({ default: () => null }));
 vi.mock('./Communications', () => ({ default: () => null }));
 vi.mock('./assistant/Sidekick', () => ({ default: () => null }));
+vi.mock('./backend/BackendWorkspace', () => ({ default: () => <div>Account workspace test surface</div> }));
 vi.mock('./SocialHub', () => ({
   PeopleToFollow: () => null,
   ReelsPage: () => null,
@@ -24,6 +25,7 @@ describe('EcoVibes ID app-shell integration', () => {
   beforeEach(() => {
     signedIn = true;
     localStorage.clear();
+    sessionStorage.clear();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), window.location.origin).pathname;
       if (path.endsWith('/auth/me')) {
@@ -68,5 +70,26 @@ describe('EcoVibes ID app-shell integration', () => {
     await waitFor(() => expect(screen.getByText('Create your EcoVibes ID')).toBeTruthy());
     act(() => window.dispatchEvent(new CustomEvent('ecovibes:navigate', { detail: 'Profile' })));
     expect(await screen.findByRole('heading', { name: 'Guest preview' })).toBeTruthy();
+  });
+
+  it('identifies unavailable direct messaging without a fabricated unread count or active composer', async () => {
+    render(<App />);
+    await screen.findByText('@ama.serwaa');
+    act(() => window.dispatchEvent(new CustomEvent('ecovibes:navigate', { detail: 'Messages' })));
+
+    expect(await screen.findByText('Direct messages are not connected')).toBeTruthy();
+    expect(document.querySelector('.nav-count')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Write a message' })).toBeNull();
+    expect(screen.queryByText('Esi Owusu')).toBeNull();
+  });
+
+  it('opens the existing authorized job-conversation workspace from Messages', async () => {
+    render(<App />);
+    await screen.findByText('@ama.serwaa');
+    act(() => window.dispatchEvent(new CustomEvent('ecovibes:navigate', { detail: 'Messages' })));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open job conversations' }));
+
+    expect(await screen.findByText('Account workspace test surface')).toBeTruthy();
+    expect(sessionStorage.getItem('ecovibes:workspace-area')).toBe('jobs');
   });
 });

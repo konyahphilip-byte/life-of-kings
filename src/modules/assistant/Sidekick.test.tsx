@@ -170,6 +170,18 @@ describe('Chale AI app integration', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/ai/chat'))).toHaveLength(1);
   });
 
+  it('keeps messaging guidance honest when inference is unavailable', async () => {
+    mockFetch((path) => path.endsWith('/ai/chat')
+      ? response({ error: { code: 'ai_unavailable' } }, 503)
+      : response({ configured: false, enabled: false }));
+    render(<Sidekick {...props} page="Messages"/>); openPanel(); ask('How do I send a message about my job?');
+    const messages = appGuides.find(entry => entry.id === 'messages')!;
+    expect(await screen.findByText(messages.summary)).toBeTruthy();
+    expect(screen.getByText('App guide')).toBeTruthy();
+    expect(screen.getByText(/Choose Open job conversations/)).toBeTruthy();
+    expect(screen.queryByText('Message sent')).toBeNull();
+  });
+
   it('records only explicit listing signals with enabled consent, UUID, cookies and CSRF', async () => {
     const fetchMock = mockFetch((path) => path.endsWith('/ai/chat')
       ? response({ text: 'Here is a public listing.', items: [product, { ...product, id: 'sample-product', title: 'Sample item' }] })

@@ -1,0 +1,20 @@
+.connect-inbox{display:grid;gap:20px;max-width:1050px}
+.connect-inbox .page-title-row{margin-bottom:0}
+.connect-availability,.connect-job-conversations{display:flex;gap:20px;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--paper)}
+.connect-availability>svg{color:var(--green);flex:none;margin-top:4px}
+.connect-label{font-size:10px;letter-spacing:1px;font-weight:700;color:var(--muted)}
+.connect-inbox h2{margin:8px 0;font-size:20px;letter-spacing:-.5px;line-height:1.35}
+.connect-inbox p{font-size:13px;line-height:1.7;color:var(--muted);margin:7px 0}
+.connect-job-conversations{align-items:center;justify-content:space-between}
+.connect-job-conversations>div{max-width:620px;min-width:0}
+.connect-job-conversations>.button{flex:none;white-space:nowrap;min-height:44px}
+.connect-inbox .connect-privacy{display:flex;align-items:flex-start;gap:8px;margin-top:14px}
+.connect-privacy svg{flex:none;margin-top:3px}
+.connect-preview-toggle{justify-self:start;min-height:44px;padding:9px 0;background:transparent;border:0;color:var(--green);font-size:13px;text-decoration:underline;text-underline-offset:4px}
+.connect-sample-notice{padding:14px 18px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.connect-preview .conversation>small{font-size:10px;color:var(--muted)}
+.connect-preview .messages-layout{margin-top:16px}
+.connect-preview .chat-compose input{min-width:0}
+.theme-dark .connect-preview-toggle,.theme-dark .connect-availability>svg{color:var(--lime)}
+@media(max-width:850px){.connect-job-conversations{align-items:flex-start;flex-direction:column}.connect-job-conversations>.button{white-space:normal}}
+@media(max-width:600px){.connect-availability,.connect-job-conversations{padding:18px;gap:12px}.connect-inbox h2{font-size:18px}.connect-preview .messages-layout{display:flex;flex-direction:column}.connect-preview .conversation-list{border-right:0;border-bottom:1px solid var(--line)}.connect-preview .conversation{min-height:56px}.connect-preview .chat-body{min-height:180px}.connect-job-conversations>.button{width:100%;justify-content:center}}

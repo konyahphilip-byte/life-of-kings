@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-09-money-trust",
+  "version": "2026-10-21-connect-availability",
   "entries": [
     {
       "id": "home",
@@ -323,10 +323,10 @@
       "title": "Understand Messages and job conversations",
       "destination": "Messages",
       "availability": "preview",
-      "summary": "The main Messages page contains sample conversations. Its Send control does not deliver a message. Actual job participant messages are in the signed-in Quick&Handi workspace and require ownership or assignment.",
+      "summary": "EcoVibes Connect's main Messages page cannot send or receive direct messages. Its optional sample conversations are explicitly read-only, with sending disabled and no real unread or presence claims. Actual job participant messages are in EcoVibes ID → Quick&Handi and require ownership or assignment.",
       "steps": [
-        "Open Messages to inspect the conversation preview.",
-        "To contact the other participant in a shared job, open EcoVibes ID → Quick&Handi and locate your own or assigned job.",
+        "Open Messages to check availability. View sample conversations opens a read-only fictional preview; it does not send messages.",
+        "Choose Open job conversations to reach EcoVibes ID → Quick&Handi, sign in if needed, and locate your own or assigned job. If the shortcut is unavailable, open that workspace manually.",
         "Review the participant and text before using that job's Send control. Chale only drafts text and never sends it."
       ],
       "keywords": [
