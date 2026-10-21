@@ -22,3 +22,13 @@ No application environment, real credentials, hosted account or production datab
 ## Release boundaries
 
 Only the posting route was ported onto the published server; unrelated dirty source and unpublished Games remain preserved. No hosted failure injection is authorized by this receipt. Real Chale inference, recovery/revocation, staff MFA/review, cross-account/organization isolation, storage/restore and payment/refund verification remain launch gates.
+
+## Publication and deployment
+
+The exact three-file candidate was published as `589d13395c0e71116f6846fc3ba1ba92cbde64f6`, tree `235923f61ba8163941b171ca328742a48d7ab56a`, in [PR #4](https://github.com/konyahphilip-byte/life-of-kings/pull/4). Each uploaded blob matched its local Git hash and the complete remote tree comparison showed only those three files, with no deletions. The existing provider and support HTTP workflows additionally passed **52** and **58** checks locally.
+
+[PR release checks 39690511989](https://github.com/konyahphilip-byte/life-of-kings/actions/runs/39690511989) passed. The expected-head guarded merge produced `c5a17d01f0cb75054c99a11ca121259a23ab8403`, whose tree independently matched the verified candidate. [Main release checks 39690696932](https://github.com/konyahphilip-byte/life-of-kings/actions/runs/39690696932) also passed for that exact merge commit.
+
+The existing approved Free `ecovibes-api` service deployed this commit as **dep-dbck8vrncjis73cnp6n0**, **live at 2026-10-21 23:03:23 UTC**. Auto-deploy remains off; no service settings, environment variables, credentials, grants or migrations changed. All **8 anonymous hosted checks passed**, including Postgres health and protected-route authentication denial. The post-live application error-level log query returned no entries in its bounded window.
+
+No hosted job was created and no production failure was injected. The live-source/deployment checks do not turn the local rollback tests into PostgreSQL fault/concurrency evidence or a completed booking/payment journey. No browser screenshot or live model request was needed for this backend-only release. The launch gates above remain open.
