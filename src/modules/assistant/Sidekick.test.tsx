@@ -54,6 +54,22 @@ describe('Chale AI app integration', () => {
     expect(String(init?.body)).not.toContain('account-a');
   });
 
+  it('shows the local model disclosure and member allowance without claiming a live health check', async () => {
+    mockFetch(() => response({ configured: true, hosting: 'local', dailyRequests: 20, guestDailyRequests: 5 }));
+    render(<Sidekick {...props}/>); openPanel();
+    await screen.findByText('Model configured');
+    expect(screen.getByText(/model on the EcoVibes server/).textContent).toContain('20 requests per day');
+    expect(screen.getByText(/model on the EcoVibes server/).textContent).toContain('Failed or busy attempts count');
+  });
+
+  it('explains the free allowance limit while retaining usable app guidance', async () => {
+    mockFetch((path) => path.endsWith('/ai/chat') ? response({ error: { code: 'ai_daily_limit' } }, 429) : response({ configured: true }));
+    render(<Sidekick {...props}/>); openPanel(); ask('How do I request waste collection?');
+    await screen.findByText(/Today’s free Chale allowance has been used/);
+    expect(screen.getByText(/It resets at 00:00 UTC/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Open Waste' }).length).toBeGreaterThan(0);
+  });
+
   it('describes its EcoVibes scope and reports configuration without claiming live availability', async () => {
     render(<Sidekick {...props}/>); openPanel();
     expect(screen.getByText(/your EcoVibes assistant/)).toBeTruthy();

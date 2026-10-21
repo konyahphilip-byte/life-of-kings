@@ -29,10 +29,12 @@ describe('Chale app workflow', () => {
   let environment;
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    environment = { AI_PROVIDER_KEY: process.env.AI_PROVIDER_KEY, OPENAI_API_KEY: process.env.OPENAI_API_KEY, AI_MODEL: process.env.AI_MODEL };
+    environment = { CHALE_PROVIDER: process.env.CHALE_PROVIDER, CHALE_ALLOW_PAID: process.env.CHALE_ALLOW_PAID, AI_PROVIDER_KEY: process.env.AI_PROVIDER_KEY, OPENAI_API_KEY: process.env.OPENAI_API_KEY, AI_MODEL: process.env.AI_MODEL };
     process.env.AI_PROVIDER_KEY = 'test-key-only';
     delete process.env.OPENAI_API_KEY;
-    delete process.env.AI_MODEL;
+    process.env.AI_MODEL = 'fixture-model';
+    process.env.CHALE_PROVIDER = 'openai';
+    process.env.CHALE_ALLOW_PAID = 'true';
     requests = [];
   });
   afterEach(() => {
@@ -48,7 +50,7 @@ describe('Chale app workflow', () => {
     assert.equal(requests.length, 1);
     assert.equal(requests[0].url, 'https://api.openai.com/v1/responses');
     assert.equal(requests[0].headers.Authorization, 'Bearer test-key-only');
-    assert.equal(requests[0].body.model, 'gpt-6-astra');
+    assert.equal(requests[0].body.model, 'fixture-model');
     assert.equal(requests[0].body.store, false);
     assert.equal(requests[0].body.max_output_tokens, 700);
     assert.equal(requests[0].body.parallel_tool_calls, true);

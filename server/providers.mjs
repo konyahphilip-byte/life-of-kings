@@ -31,6 +31,25 @@ export function createProviderService({ q, all, run, transaction, assert, inputS
     if (!row?.service_json) return null;
     return asProfile(row);
   };
+  const ownerProfile = async (userId) => {
+    // One statement keeps the profile and its current review in one snapshot.
+    // Feedback is applicant-facing (also sent in the verification notification).
+    // Keep it separate from the public profile projection and exclude evidence/staff IDs.
+    const row = await q(`SELECT p.*,u.eco_id,v.id review_id,v.status review_status,
+      v.review_note,v.created_at submitted_at,v.reviewed_at
+      FROM provider_profiles p JOIN users u ON u.id=p.user_id
+      LEFT JOIN verification_requests v ON v.id=(
+        SELECT r.id FROM verification_requests r WHERE r.user_id=p.user_id
+        AND r.target_role='provider' AND r.profile_version=p.revision
+        AND r.status=p.verification_state AND r.status IN ('pending','approved','rejected')
+        ORDER BY r.created_at DESC,r.id DESC LIMIT 1
+      ) WHERE p.user_id=?`, userId);
+    if (!row?.service_json) return { profile: null, review: null };
+    return { profile: asProfile(row), review: row.review_id ? {
+      status: row.review_status, feedback: row.review_status === 'pending' ? null : row.review_note,
+      submittedAt: row.submitted_at, reviewedAt: row.reviewed_at,
+    } : null };
+  };
   const invalidate = async (userId) => {
     await run("UPDATE provider_profiles SET verification_state='unverified',revision=revision+1,updated_at=? WHERE user_id=?", now(), userId);
     await run("UPDATE verification_requests SET status='rejected',review_note='Profile changed. Submit the updated details for review.',reviewed_at=? WHERE user_id=? AND target_role='provider' AND status='pending'", now(), userId);
@@ -64,7 +83,7 @@ export function createProviderService({ q, all, run, transaction, assert, inputS
       }
       if (!['/providers/me','/providers/me/submit'].includes(path)) return undefined;
       assert(ctx.user, 401, 'sign_in_required', 'Sign in with your EcoVibes ID to manage your service.');
-      if (method === 'GET' && path === '/providers/me') return { profile: await profile(ctx.user.id) };
+      if (method === 'GET' && path === '/providers/me') return ownerProfile(ctx.user.id);
       if (method === 'PUT' && path === '/providers/me') {
         const value = providerInput(body, { assert, inputString, validMinor });
         await rateLimit(`provider-save:${ctx.user.id}`, 30, 60 * 60_000);
@@ -80,13 +99,13 @@ export function createProviderService({ q, all, run, transaction, assert, inputS
             await run('UPDATE provider_profiles SET business_name=?,provider_type=?,service_area=?,service_json=? WHERE user_id=?', value.name, value.providerType, value.area, serialized, ctx.user.id);
             await event(ctx.user.id, 'provider', ctx.user.id, 'PROVIDER_PROFILE_SAVED');
           }
-          return { profile: await profile(ctx.user.id) };
+          return ownerProfile(ctx.user.id);
         });
       }
       if (method === 'POST' && path === '/providers/me/submit') {
         assert(await profile(ctx.user.id), 409, 'profile_required', 'Save your service profile first.');
         const verification = await submit(ctx, body, 'provider', 'Service provider');
-        return { profile: await profile(ctx.user.id), verification };
+        return { ...await ownerProfile(ctx.user.id), verification };
       }
     },
   };

@@ -13,6 +13,8 @@ The API is configured for private Supabase Postgres. The browser talks to the AP
 
 The API needs the database connection string as `DATABASE_URL`. For Render's IPv4 service, use Supabase's shared **session pooler** connection (port 5432); use the direct connection only when your host has IPv6 or you have enabled Supabase's IPv4 add-on. Do not use the browser-facing Supabase anon key for the server database connection. [Supabase documents the connection modes and IP support here](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
+For the existing project, migration `20261021025748_stage_ecovibes_api_runtime_access` has already staged `ecovibes_api_runtime` with login disabled. Its source is checked in byte-for-byte against the hosted migration history. Enable login and set the password privately in Supabase, preserving its existing grants, then save the connection string only in Render's `DATABASE_URL` setting. For the shared session pooler, use username `ecovibes_api_runtime.poscxeapsaxuahausmoc`, the exact host from **Connect**, port 5432 and database `postgres`. Percent-encode reserved characters in the password. Never grant this role superuser, BYPASSRLS, schema ownership or browser access to resolve a connection problem.
+
 ## 2. Deploy API and web app together on Render
 
 The default deployment serves the built web app and API from one Render web service. This keeps the HttpOnly `SameSite=Lax` login cookie on the same origin; separate `*.onrender.com` sites are not interchangeable cookie sites. The browser calls relative `/api/v1` URLs. Do not deploy the old separate-site blueprint and assume CORS alone fixes login. Render supports this Node web-service pattern ([documentation](https://render.com/docs/web-services)).
@@ -27,6 +29,8 @@ The default deployment serves the built web app and API from one Render web serv
 8. Deploy the service. Use the actual hostname assigned by Render: `/` must return the app and `/api/v1/health` must return API health. Set `APP_ORIGINS` and Supabase Auth redirects to this same actual origin, then redeploy if the hostname differs from the blueprint example. Missing files must return 404, API errors must remain JSON, and the web app must sign in and reload successfully with third-party cookies disabled.
 9. Sign in with each staff ID and open staff review. Production asks staff to enroll or verify a TOTP authenticator; confirm that an AAL1 staff session is denied by the API and that the verified AAL2 session can reach only its role-appropriate queue. Grant trust/support roles through the server-owned `staff_access` table using the API's internal `users.id`; do not grant staff access from browser metadata.
 10. If you attach a custom web domain, update the API's `APP_ORIGINS` value and the Supabase redirect allow-list to that exact origin. Also update the Shopify callback URL if the API domain changes.
+
+After a deploy reaches `live`, run `node scripts/check-hosted-release.mjs https://ecovibes-api.onrender.com`. This read-only check requires Postgres health, the app shell, security headers, approved-provider discovery, anonymous account/staff denials and correct missing-route behavior. It sends no credentials and creates no users, payments or AI requests. Passing it is only the anonymous smoke check; the sign-in, recovery, staff MFA, ownership, storage, payment and restore checks above remain required.
 
 ## 3. Backups, restore and monitoring
 

@@ -11,6 +11,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_EXTRA_CA_CERTS
+        value: ./server/certs/supabase-prod-ca-2021.crt
       - key: ECOVIBES_SERVE_WEB
         value: "true"
       - key: VITE_API_URL

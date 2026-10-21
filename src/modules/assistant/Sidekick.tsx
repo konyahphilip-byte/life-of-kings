@@ -23,7 +23,7 @@ type ChatEntry = {
   id: number; role: 'assistant' | 'user'; text: string; pending?: boolean;
   source?: 'model' | 'app_guide'; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
 };
-type AIStatus = { configured: boolean; unavailable?: boolean };
+type AIStatus = { configured: boolean; unavailable?: boolean; hosting?: 'local' | 'remote'; allowance?: number };
 type LearningState = { enabled: boolean };
 type Props = {
   onNavigate: (page: AssistantDestination) => void;
@@ -209,7 +209,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
         if (!response.ok) throw new Error('AI unavailable');
         return jsonResponse(response);
       })
-      .then((payload) => { if (!controller.signal.aborted) setAiStatus({ configured: payload.configured === true, unavailable: false }); })
+      .then((payload) => { if (!controller.signal.aborted) setAiStatus({ configured: payload.configured === true, unavailable: false, hosting: payload.hosting === 'local' ? 'local' : payload.hosting === 'remote' ? 'remote' : undefined, allowance: Number.isInteger(userId ? payload.dailyRequests : payload.guestDailyRequests) ? Number(userId ? payload.dailyRequests : payload.guestDailyRequests) : undefined }); })
       .catch(() => { if (!controller.signal.aborted) setAiStatus({ configured: false, unavailable: true }); })
       .finally(() => clearTimeout(timer));
     return () => { clearTimeout(timer); controller.abort(); };
@@ -320,7 +320,10 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       } else {
         const code = isRecord(payload.error) ? payload.error.code : null;
         setAiStatus({ configured: code !== 'ai_not_configured', unavailable: code !== 'ai_not_configured' });
-        reply.text = 'Live Chale AI is unavailable right now. Here are verified app steps you can use while we find the next way forward.';
+        reply.text = code === 'ai_daily_limit'
+          ? 'Today’s free Chale allowance has been used. It resets at 00:00 UTC. You can keep using these app steps.'
+          : code === 'ai_busy' ? 'Chale is helping someone else. Please try again shortly. These app steps are available now.'
+          : 'Live Chale AI is unavailable right now. Here are verified app steps you can use while we find the next way forward.';
         needsCatalog = /\b(find|search|product|buy|job|service|listing|shop)\b/i.test(query);
       }
     } catch {
@@ -462,7 +465,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
         <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask about EcoVibes or an app problem" aria-label="Ask Chale AI" maxLength={1200}/>
         {busy ? <button type="button" className="chale-stop" aria-label="Stop answer" onClick={() => chatRequest.current?.controller.abort('stopped')}><X size={17}/></button> : <button disabled={!draft.trim()} aria-label="Send question"><ArrowUp size={17}/></button>}
       </form>
-      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : 'Live replies share recent messages, safe app context and public listing details with OpenAI. Keep passwords and payment codes private. Review drafts before sharing.'}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p>
+      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : `Live replies use recent messages, safe app context and public listings with ${aiStatus?.hosting === 'local' ? 'the model on the EcoVibes server' : 'the configured model service'}. Keep passwords and payment codes private. Review drafts before sharing.${aiStatus?.allowance ? ` Free allowance: ${aiStatus.allowance} requests per day, resetting at 00:00 UTC. Failed or busy attempts count.` : ''}`}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p>
     </section>}
   </>;
 }
