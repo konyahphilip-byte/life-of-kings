@@ -2767,22 +2767,25 @@ async function route(ctx, req, res, method, path, body, query) {
         : null;
     const jobId = id(),
       stamp = now();
-    await run(
-      "INSERT INTO jobs(id,customer_id,category,title,description,area,budget_minor,timing,scheduled_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-      jobId,
-      ctx.user.id,
-      category,
-      title,
-      description,
-      area,
-      budget,
-      timing,
-      scheduled,
-      stamp,
-      stamp,
-    );
-    await event(ctx.user.id, "job", jobId, "JOB_POSTED", { title, area });
-    return visibleJob(await getJob(jobId), ctx);
+    return transaction(async () => {
+      // A reported failure must not leave an open job without its audit record.
+      await run(
+        "INSERT INTO jobs(id,customer_id,category,title,description,area,budget_minor,timing,scheduled_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        jobId,
+        ctx.user.id,
+        category,
+        title,
+        description,
+        area,
+        budget,
+        timing,
+        scheduled,
+        stamp,
+        stamp,
+      );
+      await event(ctx.user.id, "job", jobId, "JOB_POSTED", { title, area });
+      return visibleJob(await getJob(jobId), ctx);
+    });
   }
   match = path.match(/^\/jobs\/([a-f0-9-]+)$/);
   if (method === "GET" && match) {
