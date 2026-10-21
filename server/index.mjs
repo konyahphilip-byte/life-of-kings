@@ -3031,48 +3031,51 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   match = path.match(/^\/jobs\/([a-f0-9-]+)\/messages$/);
   if (method === "POST" && match) {
-    const job = await getJob(match[1]);
-    assert(
-      job &&
-        (job.customer_id === ctx.user.id ||
-          job.assigned_provider_id === ctx.user.id),
-      404,
-      "not_found",
-      "Job conversation not found.",
-    );
-    assert(
-      !["cancelled"].includes(job.status),
-      409,
-      "conversation_closed",
-      "This conversation is closed.",
-    );
-    const text = inputString(body.body, "Message", { max: 1000 });
-    const messageId = id();
-    await run(
-      "INSERT INTO job_messages(id,job_id,sender_id,body,created_at) VALUES(?,?,?,?,?)",
-      messageId,
-      job.id,
-      ctx.user.id,
-      text,
-      now(),
-    );
-    await event(ctx.user.id, "job_message", messageId, "MESSAGE_SENT", {
-      jobId: job.id,
-    });
-    const other =
-      job.customer_id === ctx.user.id
-        ? job.assigned_provider_id
-        : job.customer_id;
-    if (other)
-      await notify(
-        other,
-        "message",
-        "New Quick&Handi message",
-        `@${ctx.user.eco_id} sent a message.`,
-        "job",
-        job.id,
+    return transaction(async () => {
+      // Share the transition lock so cancellation cannot overtake authorization.
+      const job = await q(`SELECT * FROM jobs WHERE id=?${postgresMode ? ' FOR UPDATE' : ''}`, match[1]);
+      assert(
+        job &&
+          (job.customer_id === ctx.user.id ||
+            job.assigned_provider_id === ctx.user.id),
+        404,
+        "not_found",
+        "Job conversation not found.",
       );
-    return visibleJob(await getJob(job.id), ctx);
+      assert(
+        !["cancelled"].includes(job.status),
+        409,
+        "conversation_closed",
+        "This conversation is closed.",
+      );
+      const text = inputString(body.body, "Message", { max: 1000 });
+      const messageId = id();
+      await run(
+        "INSERT INTO job_messages(id,job_id,sender_id,body,created_at) VALUES(?,?,?,?,?)",
+        messageId,
+        job.id,
+        ctx.user.id,
+        text,
+        now(),
+      );
+      await event(ctx.user.id, "job_message", messageId, "MESSAGE_SENT", {
+        jobId: job.id,
+      });
+      const other =
+        job.customer_id === ctx.user.id
+          ? job.assigned_provider_id
+          : job.customer_id;
+      if (other)
+        await notify(
+          other,
+          "message",
+          "New Quick&Handi message",
+          `@${ctx.user.eco_id} sent a message.`,
+          "job",
+          job.id,
+        );
+      return visibleJob(await getJob(job.id), ctx);
+    });
   }
   if (method === "GET" && path === "/search") {
     const text = String(query.get("q") || "")
