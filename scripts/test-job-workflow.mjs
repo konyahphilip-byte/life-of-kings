@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 // No application .env, hosted account or production database is loaded.
 const temp = await mkdtemp(resolve(tmpdir(), 'ecovibes-jobs-'));
@@ -74,6 +74,7 @@ function conversationSnapshot(jobId) {
     events: db.prepare("SELECT * FROM domain_events WHERE event_type='MESSAGE_SENT' ORDER BY id").all(),
     audit: db.prepare("SELECT * FROM audit_logs WHERE action='MESSAGE_SENT' ORDER BY id").all(),
     notifications: db.prepare("SELECT * FROM notifications WHERE type='message' ORDER BY id").all(),
+    limits: db.prepare('SELECT * FROM rate_limit_buckets ORDER BY bucket_key').all(),
   };
 }
 const act = (jobId, action, account, body = {}) => ({path: `/jobs/${jobId}/${action}`, options: {method: 'POST', account, body}});
@@ -292,6 +293,54 @@ try {
   assert.equal(raceAfter.notifications.length-raceBefore.notifications.length,accepted); checks++;
   await expect(`/jobs/${cancelRace}/messages`,{method:'POST',account:provider,body:{body:'Too late after cancellation.'}},409);
   assert.deepEqual(conversationSnapshot(cancelRace),raceAfter); checks++;
+
+  // Removing the account-wide send limit permits unbounded message/notice spam.
+  // Use the real HTTP route; expire only synthetic buckets rather than sleeping.
+  db.exec('DELETE FROM rate_limit_buckets');
+  const limitedJob=fixture(),anotherJob=fixture();
+  const limitedPath=`/jobs/${limitedJob}/messages`;
+  const limitedSend={method:'POST',account:customer,body:{body:'Synthetic bounded job message.'}};
+  const beforeInvalid=conversationSnapshot(limitedJob);
+  await expect(limitedPath,{...limitedSend,account:outsider},404);
+  await expect(limitedPath,{...limitedSend,account:staff},404);
+  await expect(limitedPath,{...limitedSend,csrf:false},403);
+  await expect(limitedPath,{...limitedSend,body:{body:''}},400);
+  assert.deepEqual(conversationSnapshot(limitedJob),beforeInvalid,'Denied or invalid sends must not consume a message allowance'); checks++;
+  for(let n=0;n<20;n++) await expect(limitedPath,limitedSend);
+  const atLimit=conversationSnapshot(limitedJob);
+  assert.equal(atLimit.messages.length,20); checks++;
+  const blocked=await request(limitedPath,limitedSend);
+  assert.equal(blocked.status,429,'The twenty-first send in one minute must be denied');
+  assert.equal(blocked.data.error.code,'message_rate_limited'); checks++;
+  assert.deepEqual(conversationSnapshot(limitedJob),atLimit,'A throttled send must create no message, event, audit or notification'); checks++;
+  const otherJobBefore=conversationSnapshot(anotherJob);
+  await expect(`/jobs/${anotherJob}/messages`,limitedSend,429);
+  await expect(`/jobs/${anotherJob}/messages`,{...limitedSend,body:{body:'Synthetic spoofed identity.',senderId:outsider.id,userId:outsider.id}},429);
+  assert.deepEqual(conversationSnapshot(anotherJob),otherJobBefore,'Changing jobs or claimed sender must not bypass the account allowance'); checks++;
+  await expect(limitedPath,{...limitedSend,account:provider});
+  assert.equal(db.prepare('SELECT count(*) n FROM job_messages WHERE job_id=? AND sender_id=?').get(limitedJob,provider.id).n,1); checks++;
+  const customerBucket=createHash('sha256').update(`ecovibes:rate-limit:job-message:${customer.id}`).digest('hex');
+  const providerBucket=createHash('sha256').update(`ecovibes:rate-limit:job-message:${provider.id}`).digest('hex');
+  const providerBudget=db.prepare('SELECT * FROM rate_limit_buckets WHERE bucket_key=?').get(providerBucket);
+  assert.equal(providerBudget?.hits,1); checks++;
+  db.prepare('UPDATE rate_limit_buckets SET expires_at=? WHERE bucket_key=?').run('2000-01-01T00:00:00.000Z',customerBucket);
+  await expect(`/jobs/${anotherJob}/messages`,limitedSend);
+  assert.equal(db.prepare('SELECT hits FROM rate_limit_buckets WHERE bucket_key=?').get(customerBucket).hits,1);
+  assert.deepEqual(db.prepare('SELECT * FROM rate_limit_buckets WHERE bucket_key=?').get(providerBucket),providerBudget); checks++;
+  db.prepare('UPDATE rate_limit_buckets SET hits=19 WHERE bucket_key=?').run(customerBucket);
+  const beforeShared=conversationSnapshot(limitedJob);
+  const otherMessagesBefore=db.prepare('SELECT count(*) n FROM job_messages WHERE job_id=?').get(anotherJob).n;
+  const shared=await Promise.all([request(limitedPath,limitedSend),request(`/jobs/${anotherJob}/messages`,limitedSend)]);
+  assert.deepEqual(shared.map(item=>item.status).sort(),[200,429]);
+  const afterShared=conversationSnapshot(limitedJob);
+  const otherMessagesAfter=db.prepare('SELECT count(*) n FROM job_messages WHERE job_id=?').get(anotherJob).n;
+  assert.equal(afterShared.messages.length-beforeShared.messages.length+otherMessagesAfter-otherMessagesBefore,1);
+  assert.equal(afterShared.events.length-beforeShared.events.length,1);
+  assert.equal(afterShared.audit.length-beforeShared.audit.length,1);
+  assert.equal(afterShared.notifications.length-beforeShared.notifications.length,1);
+  assert.equal(db.prepare('SELECT hits FROM rate_limit_buckets WHERE bucket_key=?').get(customerBucket).hits,20); checks++;
+  await expect(limitedPath,limitedSend,429);
+  assert.deepEqual(conversationSnapshot(limitedJob),afterShared); checks++;
   console.log(`PASS: ${checks} job workflow checks. Isolated SQLite, synthetic fixtures, real HTTP routes. Hosted Postgres contention/Auth/MFA not covered.`);
 } finally {
   db?.close(); child.kill('SIGTERM');
