@@ -50,7 +50,40 @@ function App(){
  useEffect(()=>{if(storageOwnerRef.current!==storageOwner)return;try{localStorage.setItem(storageOwner?`${sellerProductsKey}:account:${storageOwner}`:sellerProductsKey,JSON.stringify(sellerProducts))}catch{/* Keep marketplace preview usable when storage is unavailable. */}},[sellerProducts,storageOwner]);
  useEffect(()=>{const up=()=>setOnline(true),down=()=>setOnline(false);window.addEventListener('online',up);window.addEventListener('offline',down);return()=>{window.removeEventListener('online',up);window.removeEventListener('offline',down)}},[]);
  useEffect(()=>{if(page!=='Home'||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;const region=document.querySelector('.home-layout');if(!region)return;const selector='.quick-card,.quickhandi-home-card';const reset=(card:Element)=>{const el=card as HTMLElement;el.style.setProperty('--card-tilt-x','0deg');el.style.setProperty('--card-tilt-y','0deg');el.style.setProperty('--shine-x','50%');el.style.setProperty('--shine-y','0%');};const move=(event:Event)=>{const pointer=event as PointerEvent;const card=(pointer.target as Element|null)?.closest(selector) as HTMLElement|null;if(!card||!region.contains(card))return;const rect=card.getBoundingClientRect();const x=(pointer.clientX-rect.left)/rect.width;const y=(pointer.clientY-rect.top)/rect.height;card.style.setProperty('--card-tilt-x',`${((.5-y)*12).toFixed(2)}deg`);card.style.setProperty('--card-tilt-y',`${((x-.5)*12).toFixed(2)}deg`);card.style.setProperty('--shine-x',`${(x*100).toFixed(1)}%`);card.style.setProperty('--shine-y',`${(y*100).toFixed(1)}%`);};const leave=(event:Event)=>{const pointer=event as PointerEvent;const card=(pointer.target as Element|null)?.closest(selector);const next=pointer.relatedTarget instanceof Element?pointer.relatedTarget.closest(selector):null;if(card&&card!==next)reset(card);};region.addEventListener('pointermove',move,{passive:true});region.addEventListener('pointerout',leave,{passive:true});return()=>{region.removeEventListener('pointermove',move);region.removeEventListener('pointerout',leave);};},[page]);
- useEffect(()=>{const sendPresence=async()=>{if(document.visibilityState!=='visible')return;try{const me=await fetch(apiUrl('/auth/me'),{credentials:'include'}).then(r=>r.json());setIdentity(me.user||null);setCsrfToken(me.user?me.csrfToken||'':'');if(me.user&&me.csrfToken)await fetch(apiUrl('/people/presence'),{method:'POST',credentials:'include',headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken},body:'{}'});}catch{/* Presence stays optional if the API is offline. */}};void sendPresence();const timer=window.setInterval(sendPresence,60_000);const visible=()=>void sendPresence();document.addEventListener('visibilitychange',visible);const identityChanged=()=>void sendPresence();window.addEventListener('ecovibes:identity_changed',identityChanged);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',visible);window.removeEventListener('ecovibes:identity_changed',identityChanged);};},[page]);
+ useEffect(()=>{
+  let disposed=false,revision=0;
+  let pending:AbortController|null=null;
+  const invalidate=()=>{revision+=1;pending?.abort();pending=null;};
+  const sendPresence=async()=>{
+   if(disposed||document.visibilityState!=='visible')return;
+   invalidate();
+   const currentRevision=revision,controller=new AbortController();
+   pending=controller;
+   const current=()=>!disposed&&revision===currentRevision&&!controller.signal.aborted;
+   try{
+    const me=await fetch(apiUrl('/auth/me'),{credentials:'include',signal:controller.signal}).then(r=>r.json());
+    if(!current())return;
+    setIdentity(me.user||null);setCsrfToken(me.user?me.csrfToken||'':'');
+    if(me.user&&me.csrfToken)await fetch(apiUrl('/people/presence'),{method:'POST',credentials:'include',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken},body:'{}'});
+   }catch{/* Presence stays optional if the API is offline. */}
+   finally{if(pending===controller)pending=null;}
+  };
+  const identityChanged=()=>{
+   invalidate();
+   setIdentity(null);setCsrfToken('');
+   void sendPresence();
+  };
+  const visible=()=>void sendPresence();
+  void sendPresence();
+  const timer=window.setInterval(sendPresence,60_000);
+  document.addEventListener('visibilitychange',visible);
+  window.addEventListener('ecovibes:identity_changed',identityChanged);
+  return()=>{
+   disposed=true;invalidate();clearInterval(timer);
+   document.removeEventListener('visibilitychange',visible);
+   window.removeEventListener('ecovibes:identity_changed',identityChanged);
+  };
+ },[page]);
  useEffect(()=>{const navigate=(event:Event)=>go((event as CustomEvent<Page>).detail);window.addEventListener('ecovibes:navigate',navigate);return()=>window.removeEventListener('ecovibes:navigate',navigate);},[]);
  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(''),2600);return()=>clearTimeout(id)},[toast]);
  const posts=useMemo(()=>[...state.posts,...initialPosts].filter(p=>`${p.name} ${p.text} ${p.tag}`.toLowerCase().includes(query.toLowerCase())),[state.posts,query]);
