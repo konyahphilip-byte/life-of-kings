@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
 import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
+import { createChaleWorkStatus } from "./chale-work-status.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
 import { createProviderService } from "./providers.mjs";
@@ -1089,6 +1090,7 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
   }
 }
 const providers = createProviderService({ q, all, run, transaction, assert, inputString, validMinor, now, id, event, notify, rateLimit, postgresMode });
+const chaleWorkStatus = createChaleWorkStatus({ all, transaction, rateLimit, assert, now });
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
@@ -1199,6 +1201,7 @@ async function route(ctx, req, res, method, path, body, query) {
       scope: "ecovibes_only",
     };
   }
+  if (method === "GET" && path === "/ai/work-status") return chaleWorkStatus(ctx, query);
   if (method === "POST" && path === "/ai/chat") {
     await rateLimit(`chale-ai:${req.socket.remoteAddress}`, 10, 60_000);
     assert(isChaleAIConfigured(), 503, "ai_not_configured", "Chale AI inference is not configured yet. The app guide remains available.");

@@ -24,3 +24,4 @@ jobs:
       - run: npm run test:jobs
       - run: npm run test:support
       - run: npm run test:chale-workflow
+      - run: npm run test:chale-work-status

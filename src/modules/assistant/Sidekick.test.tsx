@@ -41,6 +41,70 @@ describe('Chale AI app integration', () => {
   beforeEach(() => { props.onNavigate.mockReset(); mockFetch(); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+  it('reads owned work counts explicitly even when model inference is unavailable, keeping them out of chat',async()=>{
+    const work={accountId:'account-a',source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]};
+    const fetch=mockFetch(path=>path.endsWith('/ai/work-status')?response(work):path.endsWith('/ai/chat')?response({text:'Open your Waste jobs.',source:'model'}):response({configured:false,enabled:false}));
+    render(<Sidekick {...props}/>);openPanel();
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/work-status'))).toBe(false);
+    fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));
+    expect((await screen.findByLabelText('Waste open jobs')).textContent).toContain('2');
+    expect(screen.getByText(/Counts stay in your signed-in screen/)).toBeTruthy();
+    ask('How can I view my Waste jobs?');await screen.findByText('Open your Waste jobs.');
+    const chat=fetch.mock.calls.find(([url])=>String(url).endsWith('/ai/chat'))?.[1];
+    expect(String(chat?.body)).not.toMatch(/job_status_counts|account-a|"groups"|"count"/);
+    const status=fetch.mock.calls.find(([url])=>String(url).endsWith('/ai/work-status'))?.[1];
+    expect(status?.credentials).toBe('include');
+  });
+  it('clears a work summary immediately when the account changes',async()=>{
+    mockFetch(path=>path.endsWith('/ai/work-status')?response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}):response({configured:false}));
+    const view=render(<Sidekick {...props}/>);openPanel();fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));
+    await screen.findByLabelText('Waste open jobs');
+    view.rerender(<Sidekick {...props} userId="account-b"/>);
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+  });
+  it('does not apply a late work response after an account switch',async()=>{
+    let resolveWork!:(response:Response)=>void;
+    mockFetch(path=>path.endsWith('/ai/work-status')?new Promise(resolve=>{resolveWork=resolve;}):response({configured:false}));
+    const view=render(<Sidekick {...props}/>);openPanel();fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));
+    view.rerender(<Sidekick {...props} userId="account-b"/>);
+    await act(async()=>{resolveWork(response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}));});
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+  });
+  it.each([
+    {accountId:'account-b',groups:[{workflow:'waste',status:'open',count:2}]},
+    {accountId:'account-a',groups:[{workflow:'waste',status:'recycled',count:2}]},
+    {accountId:'account-a',groups:[{workflow:'waste',status:'open',count:-1}]},
+    {accountId:'account-a',groups:[{workflow:['waste'],status:'open',count:2}]},
+    {accountId:'account-a',groups:[{workflow:'waste',status:'open',count:2},{workflow:'waste',status:'open',count:3}]},
+  ])('rejects mismatched or malformed work data %#',async(data)=>{
+    mockFetch(path=>path.endsWith('/ai/work-status')?response({source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',...data}):response({configured:false}));
+    render(<Sidekick {...props}/>);openPanel();fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));
+    await screen.findByText(/Could not check your work/);
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+  });
+  it('removes old counts on a failed refresh',async()=>{
+    let fail=false;mockFetch(path=>path.endsWith('/ai/work-status')?response(fail?{error:{message:'unavailable'}}:{accountId:'account-a',source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]},fail?503:200):response({configured:false}));
+    render(<Sidekick {...props}/>);openPanel();fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));
+    await screen.findByLabelText('Waste open jobs');fail=true;fireEvent.click(screen.getByRole('button',{name:'Refresh my work status'}));
+    await screen.findByText(/Could not check your work/);expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+  });
+  it('clears work counts and prevents a refresh while offline',async()=>{
+    mockFetch(path=>path.endsWith('/ai/work-status')?response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}):response({configured:false}));
+    const view=render(<Sidekick {...props}/>);openPanel();fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));
+    await screen.findByLabelText('Waste open jobs');view.rerender(<Sidekick {...props} online={false}/>);
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+    expect((screen.getByRole('button',{name:'Check my work status'}) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it('times out an unanswered work read and ignores its late result',async()=>{
+    let resolveWork!:(response:Response)=>void;
+    mockFetch(path=>path.endsWith('/ai/work-status')?new Promise(resolve=>{resolveWork=resolve;}):response({configured:false}));
+    render(<Sidekick {...props}/>);openPanel();vi.useFakeTimers();fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));
+    await act(async()=>{await vi.advanceTimersByTimeAsync(10001);});
+    expect(screen.getByText(/Could not check your work/)).toBeTruthy();
+    await act(async()=>{resolveWork(response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}));});
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+  });
+
   it('sends page and data mode with cookies and CSRF, without account data', async () => {
     const fetchMock = mockFetch();
     render(<Sidekick {...props}/>); openPanel(); ask('How do I request a collection?');

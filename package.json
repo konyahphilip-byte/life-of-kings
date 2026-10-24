@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:chale-local": "node scripts/test-chale-local.mjs",
     "test:chale-workflow": "node scripts/test-chale-workflow.mjs",
+    "test:chale-work-status": "node scripts/test-chale-work-status.mjs",
     "dev:chale-local": "node scripts/dev-chale-local.mjs",
     "dev:web": "vite --host 0.0.0.0",
     "dev:api": "node --env-file-if-exists=.env server/index.mjs",
