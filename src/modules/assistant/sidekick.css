@@ -55,3 +55,11 @@
 @media(max-width:780px){.sidekick-panel.chale-panel{right:12px;bottom:132px;height:min(660px,calc(100dvh - 148px));max-height:calc(100dvh - 148px)}.chale-panel .sidekick-context{padding-top:9px;padding-bottom:9px}}
 @media(max-height:620px){.chale-panel .sidekick-context{display:none}.chale-panel .sidekick-disclosure{font-size:9px}.chale-guide-version{display:none}}
 @media(prefers-reduced-motion:reduce){.chale-thinking{animation:none}}
+.chale-work-status{margin-bottom:14px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--canvas);font-size:12px;line-height:1.5}
+.chale-work-status p{margin:6px 0;color:var(--muted)}
+.chale-work-status button{margin-top:7px;min-height:36px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;cursor:pointer;font:inherit}
+.chale-work-status button:disabled{opacity:.55;cursor:default}
+.chale-work-status button:focus-visible{outline:2px solid var(--green2);outline-offset:2px}
+.chale-work-status ul{padding-left:18px;margin:8px 0}
+.chale-work-status small{display:block;color:var(--muted)}
+.chale-work-links{display:flex;flex-wrap:wrap;gap:6px}

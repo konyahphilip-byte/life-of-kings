@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
 import type { AssistantDestination } from './assistant';
+import WorkStatusCard from './WorkStatusCard';
 import { apiUrl } from '../../lib/api';
 import { appGuides, appGuideVersion, isAssistantDestination, localAppGuides, pagePrompts, verifiedGuides, type GuideEntry } from './guide';
 import './sidekick.css';
@@ -414,6 +415,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       </header>
       <div className="sidekick-context"><span className="context-orbit"><span/><i/><b/></span><span><b>A way forward, together.</b><small>You’re in {page}. {dataMode === 'extreme' ? 'Text first, with fewer listings.' : 'Your choices stay yours.'}</small></span></div>
       <div ref={threadRef} className="sidekick-thread" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
+        {userId && (page === 'Waste' || page === 'Quick&Handi') && <WorkStatusCard key={userId} userId={userId} online={online} onNavigate={navigate}/>}
         {entries.map((entry) => <div className={`assistant-message ${entry.role}`} key={entry.id}>
           {entry.role === 'assistant' && entry.id > 0 && !entry.pending && <span className="chale-source">{entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
           <p>{entry.pending && <LoaderCircle size={13} className="chale-thinking" aria-hidden="true"/>}{entry.text}</p>
