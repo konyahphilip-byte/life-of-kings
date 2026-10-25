@@ -15,6 +15,10 @@
 .waste-secondary:hover{background:#ffffff22}
 .waste-hero-copy>small{display:block;max-width:560px;color:#d0ddcf;font-size:10px;line-height:1.6}
 .waste-orbit{position:relative;width:min(260px,100%);aspect-ratio:1;justify-self:center;display:grid;place-items:center;transform:rotate(-9deg)}
+.waste-collection-photo{width:min(300px,100%);aspect-ratio:1;justify-self:center;box-shadow:0 15px 40px #0a2d224f;z-index:1}
+.waste-hero:has(>.waste-collection-photo)>.waste-orbit{display:none}
+@media(max-width:760px){.waste-hero:has(>.waste-collection-photo){grid-template-columns:minmax(0,1fr) minmax(170px,.55fr);gap:18px}}
+@media(max-width:520px){.waste-hero:has(>.waste-collection-photo){grid-template-columns:1fr}.waste-collection-photo{width:100%;max-height:230px;aspect-ratio:4/3}.waste-collection-photo>img{object-position:center 36%}}
 .waste-orbit-ring{position:absolute;inset:9%;border:1px solid #d9efbd55;border-radius:43% 57% 53% 47%/51% 44% 56% 49%;box-shadow:inset 0 0 38px #e1ffbf12,0 0 45px #c5ed9b12}
 .waste-orbit .ring-a{transform:rotate(31deg) scaleX(.84)}
 .waste-orbit .ring-b{inset:1%;transform:rotate(-35deg) scaleX(.75);border-color:#e2f5d139}

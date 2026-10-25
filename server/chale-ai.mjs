@@ -198,12 +198,15 @@ You have no private account, wallet, organization, payment or message access. Ne
 async function generateGroundedReply(messages, searchCatalog, context, { signal, config }) {
   const safeContext = normalizeChaleContext(context, context);
   const query = messages.at(-1).content;
-  const queryWords = new Set(query.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+  // Guide keywords use singular feature names. Preserve the original query for
+  // catalog constraints while matching these known plural navigation terms.
+  const guideQuery = query.replace(/\b(jobs|products|listings)\b/gi, word => word.slice(0, -1));
+  const queryWords = new Set(guideQuery.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
   const broadKeywords = new Set(['ecovibes', 'app', 'help', 'request', 'work', 'search', 'discover']);
   // Weak body-word matches are insufficient to claim the guide covers a topic.
-  const guides = searchAppGuide(query, safeContext.currentPage).filter((guide) =>
+  const guides = searchAppGuide(guideQuery, safeContext.currentPage).filter((guide) =>
     guide.keywords.some((word) => !broadKeywords.has(word) && queryWords.has(word))).slice(0, 2);
-  const catalogRequested = /\b(find|search|product|buy|job|listing|shop|sell)\b/i.test(query);
+  const catalogRequested = /\b(find|search|products?|buy|jobs?|listings?|shop|sell)\b/i.test(query);
   // A model must not turn the unavailable Wallet into instructions to fund it.
   // Use the authoritative notice directly, without spending inference tokens.
   const wallet = CHALE_GUIDE.entries.find((guide) => guide.id === 'wallet');
@@ -222,12 +225,19 @@ async function generateGroundedReply(messages, searchCatalog, context, { signal,
     try { items = safePublicListings(await searchCatalog(query.slice(0, 120))).slice(0, 4); catalogState = 'searched'; }
     catch (error) { if (signal?.aborted) throw error; catalogState = 'unavailable'; }
   }
-  if (!guides.length && !items.length) {
-    return { text: catalogState === 'searched'
+  // A guide explains a feature; it cannot turn an empty or failed catalog
+  // lookup into evidence for a product or job. Keep these outcomes authoritative.
+  if (!items.length && (catalogRequested || !guides.length)) {
+    const notice = catalogState === 'searched'
       ? 'I found no matching public product or open job in the EcoVibes catalog. Try a shorter item or skill name, or browse Marketplace and Quick&Handi.'
       : catalogState === 'unavailable' ? 'I could not check the public catalog. Please try again or open Marketplace and Quick&Handi.'
-      : 'I can help with EcoVibes accounts, service providers, products, jobs and recycling. Choose one of those app tasks so I can use verified information.',
-    source: 'app_guide', items: [], guides: [], drafts: [], diagnostics: [], guideVersion: APP_GUIDE_VERSION,
+      : 'I can help with EcoVibes accounts, service providers, products, jobs and recycling. Choose one of those app tasks so I can use verified information.';
+    // A catalog miss must not prevent using the app. Return canonical steps
+    // directly, including for procedure/capability questions, without inference.
+    const guide = guides[0];
+    const steps = guide ? `\n\n${guide.title}\n${guide.steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}` : '';
+    return { text: notice + steps,
+    source: 'app_guide', items: [], guides, drafts: [], diagnostics: [], guideVersion: APP_GUIDE_VERSION,
     usage: { inputTokens: 0, outputTokens: 0, requests: 0, latencyMs: 0 } };
   }
   const evidence = {
