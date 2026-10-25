@@ -3,15 +3,21 @@ import { afterEach, describe, expect, it } from 'vitest';
 import ConceptPhoto from './ConceptPhoto';
 afterEach(cleanup);
 
-describe('generated concept photography', () => {
-  it.each(['standard', 'saver'] as const)('labels and lazily loads the Home image in %s mode', saver => {
+describe('concept photography', () => {
+  it('shows the photos without a generated-image badge or that wording in descriptions', () => {
+    const {container}=render(<><ConceptPhoto image="home" saver="saver"/><ConceptPhoto image="waste" saver="saver"/></>);
+    expect(container.querySelector('.concept-photo-label')).toBeNull();
+    expect(container.textContent).toBe('');
+    expect(screen.getAllByRole('img').every(photo=>!photo.getAttribute('alt')?.includes('AI-generated'))).toBe(true);
+  });
+  it.each(['standard', 'saver'] as const)('describes and lazily loads the Home image in %s mode', saver => {
     render(<ConceptPhoto image="home" saver={saver}/>);
-    const photo=screen.getByRole('img', {name:/AI-generated image of Ghanaian neighbours/});
+    const photo=screen.getByRole('img', {name:/Neighbours with a shopping basket/});
     expect(photo.getAttribute('loading')).toBe('lazy');
     expect(photo.getAttribute('decoding')).toBe('async');
     expect(photo.getAttribute('width')).toBe('640');
     expect(photo.getAttribute('height')).toBe('478');
-    expect(screen.getByText('AI-generated image')).toBeTruthy();
+    expect(screen.queryByText('AI-generated image')).toBeNull();
   });
   it('does not create an image or download target in Extreme saver mode', () => {
     const {container}=render(<ConceptPhoto image="waste" saver="extreme"/>);
@@ -29,6 +35,6 @@ describe('generated concept photography', () => {
     const view=render(<ConceptPhoto image="home" saver="saver"/>);
     fireEvent.error(screen.getByRole('img'));
     view.rerender(<ConceptPhoto image="waste" saver="saver"/>);
-    expect(screen.getByRole('img',{name:/AI-generated image of a recycling collector/}).getAttribute('height')).toBe('640');
+    expect(screen.getByRole('img',{name:/A recycling collector and a resident/}).getAttribute('height')).toBe('640');
   });
 });
