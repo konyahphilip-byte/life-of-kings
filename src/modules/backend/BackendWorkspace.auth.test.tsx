@@ -63,6 +63,8 @@ describe('account email availability guidance', () => {
     const form = formFor('Sign in with Supabase'); fill(form, 'Email', 'synthetic@example.invalid'); fill(form, 'Password', 'Synthetic-password-123');
     fireEvent.submit(form);
     expect(await screen.findByRole('heading', { name: 'Synthetic Member' })).toBeTruthy();
+    expect(screen.getByText("This search reads public listings and open jobs. Chale's live replies depend on the configured model and its allowance; the App guide remains available.")).toBeTruthy();
+    expect(screen.queryByText(/No generative AI model is connected/)).toBeNull();
     expect(auth.signInWithPassword).toHaveBeenCalledOnce(); expect(auth.signUp).not.toHaveBeenCalled(); expect(auth.resetPasswordForEmail).not.toHaveBeenCalled();
   });
 });

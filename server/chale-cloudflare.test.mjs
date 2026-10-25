@@ -63,4 +63,44 @@ describe('Chale Cloudflare free launch', () => {
     expect(reply.source).toBe('model'); expect(reply.items[0].id).toBe('public-job'); expect(reply.guides.length).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledOnce(); expect(fetch.mock.calls[0][1].body).not.toContain('private-sentinel');
   });
+
+  it.each(['Show products in Accra', 'Any repair jobs near Tema?', 'Show listings for chairs', 'Find JOBS in Osu', 'Find jobs I can apply for', 'Show products available in Marketplace', 'What products can I buy in Accra?', 'Where can I buy a chair in Osu?', 'Can I buy a chair in Osu?', 'How do I post jobs?'])('searches public catalog for natural plural wording: %s', async (query) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(async () => new Response(JSON.stringify(completion()))); vi.stubGlobal('fetch', fetch);
+    const search = vi.fn(async () => [{ kind: 'job', id: 'public-match', title: 'Chair repair', user_id: 'private-catalog-sentinel' }]);
+    const reply = await generateChaleAIReply([{ role: 'user', content: query }], search, { currentPage: 'Quick&Handi' });
+    expect(search).toHaveBeenCalledExactlyOnceWith(query);
+    expect(reply.items.map(item => item.id)).toEqual(['public-match']);
+    expect(reply.source).toBe('model'); expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][1].body).not.toContain('private-catalog-sentinel');
+  });
+
+  it.each(['empty', 'unavailable'])('reports %s catalog honestly even when an app guide matches, without inference', async (state) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const search = vi.fn(async () => {
+      if (state === 'unavailable') throw Error('private-database-sentinel');
+      return [];
+    });
+    const reply = await generateChaleAIReply([{ role: 'user', content: 'Find jobs on Quick&Handi' }], search, { currentPage: 'Quick&Handi' });
+    expect(search).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled();
+    expect(reply).toMatchObject({ source: 'app_guide', items: [], usage: { requests: 0, inputTokens: 0, outputTokens: 0 } });
+    expect(reply.guides.some(guide => guide.id === 'quickhandi')).toBe(true);
+    for (const step of reply.guides[0].steps) expect(reply.text).toContain(step);
+    expect(reply.text).toContain(state === 'empty' ? 'no matching public product or open job' : 'could not check the public catalog');
+    expect(JSON.stringify(reply)).not.toContain('private-database-sentinel');
+  });
+
+  it.each(['How do I post jobs on Quick&Handi?', 'Show me how to sell products in Marketplace', 'Can I sell products in Marketplace?', 'Can I post a job on Quick&Handi?', 'How do I post jobs?', 'Help me post a job', 'I want to sell products', 'Can I list products?', 'Can I buy products in Marketplace?'])('provides exact verified steps when catalog is empty: %s', async (query) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const search = vi.fn(async () => []);
+    const reply = await generateChaleAIReply([{ role: 'user', content: query }], search, { currentPage: 'Quick&Handi' });
+    expect(search).toHaveBeenCalledExactlyOnceWith(query); expect(fetch).not.toHaveBeenCalled();
+    expect(reply.source).toBe('app_guide'); expect(reply.guides.length).toBeGreaterThan(0);
+    expect(reply.text).toContain('no matching public product or open job');
+    expect(reply.text).toContain(reply.guides[0].title);
+    for (const [index, step] of reply.guides[0].steps.entries()) expect(reply.text).toContain(`${index + 1}. ${step}`);
+    expect(reply.usage.requests).toBe(0);
+  });
 });
