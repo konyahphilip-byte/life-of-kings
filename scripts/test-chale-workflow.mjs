@@ -29,7 +29,7 @@ const child = spawn(process.execPath, ['--import', resolve(scripts, 'chale-test-
     PATH: process.env.PATH, TMPDIR: process.env.TMPDIR || '/tmp', NODE_ENV: 'test',
     PORT: String(port), API_PORT: String(port), ECOVIBES_DB_PATH: resolve(temp, 'isolated.sqlite'),
     AI_PROVIDER_KEY: 'synthetic-chale-http-fixture', AI_MODEL: 'mock-workflow-fixture',
-    CHALE_PROVIDER: 'openai', CHALE_ALLOW_PAID: 'true', CHALE_GUEST_DAILY_REQUESTS: '50',
+    CHALE_PROVIDER: 'openai', CHALE_ALLOW_PAID: 'true', CHALE_DAILY_REQUESTS: '40', CHALE_GUEST_DAILY_REQUESTS: '40',
     OPENAI_ENV_FILE: '', SUPABASE_URL: '', DATABASE_URL: '', STORAGE_URL: '', STORAGE_KEY: '',
     CHALE_SMOKE_CAPTURE: capturePath,
     ...(socketPath ? { CHALE_SMOKE_SOCKET: socketPath } : {}),
@@ -105,6 +105,8 @@ try {
   const status = (await ok('/ai/status')).body;
   assert.equal(status.configured, true);
   assert.equal(status.model, 'mock-workflow-fixture');
+  assert.equal(status.dailyRequests, 40);
+  assert.equal(status.guestDailyRequests, 40);
   assert(status.capabilities.includes('shared_opt_in_learning'));
   assert.equal(status.appGuideVersion, expectedGuide.version);
   record('ai_status_contract', 'Configured fixture, guide version and integrated capabilities returned.');
@@ -278,7 +280,9 @@ try {
     createHash('sha256').update(`ecovibes:rate-limit:${key}`).digest('hex'), new Date().toISOString(), new Date(Date.now() + 2 * 86400000).toISOString(), hits);
   try {
     quotaDb.prepare('DELETE FROM rate_limit_buckets').run();
-    seedBucket(`chale-daily:${day}:user:${member.id}`, 20);
+    seedBucket(`chale-daily:${day}:user:${member.id}`, 39);
+    await chat('GUEST_CONTEXT_FIXTURE', member);
+    record('member_fortieth_question', 'Member question40 is allowed on a39-used durable bucket.');
     const before = (await captures()).length;
     result = await request('/ai/chat', { method: 'POST', account: member, body: { messages: [{ role: 'user', content: 'GUEST_CONTEXT_FIXTURE' }], userId: seller.id } });
     assert.equal(result.status, 429); assert.equal(result.body.error.code, 'ai_daily_limit');
@@ -286,7 +290,9 @@ try {
     await chat('GUEST_CONTEXT_FIXTURE', seller);
     record('daily_account_quota', 'Exhausted member denied before inference despite forged account selector; a different authenticated account retains its own allowance.');
 
-    seedBucket(`chale-daily:${day}:guest:127.0.0.1`, 50);
+    seedBucket(`chale-daily:${day}:guest:127.0.0.1`, 39);
+    await chat('GUEST_CONTEXT_FIXTURE');
+    record('guest_fortieth_question', 'Guest question40 is allowed on a39-used durable trusted-network bucket.');
     const beforeGuest = (await captures()).length;
     result = await request('/ai/chat', { method: 'POST', body: { messages: [{ role: 'user', content: 'GUEST_CONTEXT_FIXTURE' }] } });
     assert.equal(result.status, 429); assert.equal(result.body.error.code, 'ai_daily_limit');
@@ -298,10 +304,17 @@ try {
     assert.equal(result.status, 429); assert.equal(result.body.error.code, 'ai_daily_limit');
     record('global_daily_cap', 'Shared durable platform cap denies inference even when an individual has remaining allowance.');
 
+    const beforeGreeting = (await captures()).length;
+    result = await request('/ai/chat', { method:'POST', body:{messages:[{role:'user',content:'Hi!'}]} });
+    assert.equal(result.status,200);assert.equal(result.body.text,'Hi! What would you like help with today?');
+    assert.equal(result.body.source,'greeting');assert.equal(result.body.usage.requests,0);
+    assert.deepEqual(result.body.guides,[]);assert.equal((await captures()).length,beforeGreeting);
+    record('greeting_after_quota', 'A whole greeting remains available after guest/global quota exhaustion, with0model requests and no guide/task selected.');
+
     quotaDb.prepare('DELETE FROM rate_limit_buckets').run();
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     seedBucket(`chale-global:${yesterday}`, 200);
-    seedBucket(`chale-daily:${yesterday}:user:${member.id}`, 20);
+    seedBucket(`chale-daily:${yesterday}:user:${member.id}`, 40);
     await chat('GUEST_CONTEXT_FIXTURE', member);
     record('utc_date_allowance', 'Exhausted prior UTC-date buckets do not block the current-date allowance. No clock or real database is modified.');
   } finally { quotaDb.close(); }

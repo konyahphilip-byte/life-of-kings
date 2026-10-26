@@ -22,6 +22,7 @@ import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { createChaleWorkStatus } from "./chale-work-status.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
+import { chaleGreeting } from "../shared/chale-greeting.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
 import { createProviderService } from "./providers.mjs";
 import { createWebHandler } from "./web.mjs";
@@ -1204,7 +1205,6 @@ async function route(ctx, req, res, method, path, body, query) {
   if (method === "GET" && path === "/ai/work-status") return chaleWorkStatus(ctx, query);
   if (method === "POST" && path === "/ai/chat") {
     await rateLimit(`chale-ai:${req.socket.remoteAddress}`, 10, 60_000);
-    assert(isChaleAIConfigured(), 503, "ai_not_configured", "Chale AI inference is not configured yet. The app guide remains available.");
     assert(Array.isArray(body.messages), 400, "invalid_messages", "Messages must be provided as a list.");
     assert(body.messages.length >= 1 && body.messages.length <= 8, 400, "invalid_messages", "Send between 1 and 8 chat messages.");
     let totalCharacters = 0;
@@ -1216,6 +1216,10 @@ async function route(ctx, req, res, method, path, body, query) {
     });
     assert(totalCharacters <= 6000, 400, "messages_too_long", "The conversation is too long. Start a new chat and try again.");
     assert(messages.at(-1).role === "user", 400, "invalid_messages", "The last chat message must be from the user.");
+    const greeting = chaleGreeting(messages.at(-1).content);
+    if (greeting) return { text: greeting, source: "greeting", items: [], guides: [], drafts: [], diagnostics: [], guideVersion: APP_GUIDE_VERSION,
+      usage: { inputTokens: 0, outputTokens: 0, requests: 0, latencyMs: 0 } };
+    assert(isChaleAIConfigured(), 503, "ai_not_configured", "Chale AI inference is not configured yet. The app guide remains available.");
     const aiLimits = chaleConfig();
     const day = new Date().toISOString().slice(0, 10);
     const dailyFailure = { code: "ai_daily_limit", message: "Today's free Chale allowance has been used. The app guide remains available; model access resets at 00:00 UTC." };

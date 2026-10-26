@@ -9,6 +9,11 @@ const response = (value) => new Response(JSON.stringify(value));
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('Chale Free Core provider boundary', () => {
+  it('accepts the explicit40-question member and guest settings without changing shared cost controls', () => {
+    const config=chaleConfig({...local,CHALE_DAILY_REQUESTS:'40',CHALE_GUEST_DAILY_REQUESTS:'40'});
+    expect(config).toMatchObject({dailyRequests:40,guestDailyRequests:40,globalDailyRequests:200,concurrency:1,maxOutputTokens:256});
+    expect(config.provider).toBe('compatible');
+  });
   it('stays disabled with legacy paid keys alone and requires an explicit model and paid opt-in', () => {
     expect(chaleConfig({ AI_PROVIDER_KEY: 'synthetic' }).configured).toBe(false);
     expect(chaleConfig({ CHALE_PROVIDER: 'openai', AI_MODEL: 'fixture', AI_PROVIDER_KEY: 'synthetic' }).configured).toBe(false);
