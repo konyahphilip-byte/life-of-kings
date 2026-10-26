@@ -41,6 +41,32 @@ describe('Chale AI app integration', () => {
   beforeEach(() => { props.onNavigate.mockReset(); mockFetch(); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+  it.each(['hi', 'HELLO!', 'Hey Chale', 'Good morning, Chale AI!', 'hello there'])('answers the whole-message greeting %s without spending a question or choosing a task', value => {
+    const fetchMock=mockFetch();
+    render(<Sidekick {...props}/>);openPanel();ask(value);
+    expect(screen.queryByText('Hi! What would you like help with today?')).not.toBeNull();
+    expect(fetchMock.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(false);
+    expect(props.onNavigate).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Reply evidence')).toBeNull();
+    expect(screen.queryByRole('button',{name:'Open Waste'})).toBeNull();
+  });
+
+  it('answers a greeting offline instead of selecting a workflow',()=>{
+    const fetchMock=mockFetch();
+    render(<Sidekick {...props} online={false}/>);openPanel();ask('Hi');
+    expect(screen.queryByText('Hi! What would you like help with today?')).not.toBeNull();
+    expect(fetchMock.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(false);
+    expect(props.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps a real question after a greeting on the normal answer path',async()=>{
+    const fetchMock=mockFetch();
+    render(<Sidekick {...props}/>);openPanel();ask('Hi, how do I request a collection?');
+    await screen.findByText('Here is a practical next step.');
+    expect(fetchMock.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(true);
+    expect(screen.queryByText('Hi! What would you like help with today?')).toBeNull();
+  });
+
   it('reads owned work counts explicitly even when model inference is unavailable, keeping them out of chat',async()=>{
     const work={accountId:'account-a',source:'job_status_counts',asOf:'2026-10-23T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]};
     const fetch=mockFetch(path=>path.endsWith('/ai/work-status')?response(work):path.endsWith('/ai/chat')?response({text:'Open your Waste jobs.',source:'model'}):response({configured:false,enabled:false}));

@@ -3,6 +3,7 @@ import { ArrowUp, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, T
 import type { AssistantDestination } from './assistant';
 import WorkStatusCard from './WorkStatusCard';
 import { apiUrl } from '../../lib/api';
+import { chaleGreeting } from '../../../shared/chale-greeting.mjs';
 import { appGuides, appGuideVersion, isAssistantDestination, localAppGuides, pagePrompts, verifiedGuides, type GuideEntry } from './guide';
 import './sidekick.css';
 
@@ -22,7 +23,7 @@ type Diagnostic = {
 };
 type ChatEntry = {
   id: number; role: 'assistant' | 'user'; text: string; pending?: boolean;
-  source?: 'model' | 'app_guide'; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
+  source?: 'model' | 'app_guide' | 'greeting'; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
 };
 type AIStatus = { configured: boolean; unavailable?: boolean; hosting?: 'local' | 'remote'; allowance?: number };
 type LearningState = { enabled: boolean };
@@ -279,8 +280,13 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     const requestGeneration = generation.current;
     const entryId = nextId.current++;
     const replyId = nextId.current++;
-    const guides = localAppGuides(query, page);
     setDraft(''); setNotice('');
+    const greeting = chaleGreeting(query);
+    if (greeting) {
+      setEntries(current => [...current, { id: entryId, role: 'user', text: query }, { id: replyId, role: 'assistant', source: 'greeting', text: greeting }]);
+      return;
+    }
+    const guides = localAppGuides(query, page);
     if (!online) {
       setEntries((current) => [...current, { id: entryId, role: 'user', text: query }, {
         id: replyId, role: 'assistant', source: 'app_guide',
@@ -315,7 +321,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       if (requestGeneration !== generation.current) return;
       if (controller.signal.aborted) throw new Error('Request stopped');
       if (response.ok && typeof payload.text === 'string' && payload.text.trim()) {
-        reply = { ...reply, text: payload.text.slice(0, 12_000), source: payload.source === 'app_guide' ? 'app_guide' : 'model',
+        reply = { ...reply, text: payload.text.slice(0, 12_000), source: payload.source === 'greeting' ? 'greeting' : payload.source === 'app_guide' ? 'app_guide' : 'model',
           items: liveItems(payload.items), guides: verifiedGuides(payload.guides), drafts: reviewDrafts(payload.drafts), diagnostics: verifiedDiagnostics(payload.diagnostics) };
         if (reply.source === 'app_guide' && !reply.guides?.length) reply.guides = guides;
       } else {
@@ -417,7 +423,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       <div ref={threadRef} className="sidekick-thread" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
         {userId && (page === 'Waste' || page === 'Quick&Handi') && <WorkStatusCard key={userId} userId={userId} online={online} onNavigate={navigate}/>}
         {entries.map((entry) => <div className={`assistant-message ${entry.role}`} key={entry.id}>
-          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && <span className="chale-source">{entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
+          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
           <p>{entry.pending && <LoaderCircle size={13} className="chale-thinking" aria-hidden="true"/>}{entry.text}</p>
           {!!replyEvidence(entry).length && <p className="chale-evidence" aria-label="Reply evidence">Evidence returned: {replyEvidence(entry).join(' · ')}.</p>}
           {!!entry.diagnostics?.length && <div className="chale-diagnostics">{entry.diagnostics.map((diagnostic) => {
