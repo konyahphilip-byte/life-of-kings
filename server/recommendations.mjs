@@ -183,3 +183,45 @@ export function rankRecommendations(items, preferences = [], signals = [], limit
   }
   return selected.map(({ _topics, ...item }) => item);
 }
+
+export const DISCOVERY_RANKING_VERSION = 'ecovibes-discovery-2026-10-26';
+
+// Home discovery only. Explicit catalog searches retain rankRecommendations.
+// Eligibility/visibility belong to the caller; ranking never grants access.
+export function rankDiscoveryRecommendations(items, preferences = [], signals = [], limit = 6, now = Date.now()) {
+  const count = Number.isFinite(limit) ? Math.max(0, Math.min(24, Math.trunc(limit))) : 0;
+  if (!count) return [];
+  const ranked = rankRecommendations(items, preferences, signals, items.length, now);
+  const initial = ranked.slice(0, count);
+  const weights = recommendationInterestWeights(preferences, signals, now);
+  if (count < 5 || initial.length < 5 || ![...weights.values()].some(weight => weight > 0)) return initial;
+
+  const key = item => `${item.itemType}:${item.id}`;
+  // Unsave/unlike changes affinity, but does not make the interaction new again.
+  const seen = new Set(signals.map(signal => `${signal.item_type}:${signal.item_id}`));
+  const avoided = new Set(signals.filter(signal => Boolean(signal.active) && signal.action === 'dismissed').map(signal => normalizeRecommendationTopic(signal.topic)));
+  const firstFour = ranked.slice(0, 4);
+  const leadingKeys = new Set(firstFour.map(key));
+  const categoryKey = item => normalizeRecommendationTopic(item.category) || item.itemType;
+  const categoryCounts = new Map();
+  for (const item of firstFour) categoryCounts.set(categoryKey(item), (categoryCounts.get(categoryKey(item)) || 0) + 1);
+  // Search the full eligible pool before category pruning can discard novelty.
+  const discovery = items.filter(item => {
+    const age = now - Date.parse(item.created_at);
+    if (leadingKeys.has(key(item)) || seen.has(key(item)) || (categoryCounts.get(categoryKey(item)) || 0) >= 2 || !Number.isFinite(age) || age < 0 || age > 30 * 86400000) return false;
+    return recommendationTopicsForItem(item).every(topic => !avoided.has(topic) && !(weights.get(topic) > 0));
+  }).sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at) || key(left).localeCompare(key(right)))[0];
+  if (!discovery) return initial;
+
+  const selected = [...firstFour, { ...discovery, reason: `Discover something different in ${discovery.category || discovery.itemType}` }];
+  categoryCounts.set(categoryKey(discovery), (categoryCounts.get(categoryKey(discovery)) || 0) + 1);
+  const selectedKeys = new Set(selected.map(key));
+  for (const item of ranked) {
+    if (selected.length >= count) break;
+    const category = categoryKey(item);
+    if (!selectedKeys.has(key(item)) && (categoryCounts.get(category) || 0) < 2) {
+      selected.push(item); selectedKeys.add(key(item)); categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+    }
+  }
+  return selected;
+}

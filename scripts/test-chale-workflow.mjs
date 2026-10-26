@@ -337,6 +337,59 @@ try {
     record('utc_date_allowance', 'Exhausted prior UTC-date buckets do not block the current-date allowance. No clock or real database is modified.');
   } finally { quotaDb.close(); }
 
+  // Actual isolated account/catalog routes; no production records or model calls.
+  const callsBeforeDiscovery = (await captures()).length;
+  const familiarIds = [];
+  for (let index = 0; index < 6; index += 1) {
+    const item = (await ok('/marketplace/products', { method: 'POST', account: seller, body: {
+      name: `Music choice ${index}`, description: 'Isolated discovery fixture.', category: `Fixture group ${index}`,
+      priceMinor: 2500, stock: 8, location: 'Accra',
+    } })).body;
+    familiarIds.push(item.id);
+  }
+  await delay(10);
+  const discovery = (await ok('/marketplace/products', { method: 'POST', account: seller, body: {
+    name: 'Cooking workshop kit', description: 'Isolated discovery fixture.', category: 'Discovery food',
+    priceMinor: 2500, stock: 8, location: 'Accra',
+  } })).body;
+  await ok('/recommendations/interests', { method: 'POST', account: member, body: { topics: ['Music'] } });
+  await ok('/recommendations/settings', { method: 'POST', account: member, body: { enabled: true } });
+  const feed = (await ok('/recommendations', { account: member })).body;
+  assert.equal(feed.rankingVersion, 'ecovibes-discovery-2026-10-26');
+  assert.equal(feed.items.length, 6);
+  assert(feed.items.slice(0, 4).every(item => familiarIds.includes(item.id)));
+  assert.equal(feed.items[4].id, discovery.id);
+  assert.equal(feed.items[4].reason, 'Discover something different in Discovery food');
+  assert.equal(feed.items.filter(item => item.reason.startsWith('Discover something different')).length, 1);
+  record('useful_discovery_actual_routes', 'Four interest-matched listings precede one fresh different-topic pick; versioned Home selection from actual eligible catalog routes, without inference.');
+
+  await ok('/recommendations/signals', { method: 'POST', account: member, body: { itemType: 'product', itemId: discovery.id, action: 'saved', active: true } });
+  await ok('/recommendations/signals', { method: 'POST', account: member, body: { itemType: 'product', itemId: discovery.id, action: 'saved', active: false } });
+  const unsavedFeed = (await ok('/recommendations', { account: member })).body;
+  assert(!unsavedFeed.items.some(item => item.id === discovery.id && item.reason.startsWith('Discover something different')));
+  record('discovery_unsave_keeps_novelty_history', 'Actual save then unsave removes active affinity without presenting the same interacted item as a fresh discovery.');
+
+  await ok('/recommendations/signals', { method: 'POST', account: member, body: { itemType: 'product', itemId: discovery.id, action: 'dismissed', userId: seller.id } });
+  const dismissedFeed = (await ok('/recommendations', { account: member })).body;
+  assert(!dismissedFeed.items.some(item => item.id === discovery.id));
+  const otherFeed = (await ok('/recommendations', { account: seller })).body;
+  assert.equal(otherFeed.learningActivityCount, 0);
+  assert.deepEqual(otherFeed.interests, []);
+  assert.equal(otherFeed.enabled, false);
+  assert(!JSON.stringify(otherFeed).includes('Because you'));
+  record('discovery_dismissal_identity_isolation', 'Dismissal removes the actual item; spoofed userId does not change the other account profile. This is isolated SQLite account testing, not hosted Supabase acceptance.');
+
+  await ok('/recommendations/settings', { method: 'POST', account: member, body: { enabled: false } });
+  const pausedFeed = (await ok('/recommendations', { account: member })).body;
+  assert.equal(pausedFeed.personalized, false);
+  assert(pausedFeed.items.every(item => !item.reason.startsWith('Discover something different') && !item.reason.startsWith('Matches your')));
+  await ok('/recommendations/profile', { method: 'DELETE', account: member });
+  const resetFeed = (await ok('/recommendations', { account: member })).body;
+  assert.equal(resetFeed.learningActivityCount, 0);
+  assert.deepEqual(resetFeed.interests, ['Music']);
+  assert.equal((await captures()).length, callsBeforeDiscovery);
+  record('discovery_pause_reset_no_inference', 'Pause stops profile ranking/exploration; reset removes learned activity and retains chosen interests. No new provider call during all discovery checks.');
+
 } catch (error) {
   failure = { name: error.name, message: error.message };
 } finally {
