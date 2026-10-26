@@ -93,8 +93,9 @@
 .connection-particles circle{fill:currentColor;filter:drop-shadow(0 0 4px currentColor);animation:particle-drift 7s ease-in-out infinite alternate}
 .quickhandi-home-card>.home-community-photo{position:absolute;right:16px;top:50%;width:178px;height:136px;transform:translateY(-50%);z-index:2;box-shadow:0 8px 24px #163c2d20}
 .quickhandi-home-card:has(>.home-community-photo)>.qh-home-art{display:none}
-.home-layout .quick-card:has(>.quick-waste-photo){padding-top:100px!important;min-height:196px}
-.quick-card>.quick-waste-photo{position:absolute;inset:0 0 auto;height:90px;border-radius:0;z-index:1}
+.home-layout .quick-card:has(>.quick-service-photo){padding-top:100px!important;min-height:196px}
+.quick-card>.quick-service-photo{position:absolute;inset:0 0 auto;height:90px;border-radius:0;z-index:1}
+.quick-card>.quick-service-photo>img{object-position:center 30%}
 .quick-card>.quick-waste-photo>img{object-position:center 10%}
 @media(max-width:780px){.quickhandi-home-card:has(>.home-community-photo){padding-right:170px!important}.quickhandi-home-card:has(>.home-community-photo)>.quickhandi-home-copy{max-width:100%!important}.quickhandi-home-card>.home-community-photo{right:12px;width:144px;height:136px}}
 @media(max-width:520px){.quickhandi-home-card:has(>.home-community-photo){padding-right:17px!important;padding-bottom:178px!important}.quickhandi-home-card>.home-community-photo{left:17px;right:17px;top:auto;bottom:16px;width:auto;height:145px;transform:none}.home-community-photo>img{object-position:center 32%}}
