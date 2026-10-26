@@ -5,6 +5,7 @@ import { Activity, Mic, Phone, Radio, Video, X } from 'lucide-react';
 import { callQuality, type CallDataMode } from './connect/call-quality';
 import { apiUrl } from '../lib/api';
 import PeopleLookup, { type PublicPerson } from './connect/PeopleLookup';
+import FriendsPanel from './connect/FriendsPanel';
 
 type MediaMode = 'voice' | 'video' | 'live';
 type Session = { id:string; mode:MediaMode; title:string; visibility:'private'|'public'; status:string; created_at:string; creator_eco_id:string; creator_name:string; role?:string };
@@ -33,7 +34,8 @@ export default function Communications({initialEcoId='',saver='saver'}:{initialE
     {!user&&<div className="media-notice">Sign in with your EcoVibes ID to start or join rooms. <a href="#" onClick={e=>{e.preventDefault();window.dispatchEvent(new CustomEvent('ecovibes:navigate',{detail:'EcoVibes ID'}));}}>Open EcoVibes ID</a></div>}
     {!privateConfigured&&<div className="media-notice">Voice and video calling are not connected yet. You can find a person below; no call is sent while calling is unavailable.</div>}
     {error&&<div className="media-error" role="alert">{error}</div>}
-    <PeopleLookup userId={user?.id||null} initialQuery={initialEcoId} onSelect={setRecipient}/>
+    <PeopleLookup userId={user?.id||null} csrfToken={csrf} initialQuery={initialEcoId} onSelect={setRecipient}/>
+    <FriendsPanel key={user?.id||'guest'} userId={user?.id||null} csrfToken={csrf} onSelect={setRecipient}/>
     <div className="media-notice">Call data setting: {saver==='extreme'?'Extreme Saver · audio first':saver==='standard'?'Standard · adaptive video':'Data Saver · lighter audio and video'}</div>
     {recipient&&<div className="media-notice">Selected: {recipient.display_name} · @{recipient.eco_id}</div>}
     <form className="media-create" onSubmit={create}><div className="media-section-title"><div><span className="eyebrow">START SOMETHING</span><h2>Open a room</h2></div><span className="media-live-dot">{(mode==='live'?configured:privateConfigured)?'AVAILABLE':'UNAVAILABLE'}</span></div><label>Room name<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="A quick catch up" maxLength={100}/></label><div className="media-mode-pick">{([{value:'voice',label:'Voice call',icon:Mic},{value:'video',label:'Video call',icon:Video},{value:'live',label:'Go live',icon:Radio}] as const).map(({value,label,icon:Icon})=><button type="button" key={value} className={mode===value?'selected':''} onClick={()=>setMode(value)}><Icon size={18}/><span>{label}</span></button>)}</div><button className="media-button primary" disabled={!user||busy||(mode==='live'?!configured:!privateConfigured||!recipient)}><Phone size={16}/>{busy?'Connecting…':mode==='live'?'Go live':'Start '+mode+' call'}</button></form>

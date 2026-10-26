@@ -23,6 +23,7 @@ import { createPublicUpdates } from "./chale-updates.mjs";
 import { chaleUpdateIntent } from "../shared/chale-updates.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { createChaleWorkStatus } from "./chale-work-status.mjs";
+import { createPeopleFriends, FRIENDS_SQLITE_SCHEMA } from "./people-friends.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
 import { chaleGreeting } from "../shared/chale-greeting.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
@@ -183,6 +184,7 @@ if (!postgresMode) {
     FROM recommendation_signals;
   `);
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
+  db.exec(FRIENDS_SQLITE_SCHEMA);
 }
 
 const now = () => new Date().toISOString();
@@ -1097,6 +1099,7 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
 }
 const providers = createProviderService({ q, all, run, transaction, assert, inputString, validMinor, now, id, event, notify, rateLimit, postgresMode });
 const chaleWorkStatus = createChaleWorkStatus({ all, transaction, rateLimit, assert, now });
+const peopleFriends = createPeopleFriends({q,all,run,transaction,assert,now,notify,event,rateLimit,postgresMode});
 const chalePublicUpdates = createPublicUpdates();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
@@ -1943,6 +1946,15 @@ async function route(ctx, req, res, method, path, body, query) {
     assert(/^[a-z0-9._]{3,24}$/.test(ecoId), 400, 'invalid_eco_id', 'Use the exact EcoVibes ID, with 3–24 letters, numbers, dots or underscores.');
     const person = await q("SELECT u.id,u.eco_id,u.display_name,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=u.id) followed,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=u.id AND f.target_user_id=?) follows_you FROM users u WHERE lower(u.eco_id)=? AND u.status='active' AND u.id!=?", ctx.user.id, ctx.user.id, ecoId, ctx.user.id);
     return { person: person ? { id:person.id, eco_id:person.eco_id, display_name:person.display_name, followed:Boolean(person.followed), followsYou:Boolean(person.follows_you) } : null };
+  }
+  if (path === '/people/friends' || path.startsWith('/people/friends/')) {
+    assert(ctx.user?.status==='active',401,'sign_in_required','Sign in to manage your friends.');
+    assert(query.size===0,400,'invalid_friend_query','This view does not accept account selectors.');
+    await rateLimit(`friends-read:${ctx.user.id}`,60,60_000);
+    if(method==='GET'&&path==='/people/friends')return peopleFriends.list(ctx.user.id);
+    const peer=path.match(/^\/people\/friends\/([0-9a-f-]{36})$/i)?.[1]?.toLowerCase();
+    if(peer&&method==='GET')return peopleFriends.get(ctx.user.id,peer);
+    if(peer&&method==='POST')return peopleFriends.act(ctx.user.id,peer,body);
   }
   if (method === "GET" && path === "/people/discover") {
     const rows = await all("SELECT u.id,u.eco_id,u.display_name,p.last_seen_at,(SELECT COUNT(*) FROM people_follows f1 JOIN people_follows f2 ON f1.target_user_id=f2.target_user_id WHERE f1.user_id=? AND f2.user_id=u.id) mutual_count,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=u.id) followed,(SELECT MAX(s.created_at) FROM stories s WHERE s.author_id=u.id AND s.visibility='public' AND s.expires_at>?) story_at,(SELECT MAX(r.created_at) FROM reels r WHERE r.author_id=u.id AND r.status='active') reel_at,(SELECT s.text FROM stories s WHERE s.author_id=u.id AND s.visibility='public' AND s.expires_at>? ORDER BY s.created_at DESC LIMIT 1) latest_story_text,(SELECT r.caption FROM reels r WHERE r.author_id=u.id AND r.status='active' ORDER BY r.created_at DESC LIMIT 1) latest_reel_caption FROM users u LEFT JOIN people_presence p ON p.user_id=u.id WHERE u.id!=? AND u.status='active' LIMIT 300", ctx.user.id, ctx.user.id, now(), now(), ctx.user.id);
