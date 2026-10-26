@@ -2,7 +2,11 @@
 export function chaleGreeting(value) {
   if (typeof value !== 'string' || value.length > 1200) return null;
   const text = value.trim().replace(/\s+/g, ' ');
-  return /^(?:(?:hi|hello|hey)(?: there)?|good (?:morning|afternoon|evening))(?:[,\s]+chale(?: ai)?)?[!.?]*$/i.test(text)
-    ? 'Hi! What would you like help with today?'
-    : null;
+  if (/^(?:(?:hi|hello|hey)(?: there)?|good (?:morning|afternoon|evening))(?:[,\s]+chale(?: ai)?)?[!.?]*$/i.test(text)) {
+    return 'Hi! What would you like help with today?';
+  }
+  if (/^(?:(?:hi|hello|hey)[!,]?\s+)?how are you(?: doing)?(?:[,\s]+chale(?: ai)?)?[!.?]*$/i.test(text)) {
+    return "I'm here and ready to help. What would you like to talk about?";
+  }
+  return null;
 }
