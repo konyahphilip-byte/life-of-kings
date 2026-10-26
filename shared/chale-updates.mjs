@@ -14,16 +14,18 @@ export const appReleaseUpdates = Object.freeze([
 
 export function chaleUpdateIntent(value) {
   if(typeof value!=='string') return null;
-  const q=value.toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9& ]/g,' ').replace(/\s+/g,' ').trim();
-  if(!/^(?:what|show|give|tell|latest|current|any|news|headlines)/.test(q)) return null;
-  const app=/\b(?:ecovibes|app)\b/.test(q)&&/\b(?:updates?|new|news|trending|happening)\b/.test(q);
-  const news=/\b(?:news|headlines)\b/.test(q)&&/\b(?:latest|current|today|ghana|world|headlines)\b/.test(q);
-  const happening=/\b(?:trending|happening)\b/.test(q)&&/\b(?:ghana|world|today|now|currently)\b/.test(q);
-  const bare=/^(?:whats|what is) (?:trending|happening)(?: (?:now|today|currently))?$/.test(q);
-  if(!(app||news||happening||bare)) return null;
-  if(app && !(news||happening||bare)) return 'app';
-  if(!app && /\bghana\b/.test(q) && !/\bworld\b/.test(q)) return 'ghana';
-  if(!app && /\bworld\b/.test(q) && !/\bghana\b/.test(q)) return 'world';
+  const q=value.toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim()
+    .replace(/^please /,'').replace(/ please (?:use|include|show) (?:separate )?verified (?:current )?(?:news|sources)$/,'').replace(/ please$/,'');
+  if(/^(?:whats|what is) (?:trending|happening)(?: (?:now|today|currently))?$/.test(q))return 'both';
+  if(/^(?:(?:show|give|tell) me |what(?:s| is| are) )?(?:the )?(?:(?:latest|current) )?(?:ecovibes(?: app)? (?:updates|news)|app updates)(?: (?:today|now|currently))?$/.test(q)
+    || /^(?:whats|what is) new (?:in|on) ecovibes$/.test(q))return 'app';
+  const geographic=/^(?:what is|whats) (?:happening|trending) (?:in|around) (?:ghana|the world)(?: (?:today|now|currently))?$/.test(q);
+  const digest=/^(?:(?:show|give|tell) me |what(?:s| is| are) )?(?:the )?(?:(?:latest|current|todays) )?(?:(?:ghana|world|global|international)(?: and (?:ghana|world))? )?(?:news|headlines|news updates)(?: (?:in|from|about) (?:ghana|the world|ghana and the world))?(?: (?:today|now|currently))?$/.test(q)
+    && (/\b(?:latest|current|todays|today|now|currently|ghana|world|global|international)\b/.test(q)||/^(?:show|give|tell) me /.test(q));
+  if(!(geographic||digest))return null;
+  const ghana=/\bghana\b/.test(q),world=/\b(?:world|global|international)\b/.test(q);
+  if(ghana && !world) return 'ghana';
+  if(world && !ghana) return 'world';
   return 'both';
 }
 

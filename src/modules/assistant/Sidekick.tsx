@@ -324,7 +324,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       if (response.ok && typeof payload.text === 'string' && payload.text.trim()) {
         reply = { ...reply, text: payload.text.slice(0, 12_000), source: payload.source === 'public_updates' ? 'public_updates' : payload.source === 'greeting' ? 'greeting' : payload.source === 'app_guide' ? 'app_guide' : 'model',
           updates: payload.source === 'public_updates' ? readPublicUpdates(payload) : [],
-          newsRequested: payload.source === 'public_updates' && ['available','empty','unavailable'].includes(String(payload.newsStatus)),
+          newsRequested: payload.source === 'public_updates' && ['available','partial','empty','unavailable'].includes(String(payload.newsStatus)),
           items: liveItems(payload.items), guides: verifiedGuides(payload.guides), drafts: reviewDrafts(payload.drafts), diagnostics: verifiedDiagnostics(payload.diagnostics) };
         if (reply.source === 'app_guide' && !reply.guides?.length) reply.guides = guides;
       } else {
