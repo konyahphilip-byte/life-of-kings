@@ -122,6 +122,31 @@ try {
   const member = await signup('smoke.member', 'Smoke Member');
   const seller = await signup('smoke.seller', 'Smoke Seller');
   assert.notEqual(member.id, seller.id);
+  let lookup = await request('/people/lookup?ecoId=smoke.seller');
+  assert.equal(lookup.status, 401);
+  lookup = await ok('/people/lookup?ecoId=%40SMOKE.SELLER', { account: member });
+  assert.deepEqual(lookup.body, { person: { id: seller.id, eco_id: 'smoke.seller', display_name: 'Smoke Seller', followed: false, followsYou: false } });
+  lookup = await ok('/people/lookup?ecoId=smoke.member', { account: member });
+  assert.equal(lookup.body.person, null);
+  lookup = await ok('/people/lookup?ecoId=not.present', { account: member });
+  assert.equal(lookup.body.person, null);
+  lookup = await request('/people/lookup?ecoId=smoke%25', { account: member });
+  assert.equal(lookup.status, 400);
+  lookup = await request('/people/lookup?ecoId=smoke.seller&userId='+seller.id, { account: member });
+  assert.equal(lookup.status, 400);
+  const underscore = await signup('lookup_peer', 'Lookup Peer');
+  lookup = await ok('/people/lookup?ecoId=%40LOOKUP_PEER', { account: member });
+  assert.equal(lookup.body.person.id, underscore.id);
+  assert.equal(lookup.body.person.eco_id, 'lookup_peer');
+  record('authenticated_exact_people_lookup', 'Real HTTP accounts; case/@ normalization, underscores, no self/unknown match, no wildcard/selectors or private fields.');
+  const callGate = await request('/media/sessions', { method:'POST', account:member, body:{mode:'video',invitees:['lookup_peer']} });
+  assert.equal(callGate.status,503);
+  assert.equal(callGate.body.error.code,'private_call_setup_required');
+  const disguisedCall = await request('/media/sessions', { method:'POST', account:member, body:{mode:'live',visibility:'private',invitees:['lookup_peer']} });
+  assert.equal(disguisedCall.status,503);
+  assert.equal(disguisedCall.body.error.code,'private_call_setup_required');
+  assert.equal((await ok('/media/status')).body.privateCallsConfigured,false);
+  record('legacy_private_call_gate', 'Private rooms cannot bypass the reviewed consent/admission/provider gate merely by adding provider settings.');
   await ok('/identity/roles', { method: 'POST', account: seller, body: { role: 'seller' } });
   const solar = (await ok('/marketplace/products', { method: 'POST', account: seller, body: {
     name: 'Solar study lamp', description: 'Synthetic public catalog fixture.', category: 'Clean energy',
