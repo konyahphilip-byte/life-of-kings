@@ -36,6 +36,8 @@ import {
   recommendationInterestWeights,
   normalizeRecommendationTopic,
   rankRecommendations,
+  rankDiscoveryRecommendations,
+  DISCOVERY_RANKING_VERSION,
   recommendationTopicsForItem,
   summarizeAvoidedRecommendationTopics,
   summarizeRecommendationProfile,
@@ -1056,7 +1058,7 @@ async function recommendationSnapshot(userId, limit = 6) {
   ];
   const enabled = Boolean(settings?.personalization_enabled);
   const rankingSignals = enabled ? signals : [];
-  const ranked = rankRecommendations(candidates, enabled ? preferences.map((row) => row.topic) : [], rankingSignals, limit);
+  const ranked = rankDiscoveryRecommendations(candidates, enabled ? preferences.map((row) => row.topic) : [], rankingSignals, limit);
   const activeSaves = new Set(signals.filter((signal) => signal.action === "saved" && Boolean(signal.active)).map((signal) => `${signal.item_type}:${signal.item_id}`));
   const items = ranked.map((item) => ({ ...item, saved: activeSaves.has(`${item.itemType}:${item.id}`) }));
   const learnedTopics = enabled ? summarizeRecommendationProfile(signals) : [];
@@ -1071,6 +1073,7 @@ async function recommendationSnapshot(userId, limit = 6) {
     learningActivityCount: signalCount,
     enabled,
     personalized: enabled && (preferences.length > 0 || learnedTopics.length > 0 || avoidedTopics.length > 0),
+    rankingVersion: DISCOVERY_RANKING_VERSION,
   };
 }
 async function recordRecommendationSignals(userId, itemType, itemId, item, action, active = true, stamp = now()) {
