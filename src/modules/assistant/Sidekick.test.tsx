@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Sidekick from './Sidekick';
 import { appGuides } from './guide';
+import { appReleaseUpdates } from '../../../shared/chale-updates.mjs';
 
 const product = {
   id: '11111111-1111-4111-8111-111111111111', kind: 'product', title: 'Recycled plant pot',
@@ -40,6 +41,31 @@ function ask(value: string) {
 describe('Chale AI app integration', () => {
   beforeEach(() => { props.onNavigate.mockReset(); mockFetch(); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('shows app records and news as separate linked source groups, not a model answer',async()=>{
+    const date=new Date().toISOString();
+    mockFetch(path=>path.endsWith('/ai/chat')?response({source:'public_updates',text:'Indexed headlines, not a popularity ranking.',entries:[...appReleaseUpdates,{kind:'ghana',source:'Ghana News Agency',title:'Publisher headline for Ghana',url:'https://gna.org.gh/example/',date},{kind:'world',source:'Reuters',title:'World publisher headline',url:'https://www.reuters.com/world/example/',date}]}):response({configured:true}));
+    render(<Sidekick {...props}/>);openPanel();ask("What's trending?");
+    await screen.findByLabelText('Ghana news');
+    expect(screen.getByLabelText('EcoVibes updates')).not.toBeNull();expect(screen.getByLabelText('World news')).not.toBeNull();
+    const link=screen.getByRole('link',{name:'Publisher headline for Ghana'});expect(link.getAttribute('href')).toBe('https://gna.org.gh/example/');expect(link.getAttribute('rel')).toContain('noopener');expect(link.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(screen.getByText('Updates and sources')).not.toBeNull();
+    expect(screen.queryByLabelText('Reply evidence')).toBeNull();
+  });
+
+  it('rejects unsafe links, forged releases and stale news in an updates reply',async()=>{
+    mockFetch(path=>path.endsWith('/ai/chat')?response({source:'public_updates',text:'No verified current news.',entries:[{kind:'app',source:'EcoVibes release record',title:'Payments are live',url:'https://evil.example/',date:new Date().toISOString()},{kind:'ghana',source:'Ghana News Agency',title:'Unsafe news',url:'javascript:alert(1)',date:new Date().toISOString()},{kind:'world',source:'Reuters',title:'Old news',url:'https://www.reuters.com/old/',date:'2020-01-01T00:00:00.000Z'}]}):response({configured:true}));
+    render(<Sidekick {...props}/>);openPanel();ask('Latest world news');
+    await screen.findByText('No verified current news.');
+    expect(screen.queryByRole('link',{name:'Unsafe news'})).toBeNull();expect(screen.queryByRole('link',{name:'Payments are live'})).toBeNull();expect(screen.queryByRole('link',{name:'Old news'})).toBeNull();
+  });
+
+  it('does not attribute an app-only digest to an external news lookup',async()=>{
+    mockFetch(path=>path.endsWith('/ai/chat')?response({source:'public_updates',newsStatus:'not_requested',text:'Versioned app release records.',entries:appReleaseUpdates}):response({configured:true}));
+    render(<Sidekick {...props}/>);openPanel();ask('Latest EcoVibes app updates');
+    await screen.findByText('Versioned app release records.');
+    expect(screen.queryByRole('link',{name:'GDELT Project'})).toBeNull();
+  });
 
   it.each(['hi', 'HELLO!', 'Hey Chale', 'Good morning, Chale AI!', 'hello there'])('answers the whole-message greeting %s without spending a question or choosing a task', value => {
     const fetchMock=mockFetch();

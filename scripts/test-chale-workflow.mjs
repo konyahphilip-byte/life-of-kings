@@ -108,6 +108,8 @@ try {
   assert.equal(status.dailyRequests, 40);
   assert.equal(status.guestDailyRequests, 40);
   assert(status.capabilities.includes('shared_opt_in_learning'));
+  assert(status.capabilities.includes('public_updates'));
+  assert.equal(status.scope,'everyday_and_ecovibes');
   assert.equal(status.appGuideVersion, expectedGuide.version);
   record('ai_status_contract', 'Configured fixture, guide version and integrated capabilities returned.');
 
@@ -316,6 +318,16 @@ try {
     assert.equal(result.body.source,'greeting');assert.equal(result.body.usage.requests,0);
     assert.deepEqual(result.body.guides,[]);assert.equal((await captures()).length,beforeGreeting);
     record('conversational_greeting_after_quota', 'How-are-you greeting stays conversational after quota/global exhaustion with0provider calls.');
+
+    result=await request('/ai/chat',{method:'POST',body:{messages:[{role:'user',content:'What are the latest EcoVibes app updates?'}]}});
+    assert.equal(result.status,200);assert.equal(result.body.source,'public_updates');assert.equal(result.body.usage.requests,0);
+    assert(result.body.entries.length>0 && result.body.entries.every(e=>e.kind==='app'));assert.equal((await captures()).length,beforeGreeting);
+    record('app_updates_after_quota','Versioned app-only release records remain available after model quota exhaustion; no inference or external news fetch.');
+
+    result=await request('/ai/updates?scope=app');assert.equal(result.status,200);assert.equal(result.body.source,'public_updates');
+    assert(result.body.entries.every(e=>e.kind==='app'));assert.equal(result.body.newsStatus,'not_requested');
+    result=await request('/ai/updates?scope=https://127.0.0.1');assert.equal(result.status,400);assert.equal(result.body.error.code,'invalid_scope');
+    record('updates_scope_boundary','Only fixed source scopes are accepted; caller URL cannot select a destination. No production data or provider called.');
 
     quotaDb.prepare('DELETE FROM rate_limit_buckets').run();
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
