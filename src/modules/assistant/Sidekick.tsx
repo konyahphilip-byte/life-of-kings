@@ -4,6 +4,7 @@ import type { AssistantDestination } from './assistant';
 import WorkStatusCard from './WorkStatusCard';
 import { apiUrl } from '../../lib/api';
 import { chaleGreeting } from '../../../shared/chale-greeting.mjs';
+import { readPublicUpdates, type PublicUpdate } from '../../../shared/chale-updates.mjs';
 import { appGuides, appGuideVersion, isAssistantDestination, localAppGuides, pagePrompts, verifiedGuides, type GuideEntry } from './guide';
 import './sidekick.css';
 
@@ -23,7 +24,7 @@ type Diagnostic = {
 };
 type ChatEntry = {
   id: number; role: 'assistant' | 'user'; text: string; pending?: boolean;
-  source?: 'model' | 'app_guide' | 'greeting'; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
+  source?: 'model' | 'app_guide' | 'greeting' | 'public_updates'; updates?: PublicUpdate[]; newsRequested?: boolean; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
 };
 type AIStatus = { configured: boolean; unavailable?: boolean; hosting?: 'local' | 'remote'; allowance?: number };
 type LearningState = { enabled: boolean };
@@ -321,7 +322,9 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       if (requestGeneration !== generation.current) return;
       if (controller.signal.aborted) throw new Error('Request stopped');
       if (response.ok && typeof payload.text === 'string' && payload.text.trim()) {
-        reply = { ...reply, text: payload.text.slice(0, 12_000), source: payload.source === 'greeting' ? 'greeting' : payload.source === 'app_guide' ? 'app_guide' : 'model',
+        reply = { ...reply, text: payload.text.slice(0, 12_000), source: payload.source === 'public_updates' ? 'public_updates' : payload.source === 'greeting' ? 'greeting' : payload.source === 'app_guide' ? 'app_guide' : 'model',
+          updates: payload.source === 'public_updates' ? readPublicUpdates(payload) : [],
+          newsRequested: payload.source === 'public_updates' && ['available','empty','unavailable'].includes(String(payload.newsStatus)),
           items: liveItems(payload.items), guides: verifiedGuides(payload.guides), drafts: reviewDrafts(payload.drafts), diagnostics: verifiedDiagnostics(payload.diagnostics) };
         if (reply.source === 'app_guide' && !reply.guides?.length) reply.guides = guides;
       } else {
@@ -423,8 +426,15 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       <div ref={threadRef} className="sidekick-thread" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
         {userId && (page === 'Waste' || page === 'Quick&Handi') && <WorkStatusCard key={userId} userId={userId} online={online} onNavigate={navigate}/>}
         {entries.map((entry) => <div className={`assistant-message ${entry.role}`} key={entry.id}>
-          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
+          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'public_updates' ? 'Updates and sources' : entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
           <p>{entry.pending && <LoaderCircle size={13} className="chale-thinking" aria-hidden="true"/>}{entry.text}</p>
+          {entry.source === 'public_updates' && <div className="chale-guides">
+            {(['app','ghana','world'] as const).map(kind=>entry.updates?.some(item=>item.kind===kind) && <article key={kind} aria-label={kind==='app'?'EcoVibes updates':kind==='ghana'?'Ghana news':'World news'}>
+              <header><b>{kind==='app'?'EcoVibes updates':kind==='ghana'?'Ghana news':'World news'}</b></header>
+              {entry.updates.filter(item=>item.kind===kind).map(item=><p key={item.url}><a href={item.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{item.title}</a><br/><small>{item.source} · {kind==='app'?'Released':'Indexed'} {new Date(item.date).toLocaleString()}</small></p>)}
+            </article>)}
+            {entry.newsRequested && <p><small>News index: <a href="https://www.gdeltproject.org/" target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">GDELT Project</a>. Open the publisher for full reporting.</small></p>}
+          </div>}
           {!!replyEvidence(entry).length && <p className="chale-evidence" aria-label="Reply evidence">Evidence returned: {replyEvidence(entry).join(' · ')}.</p>}
           {!!entry.diagnostics?.length && <div className="chale-diagnostics">{entry.diagnostics.map((diagnostic) => {
             const steps = [...new Set(diagnostic.guides.filter((guide) => guide.destination === diagnostic.destination).flatMap((guide) => guide.steps))].slice(0, 4);

@@ -19,6 +19,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
 import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
+import { createPublicUpdates } from "./chale-updates.mjs";
+import { chaleUpdateIntent } from "../shared/chale-updates.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { createChaleWorkStatus } from "./chale-work-status.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
@@ -1092,6 +1094,7 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
 }
 const providers = createProviderService({ q, all, run, transaction, assert, inputString, validMinor, now, id, event, notify, rateLimit, postgresMode });
 const chaleWorkStatus = createChaleWorkStatus({ all, transaction, rateLimit, assert, now });
+const chalePublicUpdates = createPublicUpdates();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
@@ -1198,11 +1201,17 @@ async function route(ctx, req, res, method, path, body, query) {
     return {
       ...chaleStatus(),
       appGuideVersion: APP_GUIDE_VERSION,
-      capabilities: ["app_guidance", "public_catalog", "local_drafts", "shared_opt_in_learning", "guided_diagnostics"],
-      scope: "ecovibes_only",
+      capabilities: ["app_guidance", "public_catalog", "local_drafts", "shared_opt_in_learning", "guided_diagnostics", "public_updates"],
+      scope: "everyday_and_ecovibes",
     };
   }
   if (method === "GET" && path === "/ai/work-status") return chaleWorkStatus(ctx, query);
+  if (method === "GET" && path === "/ai/updates") {
+    await rateLimit(`chale-updates:${req.socket.remoteAddress}`, 6, 60_000);
+    const scope = query.get('scope') || 'both';
+    assert(['app','ghana','world','both'].includes(scope), 400, 'invalid_scope', 'Choose app, ghana, world or both.');
+    return chalePublicUpdates(scope);
+  }
   if (method === "POST" && path === "/ai/chat") {
     await rateLimit(`chale-ai:${req.socket.remoteAddress}`, 10, 60_000);
     assert(Array.isArray(body.messages), 400, "invalid_messages", "Messages must be provided as a list.");
@@ -1219,6 +1228,8 @@ async function route(ctx, req, res, method, path, body, query) {
     const greeting = chaleGreeting(messages.at(-1).content);
     if (greeting) return { text: greeting, source: "greeting", items: [], guides: [], drafts: [], diagnostics: [], guideVersion: APP_GUIDE_VERSION,
       usage: { inputTokens: 0, outputTokens: 0, requests: 0, latencyMs: 0 } };
+    const updateScope = chaleUpdateIntent(messages.at(-1).content);
+    if (updateScope) return chalePublicUpdates(updateScope);
     assert(isChaleAIConfigured(), 503, "ai_not_configured", "Chale AI inference is not configured yet. The app guide remains available.");
     const aiLimits = chaleConfig();
     const day = new Date().toISOString().slice(0, 10);
