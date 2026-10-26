@@ -1733,7 +1733,7 @@ async function route(ctx, req, res, method, path, body, query) {
     };
   }
   if (method === "GET" && path === "/media/status")
-    return { configured: liveKitConfigured, serverUrl: liveKitConfigured ? liveKitClientUrl : null };
+    return { configured: liveKitConfigured, privateCallsConfigured: false, serverUrl: liveKitConfigured ? liveKitClientUrl : null };
   assert(
     ctx.user,
     401,
@@ -1936,6 +1936,14 @@ async function route(ctx, req, res, method, path, body, query) {
     await run("INSERT INTO people_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at", ctx.user.id, now());
     return { ok: true };
   }
+  if (method === "GET" && path === "/people/lookup") {
+    await rateLimit(`people-lookup:${ctx.user.id}`, 30, 60_000);
+    assert(query.size === 1 && query.has('ecoId'), 400, 'invalid_people_query', 'Search using one public EcoVibes ID.');
+    const ecoId = String(query.get('ecoId') || '').trim().replace(/^@/, '').toLowerCase();
+    assert(/^[a-z0-9._]{3,24}$/.test(ecoId), 400, 'invalid_eco_id', 'Use the exact EcoVibes ID, with 3–24 letters, numbers, dots or underscores.');
+    const person = await q("SELECT u.id,u.eco_id,u.display_name,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=u.id) followed,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=u.id AND f.target_user_id=?) follows_you FROM users u WHERE lower(u.eco_id)=? AND u.status='active' AND u.id!=?", ctx.user.id, ctx.user.id, ecoId, ctx.user.id);
+    return { person: person ? { id:person.id, eco_id:person.eco_id, display_name:person.display_name, followed:Boolean(person.followed), followsYou:Boolean(person.follows_you) } : null };
+  }
   if (method === "GET" && path === "/people/discover") {
     const rows = await all("SELECT u.id,u.eco_id,u.display_name,p.last_seen_at,(SELECT COUNT(*) FROM people_follows f1 JOIN people_follows f2 ON f1.target_user_id=f2.target_user_id WHERE f1.user_id=? AND f2.user_id=u.id) mutual_count,EXISTS(SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=u.id) followed,(SELECT MAX(s.created_at) FROM stories s WHERE s.author_id=u.id AND s.visibility='public' AND s.expires_at>?) story_at,(SELECT MAX(r.created_at) FROM reels r WHERE r.author_id=u.id AND r.status='active') reel_at,(SELECT s.text FROM stories s WHERE s.author_id=u.id AND s.visibility='public' AND s.expires_at>? ORDER BY s.created_at DESC LIMIT 1) latest_story_text,(SELECT r.caption FROM reels r WHERE r.author_id=u.id AND r.status='active' ORDER BY r.created_at DESC LIMIT 1) latest_reel_caption FROM users u LEFT JOIN people_presence p ON p.user_id=u.id WHERE u.id!=? AND u.status='active' LIMIT 300", ctx.user.id, ctx.user.id, now(), now(), ctx.user.id);
     const [preferences, signals, settings] = await Promise.all([
@@ -1984,6 +1992,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   let mediaMatch = path.match(/^\/media\/sessions\/([a-f0-9-]+)\/(join|end|ingress)$/);
   if (method === "POST" && path === "/media/sessions") {
+    assert(body.mode === 'live' && body.visibility === 'public', 503, 'private_call_setup_required', 'Private voice and video calling are awaiting the secure calling service. No call was sent.');
     requireLiveKit(); await rateLimit(`media-create:${ctx.user.id}`, 10, 60_000);
     const mode = body.mode;
     assert(["voice", "video", "live"].includes(mode), 400, "invalid_mode", "Choose voice, video, or live.");
@@ -2011,6 +2020,7 @@ async function route(ctx, req, res, method, path, body, query) {
     requireLiveKit(); await rateLimit(`media-join:${ctx.user.id}`, 30, 60_000);
     const media = await q("SELECT * FROM media_sessions WHERE id=? AND status='active'", mediaMatch[1]);
     assert(media, 404, "media_session_not_found", "This room is no longer available.");
+    assert(media.mode === 'live' && media.visibility === 'public', 503, 'private_call_setup_required', 'Private voice and video calling are awaiting the secure calling service.');
     let member = await q("SELECT role FROM media_session_members WHERE session_id=? AND user_id=?", media.id, ctx.user.id);
     if (!member && media.visibility === "public" && media.mode === "live") {
       await run("INSERT OR IGNORE INTO media_session_members(session_id,user_id,role,joined_at) VALUES(?,?,?,?)", media.id, ctx.user.id, "viewer", now());
@@ -2018,10 +2028,10 @@ async function route(ctx, req, res, method, path, body, query) {
     }
     assert(member, 403, "media_invite_required", "This is a private room. Ask the host to invite your EcoVibes ID.");
     if (member.role === "invited") {
-      await run("UPDATE media_session_members SET role='participant',joined_at=? WHERE session_id=? AND user_id=?", now(), media.id, ctx.user.id);
-      member.role = "participant";
+      await run("UPDATE media_session_members SET role='viewer',joined_at=? WHERE session_id=? AND user_id=?", now(), media.id, ctx.user.id);
+      member.role = "viewer";
     }
-    const canPublish = member.role === "host" || member.role === "participant";
+    const canPublish = member.role === "host";
     const access = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, { identity: ctx.user.id, name: ctx.user.display_name, ttl: "1h", metadata: JSON.stringify({ ecoId: ctx.user.eco_id, mode: media.mode, role: member.role }) });
     access.addGrant({ roomJoin: true, room: media.room_name, canPublish, canSubscribe: true, canPublishData: true });
     return { token: await access.toJwt(), serverUrl: liveKitClientUrl, session: { id: media.id, mode: media.mode, title: media.title, role: member.role, canPublish } };
@@ -2037,7 +2047,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "POST" && mediaMatch && mediaMatch[2] === "ingress") {
     requireLiveKit();
-    const media = await q("SELECT * FROM media_sessions WHERE id=? AND status='active' AND creator_id=? AND mode='live'", mediaMatch[1], ctx.user.id);
+    const media = await q("SELECT * FROM media_sessions WHERE id=? AND status='active' AND creator_id=? AND mode='live' AND visibility='public'", mediaMatch[1], ctx.user.id);
     assert(media, 404, "media_session_not_found", "Live room not found.");
     const ingress = new IngressClient(liveKitHost, process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
     const info = await ingress.createIngress(IngressInput.RTMP_INPUT, { name: `${media.title} · ${ctx.user.eco_id}`, roomName: media.room_name, participantIdentity: `stream-${media.id}`, participantName: `${ctx.user.display_name} stream`, });

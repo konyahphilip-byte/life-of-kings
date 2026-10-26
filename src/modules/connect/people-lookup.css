@@ -1,0 +1,7 @@
+.people-lookup{border:1px solid var(--border,#e0e7dc);border-radius:20px;background:var(--surface,#fff);padding:22px;margin:20px 0;color:var(--text,#18382c)}
+.people-lookup h2{margin:0 0 8px;font-size:1.3rem}.people-lookup p{font-size:.9rem;line-height:1.5;margin:8px 0 16px;color:var(--muted,#637264)}
+.people-lookup form{display:flex;gap:12px;align-items:end}.people-lookup label{display:grid;gap:8px;flex:1;min-width:0;font-size:.85rem;font-weight:600}
+.people-lookup input{width:100%;box-sizing:border-box;min-height:44px;border:1px solid #dce4d9;border-radius:10px;background:var(--background,#f7f8f3);color:inherit;font:inherit;padding:10px}
+.people-lookup button{min-height:44px;background:#19583f;color:white;border:0;border-radius:10px;padding:10px 16px;font:inherit;cursor:pointer}.people-lookup button:disabled{opacity:.5;cursor:default}
+.people-lookup article{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid #e3e9de}.people-lookup article div{display:grid;gap:4px;min-width:0;overflow-wrap:anywhere}.people-lookup article span{font-size:.85rem;color:var(--muted,#637264)}
+@media(max-width:480px){.people-lookup{padding:16px}.people-lookup form{flex-wrap:wrap}.people-lookup label{flex-basis:100%}.people-lookup form button{width:100%}}
