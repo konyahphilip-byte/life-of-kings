@@ -178,4 +178,46 @@ describe('Chale Cloudflare free launch', () => {
     await expect(generateChaleAIReply([{ role: 'user', content: 'Why is the sky blue?' }], search)).rejects.toMatchObject({ message: 'Chale inference request failed.', status: 503 });
     expect(fetch).toHaveBeenCalledOnce(); expect(search).not.toHaveBeenCalled();
   });
+
+  it('does not leak recycling caveats into ordinary interview advice', async () => {
+    for (const [key,value] of Object.entries(env)) vi.stubEnv(key,value);
+    const fetch=vi.fn(async()=>new Response(JSON.stringify(completion())));vi.stubGlobal('fetch',fetch);
+    await generateChaleAIReply([{role:'user',content:'Any tips for a job interview?'}],async()=>[],{currentPage:'Quick&Handi'});
+    const instructions=JSON.parse(fetch.mock.calls[0][1].body).messages[0].content;
+    expect(instructions).not.toMatch(/collector|bottle|caps|labels/i);
+  });
+
+  it('separates unavailable current news from an English language limitation', async () => {
+    for (const [key,value] of Object.entries(env)) vi.stubEnv(key,value);
+    const fetch=vi.fn(async()=>new Response(JSON.stringify(completion())));vi.stubGlobal('fetch',fetch);
+    await generateChaleAIReply([{role:'user',content:'What is happening in Ghana today?'}],async()=>[]);
+    const instructions=JSON.parse(fetch.mock.calls[0][1].body).messages[0].content;
+    expect(instructions).toContain('A lack of live information is not a language limitation');
+    expect(instructions).not.toContain('otherwise say your language support is limited');
+  });
+
+  it('uses source-backed low-risk preparation notes only for relevant bottle questions', async () => {
+    for (const [key,value] of Object.entries(env)) vi.stubEnv(key,value);
+    const fetch=vi.fn(async()=>new Response(JSON.stringify(completion())));vi.stubGlobal('fetch',fetch);
+    await generateChaleAIReply([{role:'user',content:'How should I prepare plastic bottles for recycling?'}],async()=>[]);
+    const instructions=JSON.parse(fetch.mock.calls[0][1].body).messages[0].content;
+    expect(instructions).toContain('Keep bottles intact');
+    expect(instructions).toContain('Do not make cutting, soaking in chemicals or removing caps/labels a default');
+    expect(instructions).toContain('not verified Ghanaian collector rules');
+    expect(instructions).toContain('https://www.epa.gov/recycle/how-do-i-recycle-common-recyclables');
+  });
+
+  it.each([
+    'How do I clean plastic toys?',
+    'How should I sort plastic bags for recycling?',
+    'How do I clean a baby feeding bottle?',
+    'How are bottles recycled in a factory?',
+  ])('excludes bottle preparation notes from a different question: %s', async (content) => {
+    for (const [key,value] of Object.entries(env)) vi.stubEnv(key,value);
+    const fetch=vi.fn(async()=>new Response(JSON.stringify(completion())));vi.stubGlobal('fetch',fetch);
+    await generateChaleAIReply([{role:'user',content}],async()=>[]);
+    const instructions=JSON.parse(fetch.mock.calls[0][1].body).messages[0].content;
+    expect(instructions).not.toContain('For household bottle preparation only');
+    expect(instructions).not.toContain('General references checked');
+  });
 });
