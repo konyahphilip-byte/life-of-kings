@@ -337,8 +337,10 @@ describe('Chale app workflow', () => {
     assert.match(CHALE_INSTRUCTIONS, /local review drafts only/);
     assert.match(CHALE_INSTRUCTIONS, /Consent, pause and reset/);
     assert.match(CHALE_INSTRUCTIONS, /untrusted data/);
-    assert.match(CHALE_INSTRUCTIONS, /sole product scope is EcoVibes/);
-    assert.match(CHALE_INSTRUCTIONS, /not a general-purpose assistant/);
+    assert.match(CHALE_INSTRUCTIONS, /everyday questions/);
+    assert.match(CHALE_INSTRUCTIONS, /warm conversations/);
+    assert.match(CHALE_INSTRUCTIONS, /general knowledge/);
+    assert.doesNotMatch(CHALE_INSTRUCTIONS, /sole product scope|not a general-purpose assistant/);
     assert.match(CHALE_INSTRUCTIONS, /configured service is not verified health/);
   });
 });

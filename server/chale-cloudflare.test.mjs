@@ -103,4 +103,79 @@ describe('Chale Cloudflare free launch', () => {
     for (const [index, step] of reply.guides[0].steps.entries()) expect(reply.text).toContain(`${index + 1}. ${step}`);
     expect(reply.usage.requests).toBe(0);
   });
+
+  it.each([
+    'Why is the sky blue?', 'Give me a simple chocolate cake recipe.',
+    'I feel overwhelmed. Can we talk?', 'Help me find motivation to study.',
+    'Search for a way to organize my day.', 'Suggest three low-cost ways to relax.',
+    'Give me three tips for a job interview.', 'Explain the product rule in calculus.',
+    'How do I reset my router?', 'Give me advice on learning guitar.',
+    'I lost my physical wallet on the bus; what should I do?',
+    'Any tips for a job interview?', 'Can you show the product rule with an example?',
+  ])('answers everyday help without forcing a catalog or app task: %s', async (content) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const answer = 'Let us start with one small step that works for you.';
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: answer } }], usage: { prompt_tokens: 30, completion_tokens: 12 } })));
+    vi.stubGlobal('fetch', fetch); const search = vi.fn();
+    const result = await generateChaleAIReply([{ role: 'user', content }], search, { currentPage: 'Quick&Handi', userId: 'private-context-sentinel', messages: 'private-context-sentinel' });
+    expect(result).toMatchObject({ source: 'model', text: answer, items: [], guides: [], drafts: [], usage: { requests: 1 } });
+    expect(fetch).toHaveBeenCalledOnce(); expect(search).not.toHaveBeenCalled();
+    const payload = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(payload.max_tokens).toBe(256);
+    expect(payload.messages.at(-1)).toEqual({ role: 'user', content });
+    expect(payload.messages[0].content).toContain('everyday questions');
+    expect(payload.messages[0].content).toContain('warm conversations');
+    expect(payload.messages[0].content).toContain('general knowledge');
+    expect(payload.messages[0].content).toContain('Never claim you checked private records');
+    expect(JSON.stringify(payload)).not.toContain('private-context-sentinel');
+  });
+
+  it('retains exact guide evidence for an explicit EcoVibes recommendation reset', async () => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(async () => new Response(JSON.stringify(completion()))); vi.stubGlobal('fetch', fetch);
+    const result = await generateChaleAIReply([{ role: 'user', content: 'How do I reset my EcoVibes learning recommendations?' }], async () => []);
+    expect(result.source).toBe('model');
+    expect(result.guides.some(g=>g.id==='learning')).toBe(true);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).messages[0].content).toContain('learning');
+  });
+
+  it.each([
+    ['How do I request a waste collection?','Waste','waste'],
+    ['How do I change my language?','Settings','settings'],
+    ['How do I pause learning?','Settings','learning'],
+    ['Help me use Settings','Settings','settings'], ['Help me use Waste','Waste','waste'],
+  ])('preserves existing app prompt evidence: %s', async (content,currentPage,id) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(async () => new Response(JSON.stringify(completion()))); vi.stubGlobal('fetch', fetch);
+    const result = await generateChaleAIReply([{role:'user',content}],async()=>[],{currentPage});
+    expect(result.guides.some(g=>g.id===id)).toBe(true);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('does not mistake a physical wallet catalog item on EcoVibes for EcoPay', async () => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(async () => new Response(JSON.stringify(completion()))); vi.stubGlobal('fetch', fetch);
+    const search=vi.fn(async()=>[{kind:'product',id:'wallet',title:'Leather wallet'}]);
+    const result=await generateChaleAIReply([{role:'user',content:'Find a leather wallet to buy on EcoVibes.'}],search);
+    expect(result.items.map(i=>i.id)).toEqual(['wallet']);expect(result.source).toBe('model');expect(search).toHaveBeenCalledOnce();
+  });
+
+  it('allows practical general advice without presenting it as EcoVibes policy', async () => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(async () => new Response(JSON.stringify(completion()))); vi.stubGlobal('fetch', fetch);
+    await generateChaleAIReply([{ role: 'user', content: 'How should I prepare plastic bottles for recycling?' }], async () => []);
+    const instructions = JSON.parse(fetch.mock.calls[0][1].body).messages[0].content;
+    expect(instructions).toContain('General advice is not EcoVibes policy');
+    expect(instructions).toContain('Use only that evidence for app features');
+    expect(instructions).toContain('No live web access');
+    expect(instructions).toContain('does not train itself on chats');
+  });
+
+  it('propagates everyday provider failure without retry, invented success or paid fallback', async () => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ errors: [{ message: 'private-provider-sentinel' }] }), { status: 503 })); vi.stubGlobal('fetch', fetch);
+    const search = vi.fn();
+    await expect(generateChaleAIReply([{ role: 'user', content: 'Why is the sky blue?' }], search)).rejects.toMatchObject({ message: 'Chale inference request failed.', status: 503 });
+    expect(fetch).toHaveBeenCalledOnce(); expect(search).not.toHaveBeenCalled();
+  });
 });
