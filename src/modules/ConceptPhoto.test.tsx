@@ -4,6 +4,21 @@ import ConceptPhoto from './ConceptPhoto';
 afterEach(cleanup);
 
 describe('concept photography', () => {
+  it.each([
+    {image:'marketplace' as const,alt:'An artisan and a shopper looking at a woven basket.'},
+    {image:'gaming' as const,alt:'Friends playing a video game with controllers.'},
+    {image:'opportunities' as const,alt:'Two colleagues reviewing a notebook at a shared workspace.'},
+  ])('renders the $image photo without a badge and omits it in Extreme saver', ({image,alt}) => {
+    const view=render(<ConceptPhoto image={image} saver="saver"/>);
+    const photo=screen.getByRole('img',{name:alt});
+    expect(photo.getAttribute('loading')).toBe('lazy');
+    expect(photo.getAttribute('width')).toBe('640');
+    expect(photo.getAttribute('height')).toBe('640');
+    expect(view.container.textContent).toBe('');
+    expect(view.container.querySelector('.concept-photo-label')).toBeNull();
+    view.rerender(<ConceptPhoto image={image} saver="extreme"/>);
+    expect(view.container.innerHTML).toBe('');
+  });
   it('shows the photos without a generated-image badge or that wording in descriptions', () => {
     const {container}=render(<><ConceptPhoto image="home" saver="saver"/><ConceptPhoto image="waste" saver="saver"/></>);
     expect(container.querySelector('.concept-photo-label')).toBeNull();
