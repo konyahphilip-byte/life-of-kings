@@ -59,6 +59,23 @@ describe('Chale AI app integration', () => {
     expect(props.onNavigate).not.toHaveBeenCalled();
   });
 
+  it.each(['how are you', 'Hi, how are you?', 'How are you doing, Chale AI?'])('answers the whole conversational greeting %s without an unrelated workflow',value=>{
+    const fetchMock=mockFetch();
+    render(<Sidekick {...props}/>);openPanel();ask(value);
+    expect(screen.queryByText("I'm here and ready to help. What would you like to talk about?")).not.toBeNull();
+    expect(fetchMock.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(false);
+    expect(screen.queryByLabelText('Reply evidence')).toBeNull();
+    expect(props.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps a substantive how-are-you question on the normal answer path',async()=>{
+    const fetchMock=mockFetch();
+    render(<Sidekick {...props}/>);openPanel();ask('How are you protecting my account?');
+    await screen.findByText('Here is a practical next step.');
+    expect(fetchMock.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(true);
+    expect(screen.queryByText("I'm here and ready to help. What would you like to talk about?")).toBeNull();
+  });
+
   it('keeps a real question after a greeting on the normal answer path',async()=>{
     const fetchMock=mockFetch();
     render(<Sidekick {...props}/>);openPanel();ask('Hi, how do I request a collection?');

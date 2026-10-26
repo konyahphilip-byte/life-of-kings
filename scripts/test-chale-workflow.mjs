@@ -311,6 +311,12 @@ try {
     assert.deepEqual(result.body.guides,[]);assert.equal((await captures()).length,beforeGreeting);
     record('greeting_after_quota', 'A whole greeting remains available after guest/global quota exhaustion, with0model requests and no guide/task selected.');
 
+    result = await request('/ai/chat', { method:'POST', body:{messages:[{role:'user',content:'How are you?'}]} });
+    assert.equal(result.status,200);assert.equal(result.body.text,"I'm here and ready to help. What would you like to talk about?");
+    assert.equal(result.body.source,'greeting');assert.equal(result.body.usage.requests,0);
+    assert.deepEqual(result.body.guides,[]);assert.equal((await captures()).length,beforeGreeting);
+    record('conversational_greeting_after_quota', 'How-are-you greeting stays conversational after quota/global exhaustion with0provider calls.');
+
     quotaDb.prepare('DELETE FROM rate_limit_buckets').run();
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     seedBucket(`chale-global:${yesterday}`, 200);
