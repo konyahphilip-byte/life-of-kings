@@ -1,9 +1,10 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { apiUrl } from '../../lib/api';
 import './people-lookup.css';
+import { FriendActions } from './FriendsPanel';
 
 export type PublicPerson = { id:string; eco_id:string; display_name:string; followed:boolean; followsYou:boolean };
-export default function PeopleLookup({userId,onSelect,initialQuery=''}:{userId:string|null;onSelect:(person:PublicPerson)=>void;initialQuery?:string}) {
+export default function PeopleLookup({userId,onSelect,initialQuery='',csrfToken=''}:{userId:string|null;onSelect:(person:PublicPerson)=>void;initialQuery?:string;csrfToken?:string}) {
   const [query,setQuery]=useState(initialQuery),[person,setPerson]=useState<PublicPerson|null>(null);
   const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
   const generation=useRef(0), pending=useRef<AbortController|null>(null);
@@ -26,6 +27,6 @@ export default function PeopleLookup({userId,onSelect,initialQuery=''}:{userId:s
   return <section className="people-lookup" aria-label="Find an EcoVibes person">
     <h2>Find your person</h2><p>Use the exact @name on their Profile. Capital letters do not matter; dots and underscores do.</p>
     {!userId?<p>Sign in to find an EcoVibes ID.</p>:<><form onSubmit={find}><label>EcoVibes ID<input aria-label="Find EcoVibes ID" value={query} maxLength={25} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="@their_id" onChange={e=>{invalidate();setQuery(e.target.value);}}/></label><button type="submit" disabled={busy||!query.trim()}>{busy?'Finding…':'Find person'}</button></form>
-    {message&&<p role="status">{message}</p>}{person&&<article><div><strong>{person.display_name}</strong><span>@{person.eco_id}</span></div><button type="button" onClick={()=>onSelect(person)} aria-label={`Select ${person.display_name}`}>Select</button></article>}</>}
+    {message&&<p role="status">{message}</p>}{person&&<><article><div><strong>{person.display_name}</strong><span>@{person.eco_id}</span></div><button type="button" onClick={()=>onSelect(person)} aria-label={`Select ${person.display_name}`}>Select</button></article>{csrfToken&&<FriendActions key={`${userId}:${person.id}`} userId={userId} csrfToken={csrfToken} person={person}/>}</>}</>}
   </section>;
 }
