@@ -5,10 +5,10 @@ import ConnectInbox from './ConnectInbox';
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('EcoVibes Connect availability', () => {
-  it('explains the unavailable inbox and offers the existing job workspace', () => {
+  it('requires sign-in for private messages and offers the existing job workspace', () => {
     const onOpenJobs = vi.fn();
     render(<ConnectInbox onOpenJobs={onOpenJobs}/>);
-    expect(screen.getByText('Direct messages are not connected')).toBeTruthy();
+    expect(screen.getByText('Sign in to message your friends')).toBeTruthy();
     expect(screen.queryByText('Esi Owusu')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open job conversations' }));

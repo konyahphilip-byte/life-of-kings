@@ -27,3 +27,4 @@ jobs:
       - run: npm run test:support
       - run: npm run test:chale-workflow
       - run: npm run test:chale-work-status
+      - run: node scripts/test-direct-messages.mjs

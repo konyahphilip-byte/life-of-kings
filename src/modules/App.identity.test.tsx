@@ -34,6 +34,7 @@ describe('EcoVibes ID app-shell integration', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if(path.endsWith('/connect/messages'))return Response.json({ownerId:identity.id,friends:[],truncated:false});
       return new Response(JSON.stringify({}), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -152,12 +153,12 @@ describe('EcoVibes ID app-shell integration', () => {
     expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toEqual([]);
   });
 
-  it('identifies unavailable direct messaging without a fabricated unread count or active composer', async () => {
+  it('opens the signed-in friend inbox without fabricated counts or an unauthorized composer', async () => {
     render(<App />);
     await screen.findByText('@ama.serwaa');
     act(() => window.dispatchEvent(new CustomEvent('ecovibes:navigate', { detail: 'Messages' })));
 
-    expect(await screen.findByText('Direct messages are not connected')).toBeTruthy();
+    expect(await screen.findByText('Accept a friend request in Calls & Live to start a private conversation.')).toBeTruthy();
     expect(document.querySelector('.nav-count')).toBeNull();
     expect(screen.queryByRole('textbox', { name: 'Write a message' })).toBeNull();
     expect(screen.queryByText('Esi Owusu')).toBeNull();
