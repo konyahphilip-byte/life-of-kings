@@ -1,5 +1,26 @@
 .connect-inbox{display:grid;gap:20px;max-width:1050px}
 .connect-inbox .page-title-row{margin-bottom:0}
+.direct-messages{padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--paper);min-width:0}
+.direct-messages header{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+.direct-messages>form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:12px 0}
+.direct-messages>form label{display:grid;gap:6px;min-width:0;flex:1 1 220px}
+.direct-messages>form input{width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit}
+.direct-messages button{min-height:44px;padding:10px 16px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--green);cursor:pointer}
+.direct-messages button:disabled{opacity:.5;cursor:default}
+.direct-messages button[aria-pressed=true]{border-color:var(--green);background:var(--green-soft)}
+.direct-friend-list{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.direct-friend-list button{text-align:left;max-width:100%;overflow-wrap:anywhere}
+.direct-friend-list span{display:block;font-size:12px}
+.direct-conversation{border-top:1px solid var(--line);padding-top:18px;min-width:0}
+.direct-message-history{max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:12px;margin:16px 0}
+.direct-message-history article{max-width:90%;padding:12px;border-radius:12px;background:var(--bg);overflow-wrap:anywhere}
+.direct-message-history article.direct-mine{align-self:flex-end;background:var(--green-soft)}
+.direct-message-history article p{white-space:pre-wrap;color:var(--ink)}
+.direct-message-history article small{color:var(--muted);font-size:11px}
+.direct-conversation form{display:grid;gap:10px;margin-top:12px}
+.direct-conversation label{display:grid;gap:6px}
+.direct-conversation textarea{width:100%;box-sizing:border-box;min-height:90px;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--paper);color:var(--ink);font:inherit}
+.direct-conversation [role=alert],.direct-messages>[role=alert]{padding:10px;border:1px solid var(--line);border-radius:10px}
 .connect-availability,.connect-job-conversations{display:flex;gap:20px;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--paper)}
 .connect-availability>svg{color:var(--green);flex:none;margin-top:4px}
 .connect-label{font-size:10px;letter-spacing:1px;font-weight:700;color:var(--muted)}

@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { ArrowRight, MessageCircle, Send, ShieldCheck } from 'lucide-react';
 import './connect-inbox.css';
+import DirectMessages from './DirectMessages';
 
 const examples = [
   { name: 'Esi Owusu', initials: 'EO', message: 'That sounds perfect, see you then!' },
@@ -8,7 +9,7 @@ const examples = [
   { name: 'Weekend Arena', initials: 'WA', message: 'Here is an example of a group conversation.' },
 ];
 
-export default function ConnectInbox({ onOpenJobs }: { onOpenJobs: () => void }) {
+export default function ConnectInbox({ onOpenJobs,userId=null,csrfToken='' }: { onOpenJobs: () => void;userId?:string|null;csrfToken?:string }) {
   const [preview, setPreview] = useState(false);
   const [selected, setSelected] = useState(0);
   const previewId = useId();
@@ -18,14 +19,14 @@ export default function ConnectInbox({ onOpenJobs }: { onOpenJobs: () => void })
     <header className="page-title-row">
       <div><span className="eyebrow">ECOVIBES CONNECT</span><h1 id="connect-heading">Messages</h1><p>Keep conversations connected to the work you share.</p></div>
     </header>
-    <section className="connect-availability" aria-labelledby="connect-availability-heading">
+    {userId&&csrfToken?<DirectMessages key={userId} userId={userId} csrfToken={csrfToken}/>:<section className="connect-availability" aria-labelledby="connect-availability-heading">
       <MessageCircle size={26} aria-hidden="true"/>
       <div>
-        <span className="connect-label">GENERAL INBOX · NOT AVAILABLE YET</span>
-        <h2 id="connect-availability-heading">Direct messages are not connected</h2>
-        <p>This page cannot send or receive direct messages. No conversations or unread counts are loaded here.</p>
+        <span className="connect-label">PRIVATE CONVERSATIONS</span>
+        <h2 id="connect-availability-heading">Sign in to message your friends</h2>
+        <p>Your private conversations are only available while you are signed in. Accept a friend request before starting a conversation.</p>
       </div>
-    </section>
+    </section>}
     <section className="connect-job-conversations" aria-labelledby="connect-jobs-heading">
       <div>
         <span className="eyebrow">FOR YOUR SHARED JOBS</span>

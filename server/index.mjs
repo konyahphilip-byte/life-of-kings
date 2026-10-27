@@ -24,6 +24,7 @@ import { chaleUpdateIntent } from "../shared/chale-updates.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { createChaleWorkStatus } from "./chale-work-status.mjs";
 import { createPeopleFriends, FRIENDS_SQLITE_SCHEMA } from "./people-friends.mjs";
+import { createDirectMessages, DIRECT_MESSAGES_SQLITE_SCHEMA, DIRECT_MESSAGES_VERSION } from "./direct-messages.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
 import { chaleGreeting } from "../shared/chale-greeting.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
@@ -185,6 +186,7 @@ if (!postgresMode) {
   `);
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
   db.exec(FRIENDS_SQLITE_SCHEMA);
+  db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
 }
 
 const now = () => new Date().toISOString();
@@ -1100,11 +1102,14 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
 const providers = createProviderService({ q, all, run, transaction, assert, inputString, validMinor, now, id, event, notify, rateLimit, postgresMode });
 const chaleWorkStatus = createChaleWorkStatus({ all, transaction, rateLimit, assert, now });
 const peopleFriends = createPeopleFriends({q,all,run,transaction,assert,now,notify,event,rateLimit,postgresMode});
+const directMessagesAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',DIRECT_MESSAGES_VERSION));
+const directMessages=createDirectMessages({q,all,run,transaction,assert,now,id,event,rateLimit,postgresMode,available:directMessagesAvailable});
 const chalePublicUpdates = createPublicUpdates();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
 async function route(ctx, req, res, method, path, body, query) {
+  if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {
     assert([...query.keys()].length === 0, 400, 'invalid_query', 'This view accepts no account or organization selectors.');
     return createMoneyService({ all, q, run, assert, rateLimit, id, now }).overview(ctx);
