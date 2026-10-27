@@ -1,5 +1,6 @@
 type RecoverySession = { access_token: string; user: { id: string }; expires_at?: number };
 export type RecoveryOperation = ReturnType<typeof createRecoveryOperation>;
+export const RECOVERY_SIGNOUT_UNCONFIRMED='Account sign-out could not be confirmed. Other sessions may still be active.';
 
 // Bind destructive recovery requests to an immutable token snapshot, rather
 // than Auth SDK methods that reread another tab's mutable session storage.
@@ -13,6 +14,7 @@ export function createRecoveryOperation({url,publishableKey,session,fetcher=fetc
   const operationId=crypto.randomUUID();
   let token=session.access_token;
   let signedOut=false;
+  let signOutUnconfirmed=false;
   let signOutPending:Promise<void>|null=null;
   const until=Math.min(Number(session.expires_at)*1000,now()+10*60_000);
   if(!Number.isFinite(until)||until<=now()||!token||!ownerId)throw new Error('Recovery authorization expired. Request a new recovery link.');
@@ -28,6 +30,7 @@ export function createRecoveryOperation({url,publishableKey,session,fetcher=fetc
   return {
     ownerId,operationId,authorization,dispose,
     get signedOut(){return signedOut;},
+    get signOutUnconfirmed(){return signOutUnconfirmed;},
     async updatePassword(password:string){
       if(password.length<12||password.length>256)throw new Error('Use a password with 12–256 characters.');
       let response:Response;
@@ -38,13 +41,16 @@ export function createRecoveryOperation({url,publishableKey,session,fetcher=fetc
     },
     async signOut(){
       if(signedOut)return;
+      if(signOutUnconfirmed)throw new Error(RECOVERY_SIGNOUT_UNCONFIRMED);
       // Remounted cleanup handlers share this operation. Publish the pending
       // promise before dispatch so overlap cannot send another global request.
-      // This does not make a later response-lost retry provider-idempotent.
+      // An unknown outcome must never be redispatched: global sign-out could
+      // otherwise revoke a later sign-in. Retain uncertainty, not fake success.
       if(!signOutPending)signOutPending=Promise.resolve().then(async()=>{
-        let response:Response;
-        try{response=await request('/auth/v1/logout?scope=global','POST');}catch{throw new Error('Provider sign-out could not be confirmed. Choose Finish signing out to retry.');}
-        if(response.status!==200&&response.status!==204)throw new Error('Provider sign-out could not be confirmed. Choose Finish signing out to retry.');
+        try{
+          const response=await request('/auth/v1/logout?scope=global','POST');
+          if(response.status!==200&&response.status!==204)throw new Error('Unconfirmed provider response.');
+        }catch{signOutUnconfirmed=true;dispose();throw new Error(RECOVERY_SIGNOUT_UNCONFIRMED);}
         signedOut=true;dispose();
       }).finally(()=>{signOutPending=null;});
       return signOutPending;

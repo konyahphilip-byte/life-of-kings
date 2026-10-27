@@ -19,6 +19,8 @@ export function createAccountCallback(href: string) {
   let recoveryUser: string | null = null;
   let apiRevoked = false;
   let operation: RecoveryOperation | null = null;
+  let operationRevision=0;
+  let signOutOutcomePublished=false;
   let state: RecoveryState = failed ? 'invalid' : requested ? 'checking' : 'idle';
   const listeners = new Set<() => void>();
   const set = (value: RecoveryState) => { if (state !== value) { state = value; listeners.forEach(listener => listener()); } };
@@ -27,12 +29,19 @@ export function createAccountCallback(href: string) {
     get openAccount() { return !consumed && isAccountCallback(href); },
     get error() { return !consumed && failed ? 'This account link is invalid or has expired. Request a new link below.' : ''; },
     getSnapshot: () => state,
+    getOperationSnapshot: () => operationRevision,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     finishCheck: () => { if (state === 'checking') set('invalid'); },
     clear: () => { operation?.dispose();operation=null;requested = false; consumed = true; recoveryUser = null; apiRevoked = false; set('idle'); },
-    beginPasswordSave: (value:RecoveryOperation) => { if(state!=='ready'||value.ownerId!==recoveryUser)throw new Error('Request a new recovery link before saving.');operation?.dispose();operation=value;set('saving'); },
+    beginPasswordSave: (value:RecoveryOperation) => { if(state!=='ready'||value.ownerId!==recoveryUser)throw new Error('Request a new recovery link before saving.');operation?.dispose();operation=value;signOutOutcomePublished=false;set('saving'); },
     markSaveFailed: () => { operation?.dispose();operation=null;set('invalid'); },
     get operation() { return operation; },
+    // Publish late failures to a remounted view even though the password-save
+    // phase remains saved. Object identity prevents stale operations changing it.
+    markSignOutUnconfirmed: (value:RecoveryOperation) => {
+      if(state!=='saved'||operation!==value||!value.signOutUnconfirmed||signOutOutcomePublished)return;
+      signOutOutcomePublished=true;operationRevision++;listeners.forEach(listener=>listener());
+    },
     matchesUser: (userId: string | undefined) => (state === 'ready' || state === 'saved') && Boolean(userId) && userId === recoveryUser,
     // Record a confirmed mutation for its captured owner even if another tab
     // changed accounts while the provider request was in flight.

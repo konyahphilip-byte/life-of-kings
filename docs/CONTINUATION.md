@@ -1,3 +1,11 @@
+## October 27 - Phase 0 audit and unconfirmed-outcome repair
+
+**LOCALLY BUILT** on codex/account-logout-outcome-20261027, based d415f6c3. Resent 522-line brief matches canonical directive. Fresh read-only Render/Supabase audit: live still 26c1b555; SMTP off/default-template editing locked; confirmation on / OTP 3600; root+exact recovery redirects retained; leaked-password warning/plan restriction remains. No settings/credentials/private Users/inboxes changed/read. Main Bag false-success, fixed Chale launcher and local-only publishing/ranking boundaries were audited and remain queued.
+
+Recovery now blocks redispatch after any unconfirmed sign-out, disposes authority, preserves honest password-save/unknown-session states and offers Back to sign in. Reviewed late-remount reactivity RED fixed with identity-bound outcome revision.46focused/4files,483full/36files/105.34s, TypeScript/build 1672, native synthetic probe and independent source/evidence review pass. Six source hashes/145 primary source-assets preserved. [Acceptance report](releases/2026-10-27-account-outcome-local.md); work/account-logout-outcome-20261027. Lost-response/remount REDs and stopped with exit 143 superseded run retained. Historical QA-001 timeouts remain undiagnosed despite current green full run.
+
+No publication/CI/migration/deployment. Phase 0 remains BLOCKED/UNVERIFIED: actual browser removal, provider/Auth/policy/real accounts/inboxes, SMTP/domain/credential workflow, exact CI and guard-preserving rollout/rollback. Stopping repeated unknown requests does not confirm the original provider outcome. No later phase or paid/DNS/financial/game work.
+
 ## October27 - recovery sign-out overlap guarded locally
 
 **LOCALLY BUILT** on codex/account-logout-concurrency-20261027, based155a2dff. Native captured-operation probe and two RED tests reproduced2 provider requests from overlapping handlers; shared pending promise now yields1 request/outcome, acknowledged later calls remain no-ops.30focused/3files, TypeScript/build1672, final native synthetic probe and independent two-file review pass. [Receipt](releases/2026-10-27-account-logout-concurrency-local.md), work/account-logout-concurrency-20261027.

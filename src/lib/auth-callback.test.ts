@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { createAccountCallback } from './auth-callback';
+import { createRecoveryOperation } from './recovery-operation';
 
 describe('account recovery callback proof', () => {
+  it('publishes terminal operation changes without losing the confirmed save phase',async()=>{
+    const state=createAccountCallback('https://example.invalid/?recovery=1');
+    const op=createRecoveryOperation({url:'https://project.example.invalid',publishableKey:'synthetic-public-key',session:{access_token:'synthetic-only',user:{id:'synthetic-owner'},expires_at:Math.floor(Date.now()/1000)+3600},fetcher:async()=>new Response(null,{status:503})});
+    state.receive('PASSWORD_RECOVERY',true,'synthetic-owner');state.beginPasswordSave(op);state.markPasswordSaved(op.ownerId);state.markApiRevoked();
+    let notifications=0;const unsubscribe=state.subscribe(()=>{notifications++;});const revision=state.getOperationSnapshot();
+    await expect(op.signOut()).rejects.toThrow('sign-out could not be confirmed');state.markSignOutUnconfirmed(op);state.markSignOutUnconfirmed(op);
+    expect(state.getOperationSnapshot()).toBe(revision+1);expect(notifications).toBe(1);expect(state.getSnapshot()).toBe('saved');expect(state.apiRevoked).toBe(true);
+    unsubscribe();state.clear();
+  });
+  it('ignores late terminal outcomes after leaving recovery',async()=>{
+    const state=createAccountCallback('https://example.invalid/?recovery=1');
+    const op=createRecoveryOperation({url:'https://project.example.invalid',publishableKey:'synthetic-public-key',session:{access_token:'synthetic-only',user:{id:'synthetic-owner'},expires_at:Math.floor(Date.now()/1000)+3600},fetcher:async()=>new Response(null,{status:503})});
+    state.receive('PASSWORD_RECOVERY',true,'synthetic-owner');state.beginPasswordSave(op);state.markPasswordSaved(op.ownerId);
+    await expect(op.signOut()).rejects.toThrow('sign-out could not be confirmed');state.clear();const revision=state.getOperationSnapshot();
+    state.markSignOutUnconfirmed(op);expect(state.getOperationSnapshot()).toBe(revision);expect(state.getSnapshot()).toBe('idle');expect(state.requested).toBe(false);
+  });
   it('never treats a URL flag or an ordinary existing session as recovery permission', () => {
     const state = createAccountCallback('https://example.invalid/?recovery=1');
     expect(state.getSnapshot()).toBe('checking');

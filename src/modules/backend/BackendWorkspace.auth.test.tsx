@@ -7,8 +7,8 @@ const auth = vi.hoisted(() => ({ getSession: vi.fn(), signUp: vi.fn(), signInWit
 const recovery = vi.hoisted(() => ({ updatePassword: vi.fn(), signOut: vi.fn() }));
 const callback = vi.hoisted(() => ({ current: null as unknown as ReturnType<typeof createAccountCallback> }));
 vi.mock('../../lib/supabase', () => ({ supabase: { auth }, get accountCallback() { return callback.current; }, makeRecoveryOperation: (session: {access_token:string;user:{id:string}}) => {
-  const ownerId=session.user.id,authorization=`Bearer ${session.access_token}`;let signedOut=false;
-  return {ownerId,operationId:'00000000-0000-4000-8000-000000000001',authorization:()=>authorization,dispose:()=>{},get signedOut(){return signedOut;},updatePassword:async(password:string)=>{const result=await recovery.updatePassword(password);if(result?.error)throw result.error;},signOut:async()=>{if(signedOut)return;const result=await recovery.signOut(ownerId);if(result?.error)throw result.error;signedOut=true;}};
+  const ownerId=session.user.id,authorization=`Bearer ${session.access_token}`;let signedOut=false,unconfirmed=false;
+  return {ownerId,operationId:'00000000-0000-4000-8000-000000000001',authorization:()=>authorization,dispose:()=>{},get signedOut(){return signedOut;},get signOutUnconfirmed(){return unconfirmed;},updatePassword:async(password:string)=>{const result=await recovery.updatePassword(password);if(result?.error)throw result.error;},signOut:async()=>{if(signedOut)return;if(unconfirmed)throw new Error('Synthetic unconfirmed outcome');try{const result=await recovery.signOut(ownerId);if(result?.error)throw result.error;signedOut=true;}catch(error){unconfirmed=true;throw error;}}};
 }  }));
 const identity = { id: 'synthetic-member', eco_id: 'synthetic.member', display_name: 'Synthetic Member', roles: ['customer'], created_at: '2026-10-01T00:00:00Z' };
 const failure = (code: string, message: string) => ({ data: { session: null }, error: Object.assign(new Error(message), { code, status: 429 }) });
@@ -166,11 +166,33 @@ describe('account email availability guidance', () => {
     callback.current.receive('PASSWORD_RECOVERY', true, 'synthetic-recovery-owner');
     auth.getSession.mockResolvedValue({ data: { session: { access_token: 'synthetic-recovery', user: { id: 'synthetic-recovery-owner' } } } });
     recovery.signOut.mockResolvedValue({ error: new Error('Synthetic signout failure') });
-    render(<BackendWorkspace />);
+    const view=render(<BackendWorkspace />);
     const form = formFor('Save password and sign out'); fill(form, 'New password', 'Synthetic-new-password-123'); fill(form, 'Confirm new password', 'Synthetic-new-password-123'); fireEvent.submit(form);
-    expect(await screen.findByText('Your password was updated, but sign-out could not be confirmed. Choose Finish signing out to retry.')).toBeTruthy();
+    expect(await screen.findByText('Your password was updated. Account sign-out could not be confirmed. Other sessions may still be active. Do not reset the password again. Use Back to sign in with your new password.')).toBeTruthy();
+    expect(screen.getByRole('heading',{name:'Sign-out is unconfirmed'})).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Finish signing out'})).toBeNull();
     expect(screen.queryByText('Password updated. Sign in with your new password.')).toBeNull();
     expect(screen.queryByLabelText('New password')).toBeNull();
+    view.unmount();render(<BackendWorkspace />);
+    expect(await screen.findByRole('heading',{name:'Sign-out is unconfirmed'})).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Finish signing out'})).toBeNull();
+    expect(recovery.signOut).toHaveBeenCalledOnce();expect(recovery.updatePassword).toHaveBeenCalledOnce();
+  });
+
+  it('publishes a late unconfirmed sign-out to the remounted recovery screen',async()=>{
+    window.history.replaceState({},'', '/?recovery=1');callback.current=createAccountCallback(window.location.href);
+    callback.current.receive('PASSWORD_RECOVERY',true,'synthetic-recovery-owner');
+    auth.getSession.mockResolvedValue({data:{session:{access_token:'synthetic-recovery',user:{id:'synthetic-recovery-owner'}}},error:null});
+    let finishSignOut!:(value:unknown)=>void;recovery.signOut.mockImplementation(()=>new Promise(resolve=>{finishSignOut=resolve;}));
+    const view=render(<BackendWorkspace />);
+    const form=formFor('Save password and sign out');fill(form,'New password','Synthetic-new-password-123');fill(form,'Confirm new password','Synthetic-new-password-123');fireEvent.submit(form);
+    await waitFor(()=>expect(recovery.signOut).toHaveBeenCalledOnce());
+    const reads=auth.getSession.mock.calls.length;view.unmount();render(<BackendWorkspace />);
+    await waitFor(()=>expect(auth.getSession.mock.calls.length).toBeGreaterThan(reads));
+    await act(async()=>{finishSignOut({error:new Error('Synthetic acknowledgement lost after remount')});});
+    expect(await screen.findByRole('heading',{name:'Sign-out is unconfirmed'})).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Finish signing out'})).toBeNull();
+    expect(recovery.signOut).toHaveBeenCalledOnce();expect(recovery.updatePassword).toHaveBeenCalledOnce();
   });
 
   it('restores a linked API session without offering another account link', async () => {
@@ -232,19 +254,26 @@ describe('account email availability guidance', () => {
     expect(recovery.updatePassword).toHaveBeenCalledOnce();expect(recovery.signOut).toHaveBeenCalledOnce();
   });
 
-  it('continues token-bound cleanup for the original account after another account signs in', async () => {
+  it('preserves another account when the original sign-out outcome becomes unconfirmed', async () => {
     window.history.replaceState({}, '', '/?recovery=1'); callback.current = createAccountCallback(window.location.href);
     callback.current.receive('PASSWORD_RECOVERY', true, 'synthetic-recovery-owner');
     auth.getSession.mockResolvedValue({ data: { session: { access_token: 'synthetic-recovery', user: { id: 'synthetic-recovery-owner' } } } });
-    recovery.signOut.mockResolvedValue({ error: new Error('Synthetic provider failure') });
+    let finishSignOut!:(value:unknown)=>void;
+    recovery.signOut.mockImplementation(()=>new Promise(resolve=>{finishSignOut=resolve;}));
     render(<BackendWorkspace />);
     const form=formFor('Save password and sign out');fill(form,'New password','Synthetic-new-password-123');fill(form,'Confirm new password','Synthetic-new-password-123');fireEvent.submit(form);
-    await screen.findByText('Your password was updated, but sign-out could not be confirmed. Choose Finish signing out to retry.');
+    await waitFor(()=>expect(recovery.signOut).toHaveBeenCalledOnce());
     auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'synthetic-other' }, access_token: 'synthetic-other-session' } } });
     act(()=>callback.current.receive('SIGNED_IN',true,'synthetic-other'));
-    fireEvent.click(screen.getByRole('button',{name:'Finish signing out'}));
-    await waitFor(()=>expect(recovery.signOut).toHaveBeenCalledTimes(2));
+    await act(async()=>{finishSignOut({error:new Error('Synthetic lost response')});});
+    expect(await screen.findByRole('heading',{name:'Sign-out is unconfirmed'})).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Finish signing out'})).toBeNull();
+    expect(screen.queryByText('Password updated. Sign in with your new password.')).toBeNull();
+    expect(recovery.signOut).toHaveBeenCalledOnce();
     expect(recovery.signOut.mock.calls.every(([owner])=>owner==='synthetic-recovery-owner')).toBe(true);expect(auth.signOut).not.toHaveBeenCalled();expect(recovery.updatePassword).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button',{name:'Back to sign in'}));
+    expect(await screen.findByRole('button',{name:'Sign in'})).toBeTruthy();
+    expect(recovery.signOut).toHaveBeenCalledOnce();expect(recovery.updatePassword).toHaveBeenCalledOnce();
   });
 
   it('refuses to save a password when the provider session belongs to another account', async () => {
