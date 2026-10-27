@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import PeopleLookup from './PeopleLookup';
 
 const person = { id: 'peer', eco_id: 'philip_konyah', display_name: 'Philip', followed: false, followsYou: false };
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup();vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals(); });
 
 describe('verified public ID lookup', () => {
   it('requires sign-in and never queries profiles for a guest', () => {
@@ -50,5 +50,14 @@ describe('verified public ID lookup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Find person' }));
     await screen.findByText(/No other active account matches/);
     expect(screen.queryByRole('button', { name: /^Select/ })).toBeNull();
+  });
+  it('updates the searched person when the other phone accepts, without searching again',async()=>{
+    vi.useFakeTimers();vi.spyOn(document,'visibilityState','get').mockReturnValue('visible');vi.spyOn(navigator,'onLine','get').mockReturnValue(true);
+    let accepted=false;
+    vi.stubGlobal('fetch',vi.fn(async(input)=>new Response(JSON.stringify(String(input).includes('/people/lookup?')?{person}:accepted?{state:'friends',revision:2,actions:['remove','block']}:{state:'outgoing',revision:1,actions:['cancel','block']}))));
+    render(<PeopleLookup userId="caller" csrfToken="synthetic" onSelect={vi.fn()}/>);
+    fireEvent.change(screen.getByRole('textbox'),{target:{value:'philip_konyah'}});fireEvent.click(screen.getByRole('button',{name:'Find person'}));
+    await act(async()=>{await vi.advanceTimersByTimeAsync(0);});expect(screen.getByText('Request sent')).toBeTruthy();
+    accepted=true;await act(async()=>{await vi.advanceTimersByTimeAsync(15_000);});expect(screen.getByText('Friends')).toBeTruthy();
   });
 });
