@@ -1,0 +1,18 @@
+{
+  "status": "LOCALLY BUILT",
+  "emailOtpExpirySeconds": 3600,
+  "verifiedOn": "2026-10-27",
+  "verifiedBy": "Read-only Supabase Dashboard > Authentication > Sign In / Providers > Email > Email OTP expiration",
+  "siteUrl": "https://ecovibes-api.onrender.com",
+  "recoveryRedirect": "https://ecovibes-api.onrender.com/?recovery=1",
+  "confirmationSubject": "Confirm your EcoVibes email address",
+  "recoverySubject": "Reset your EcoVibes password",
+  "deploymentBlockers": [
+    "Custom SMTP not configured; hosted dashboard requires it before editing templates",
+    "Owned sending domain and SPF/DKIM/DMARC not verified",
+    "Required aws-secrets-manager credential workflow unavailable",
+    "Recheck expiry before installation; these files do not update cloud Auth configuration",
+    "Plain-text files are prepared alternatives; actual outgoing MIME parts require provider verification",
+    "Two real inboxes, expiry, same-browser PKCE and actual email-client rendering not verified"
+  ]
+}

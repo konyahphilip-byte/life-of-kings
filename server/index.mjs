@@ -1595,12 +1595,29 @@ async function route(ctx, req, res, method, path, body, query) {
       "EcoVibes ID or password is incorrect.",
     );
     ctx.user = await safeUser(user.id);
+    assert(!await q("SELECT 1 ok FROM supabase_identities WHERE user_id=?", user.id), 401, 'email_signin_required', 'Use email sign-in for this EcoVibes ID. Its old ID password is no longer accepted.');
     await session(ctx, res, req);
     return { user: ctx.user, csrfToken: ctx.csrfToken };
+  }
+  if (method === "POST" && path === "/auth/supabase/logout") {
+    assert(Object.keys(body).length === 0, 400, 'invalid_request', 'This action does not accept account selectors.');
+    await rateLimit(`supabase-logout:${req.socket.remoteAddress}`, 12, 60_000);
+    const verified = await authenticateSupabaseRequest(req);
+    if (verified.error) fault(verified.error.status || 401, verified.error.code || 'invalid_token', 'Sign in again to finish account sign-out.');
+    let ownerId = null;
+    await transaction(async () => {
+      const identity = await q('SELECT user_id FROM supabase_identities WHERE supabase_user_id=?', verified.user.id);
+      if (!identity) return;
+      ownerId = identity.user_id;
+      await run('DELETE FROM sessions WHERE user_id=?', ownerId);
+    });
+    if (!ctx.user || ctx.user.id === ownerId) setCookie(res, 'ev_session', '', { httpOnly: true, secure: isProduction, maxAge: 0 });
+    return { ok: true };
   }
   if (method === "GET" && path === "/auth/me")
     return {
       user: ctx.user,
+      emailSignInLinked: Boolean(ctx.user && await q("SELECT 1 ok FROM supabase_identities WHERE user_id=?", ctx.user.id)),
       csrfToken: ctx.csrfToken || null,
       assuranceLevel: ctx.authAssurance || null,
       staffMfaRequired: Boolean(isProduction && ctx.user?.roles?.some((role) => ["admin", "trust_staff", "support_staff"].includes(role)) && ctx.authAssurance !== "aal2"),
@@ -3228,7 +3245,7 @@ const server = createServer(async (req, res) => {
     );
     const allowedMigrationRequest =
       (method === "GET" && url.pathname === "/api/v1/auth/me") ||
-      (method === "POST" && url.pathname === "/api/v1/auth/supabase/session") ||
+      (method === "POST" && ['/api/v1/auth/supabase/session', '/api/v1/auth/supabase/logout'].includes(url.pathname)) ||
       (method === "POST" && url.pathname === "/api/v1/auth/logout");
     if (legacyMigrationOnly && !allowedMigrationRequest) {
       fault(
@@ -3240,7 +3257,7 @@ const server = createServer(async (req, res) => {
     const authOpen =
       (method === "GET" && url.pathname === "/api/v1/auth/me") ||
       (method === "GET" && url.pathname === "/api/v1/auth/supabase/me") ||
-      (method === "POST" && url.pathname === "/api/v1/auth/supabase/session") ||
+      (method === "POST" && ['/api/v1/auth/supabase/session', '/api/v1/auth/supabase/logout'].includes(url.pathname)) ||
       (method === "POST" &&
         ["/api/v1/auth/register", "/api/v1/auth/login"].includes(
           url.pathname,
