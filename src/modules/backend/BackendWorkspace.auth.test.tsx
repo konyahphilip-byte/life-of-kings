@@ -8,7 +8,7 @@ const recovery = vi.hoisted(() => ({ updatePassword: vi.fn(), signOut: vi.fn() }
 const callback = vi.hoisted(() => ({ current: null as unknown as ReturnType<typeof createAccountCallback> }));
 vi.mock('../../lib/supabase', () => ({ supabase: { auth }, get accountCallback() { return callback.current; }, makeRecoveryOperation: (session: {access_token:string;user:{id:string}}) => {
   const ownerId=session.user.id,authorization=`Bearer ${session.access_token}`;let signedOut=false;
-  return {ownerId,authorization:()=>authorization,dispose:()=>{},get signedOut(){return signedOut;},updatePassword:async(password:string)=>{const result=await recovery.updatePassword(password);if(result?.error)throw result.error;},signOut:async()=>{if(signedOut)return;const result=await recovery.signOut(ownerId);if(result?.error)throw result.error;signedOut=true;}};
+  return {ownerId,operationId:'00000000-0000-4000-8000-000000000001',authorization:()=>authorization,dispose:()=>{},get signedOut(){return signedOut;},updatePassword:async(password:string)=>{const result=await recovery.updatePassword(password);if(result?.error)throw result.error;},signOut:async()=>{if(signedOut)return;const result=await recovery.signOut(ownerId);if(result?.error)throw result.error;signedOut=true;}};
 }  }));
 const identity = { id: 'synthetic-member', eco_id: 'synthetic.member', display_name: 'Synthetic Member', roles: ['customer'], created_at: '2026-10-01T00:00:00Z' };
 const failure = (code: string, message: string) => ({ data: { session: null }, error: Object.assign(new Error(message), { code, status: 429 }) });
@@ -199,6 +199,8 @@ describe('account email availability guidance', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finish signing out' }));
     expect(await screen.findByText('Password updated. Sign in with your new password.')).toBeTruthy();
     expect(recovery.updatePassword).toHaveBeenCalledOnce(); expect(attempts).toBe(2);
+    const cleanupBodies=vi.mocked(fetch).mock.calls.filter(([input])=>String(input).endsWith('/auth/supabase/logout')).map(([,options])=>JSON.parse(String(options?.body)));
+    expect(cleanupBodies).toEqual([{operationId:'00000000-0000-4000-8000-000000000001'},{operationId:'00000000-0000-4000-8000-000000000001'}]);
     expect(callback.current.requested).toBe(false);
     cleanup(); render(<BackendWorkspace />);
     expect(screen.queryByRole('heading', { name: 'Choose a new password' })).toBeNull();

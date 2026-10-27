@@ -10,6 +10,7 @@ export function createRecoveryOperation({url,publishableKey,session,fetcher=fetc
   const base=new URL(url);
   if(base.protocol!=='https:'||base.username||base.password||base.search||base.hash)throw new Error('Account recovery is unavailable.');
   const ownerId=session.user.id;
+  const operationId=crypto.randomUUID();
   let token=session.access_token;
   let signedOut=false;
   const until=Math.min(Number(session.expires_at)*1000,now()+10*60_000);
@@ -24,7 +25,7 @@ export function createRecoveryOperation({url,publishableKey,session,fetcher=fetc
     ...(body?{body:JSON.stringify(body)}:{}),
   });
   return {
-    ownerId,authorization,dispose,
+    ownerId,operationId,authorization,dispose,
     get signedOut(){return signedOut;},
     async updatePassword(password:string){
       if(password.length<12||password.length>256)throw new Error('Use a password with 12–256 characters.');

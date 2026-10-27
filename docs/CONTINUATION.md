@@ -1,3 +1,9 @@
+## October27 - local server recovery-revocation barrier
+
+**LOCALLY BUILT**, not deployed: app-owned primary-auth/session barriers, transaction-serialized admission and cleanup, post-commit cookies, immutable recovery operation retries, linked-password race guard and deny-only admission control. Independent review's delayed-cookie race was reproduced and fixed; bearer cleanup sends no cookie header. Full463/35, final focused32/4, TypeScript/build1671, HTTP30+15, disposable PostgreSQL17.10/67 and bounded dependency security checks passed. Full run began before final router-only fix/additional retry assertion; final HTTP/focused/build cover those changes. No exact candidate CI/hosted acceptance claim.
+
+[Receipt](releases/2026-10-27-account-revocation-local.md) and work/account-revocation-20261027 retain exact evidence and failures. Proposed migration is unapplied; PR23/main26c1b555 remains hosted. Browser storage clearing, provider-global-logout response-loss/retry, actual provider primary proof, guard-preserving rollback/CI and real Auth/inbox/mobile acceptance remain gates. SMTP/domain/credential workflow remains BLOCKED.145 primary source/assets preserved; no paid resources, DNS, private Auth access or dirty-root publication.
+
 # EcoVibes continuation — backend release checkpoint
 
 ## October 15 — atomic role activation verified locally

@@ -23,6 +23,8 @@ jobs:
       - run: npm run test:providers
       - run: npm run test:payments
       - run: npm run test:identity-roles
+      - run: npm run test:account-recovery
+      - run: npm run test:auth-revocation
       - run: npm run test:jobs
       - run: npm run test:support
       - run: npm run test:chale-workflow

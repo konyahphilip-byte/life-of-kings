@@ -53,7 +53,7 @@ export default function BackendWorkspace(){
   if(!operation)throw new Error('Your recovery authorization is unavailable. Sign in again before requesting another recovery link.');
   if(!accountCallback.apiRevoked){
    try{
-    const response=await fetch(apiUrl('/auth/supabase/logout'),{method:'POST',credentials:'include',headers:{Authorization:operation.authorization(),'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(10_000)});
+    const response=await fetch(apiUrl('/auth/supabase/logout'),{method:'POST',credentials:'include',headers:{Authorization:operation.authorization(),'Content-Type':'application/json'},body:JSON.stringify({operationId:operation.operationId}),signal:AbortSignal.timeout(10_000)});
     if(!response.ok)throw new Error('cleanup unavailable');
     const result=await response.json();if(result.ok!==true)throw new Error('cleanup not acknowledged');
     accountCallback.markApiRevoked();
