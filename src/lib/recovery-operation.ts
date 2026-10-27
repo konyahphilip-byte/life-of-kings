@@ -13,6 +13,7 @@ export function createRecoveryOperation({url,publishableKey,session,fetcher=fetc
   const operationId=crypto.randomUUID();
   let token=session.access_token;
   let signedOut=false;
+  let signOutPending:Promise<void>|null=null;
   const until=Math.min(Number(session.expires_at)*1000,now()+10*60_000);
   if(!Number.isFinite(until)||until<=now()||!token||!ownerId)throw new Error('Recovery authorization expired. Request a new recovery link.');
   let timer:ReturnType<typeof setTimeout>|undefined;
@@ -37,10 +38,16 @@ export function createRecoveryOperation({url,publishableKey,session,fetcher=fetc
     },
     async signOut(){
       if(signedOut)return;
-      let response:Response;
-      try{response=await request('/auth/v1/logout?scope=global','POST');}catch{throw new Error('Provider sign-out could not be confirmed. Choose Finish signing out to retry.');}
-      if(response.status!==200&&response.status!==204)throw new Error('Provider sign-out could not be confirmed. Choose Finish signing out to retry.');
-      signedOut=true;dispose();
+      // Remounted cleanup handlers share this operation. Publish the pending
+      // promise before dispatch so overlap cannot send another global request.
+      // This does not make a later response-lost retry provider-idempotent.
+      if(!signOutPending)signOutPending=Promise.resolve().then(async()=>{
+        let response:Response;
+        try{response=await request('/auth/v1/logout?scope=global','POST');}catch{throw new Error('Provider sign-out could not be confirmed. Choose Finish signing out to retry.');}
+        if(response.status!==200&&response.status!==204)throw new Error('Provider sign-out could not be confirmed. Choose Finish signing out to retry.');
+        signedOut=true;dispose();
+      }).finally(()=>{signOutPending=null;});
+      return signOutPending;
     },
   };
 }

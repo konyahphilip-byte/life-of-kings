@@ -2,6 +2,30 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRecoveryOperation } from './recovery-operation';
 
 describe('captured recovery operation', () => {
+  it('shares one in-flight provider sign-out across overlapping cleanup handlers',async()=>{
+    const pending:Array<(response:Response)=>void>=[];
+    const fetcher=vi.fn<typeof fetch>(()=>new Promise(resolve=>pending.push(resolve)));
+    const op=createRecoveryOperation({url:'https://project.example.invalid',publishableKey:'synthetic-public-key',session:{access_token:'synthetic-owner-token',user:{id:'synthetic-owner'},expires_at:Math.floor(Date.now()/1000)+3600},fetcher});
+    const results=Promise.allSettled([op.signOut(),op.signOut()]);
+    try{
+      await vi.waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+      for(const resolve of pending)resolve(new Response(null,{status:204}));
+      expect((await results).every(result=>result.status==='fulfilled')).toBe(true);
+      expect(op.signedOut).toBe(true);await op.signOut();expect(fetcher).toHaveBeenCalledOnce();
+    }finally{for(const resolve of pending)resolve(new Response(null,{status:204}));await results;op.dispose();}
+  });
+  it('shares an in-flight failure and retains the existing separate retry behavior',async()=>{
+    const pending:Array<(response:Response)=>void>=[];
+    const fetcher=vi.fn<typeof fetch>(()=>new Promise(resolve=>pending.push(resolve)));
+    const op=createRecoveryOperation({url:'https://project.example.invalid',publishableKey:'synthetic-public-key',session:{access_token:'synthetic-owner-token',user:{id:'synthetic-owner'},expires_at:Math.floor(Date.now()/1000)+3600},fetcher});
+    const results=Promise.allSettled([op.signOut(),op.signOut()]);
+    try{
+      await vi.waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+      for(const resolve of pending)resolve(new Response(null,{status:503}));
+      expect((await results).every(result=>result.status==='rejected')).toBe(true);expect(op.signedOut).toBe(false);
+      fetcher.mockResolvedValueOnce(new Response(null,{status:204}));await op.signOut();expect(fetcher).toHaveBeenCalledTimes(2);
+    }finally{for(const resolve of pending)resolve(new Response(null,{status:503}));await results;op.dispose();}
+  });
   it('binds password and logout to the original token despite shared account changes', async () => {
     const session={access_token:'synthetic-owner-token',user:{id:'synthetic-owner'},expires_at:Math.floor(Date.now()/1000)+3600};
     const fetcher=vi.fn<typeof fetch>(async()=>Response.json({id:'synthetic-owner'}));

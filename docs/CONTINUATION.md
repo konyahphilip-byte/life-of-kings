@@ -1,3 +1,9 @@
+## October27 - recovery sign-out overlap guarded locally
+
+**LOCALLY BUILT** on codex/account-logout-concurrency-20261027, based155a2dff. Native captured-operation probe and two RED tests reproduced2 provider requests from overlapping handlers; shared pending promise now yields1 request/outcome, acknowledged later calls remain no-ops.30focused/3files, TypeScript/build1672, final native synthetic probe and independent two-file review pass. [Receipt](releases/2026-10-27-account-logout-concurrency-local.md), work/account-logout-concurrency-20261027.
+
+Sequential lost-response retries remain unresolved; overlap deduplication is not global provider idempotency. Prior full470/471/message5s timeout remains historical/open, not rerun or diagnosed. Browser removal/real Auth/SMTP/inboxes/exact CI/guard-preserving rollout/rollback gates stay open. No publication/deployment/schema/provider change;145 protected primary source/assets preserved.
+
 ## October27 - recovery completion feedback repaired locally
 
 **LOCALLY BUILT** on codex/account-browser-confirmation-20261027, based c3118d89. Actual installed SDK/synthetic storage reproduced a rejected refresh returning no session while retaining the original session; UI RED confirmed premature completion. The new independent public session read refuses false success and preserves B/new-A storage; it does not implement storage removal. Reviewer Minor malformed-ID finding fixed, no remaining bounded source findings.
