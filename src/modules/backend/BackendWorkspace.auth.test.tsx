@@ -34,7 +34,16 @@ describe('account email availability guidance', () => {
     auth.resend.mockResolvedValue({ error: null });
     recovery.updatePassword.mockResolvedValue({ error: null });
     recovery.signOut.mockResolvedValue({ error: null });
-    auth.refreshSession.mockResolvedValue({data:{session:null},error:null});
+    // Positive fixture explicitly models a cleared recovery session. Retention
+    // is covered separately with the installed SDK and the UI regression below.
+    auth.refreshSession.mockImplementation(async()=>{
+      const current=await auth.getSession();
+      if(current.data.session?.user.id==='synthetic-recovery-owner'){
+        auth.getSession.mockResolvedValue({data:{session:null},error:null});
+        return{data:{session:null},error:null};
+      }
+      return{...current,error:null};
+    });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), window.location.origin).pathname;
       const body = path.endsWith('/auth/me') ? { user: null, csrfToken: null }
@@ -204,6 +213,23 @@ describe('account email availability guidance', () => {
     expect(callback.current.requested).toBe(false);
     cleanup(); render(<BackendWorkspace />);
     expect(screen.queryByRole('heading', { name: 'Choose a new password' })).toBeNull();
+  });
+
+  it('retains the cleanup screen when a rejected refresh leaves the original session stored', async () => {
+    window.history.replaceState({}, '', '/?recovery=1');callback.current=createAccountCallback(window.location.href);
+    callback.current.receive('PASSWORD_RECOVERY',true,'synthetic-recovery-owner');
+    auth.getSession.mockResolvedValue({data:{session:{access_token:'synthetic-recovery',user:{id:'synthetic-recovery-owner'}}},error:null});
+    auth.refreshSession.mockResolvedValue({data:{session:null},error:{code:'refresh_token_not_found'}});
+    render(<BackendWorkspace />);
+    const form=formFor('Save password and sign out');fill(form,'New password','Synthetic-new-password-123');fill(form,'Confirm new password','Synthetic-new-password-123');fireEvent.submit(form);
+    expect(await screen.findByText('Your password was updated and provider sign-out was accepted, but browser session refresh is unconfirmed. Choose Finish signing out to retry.')).toBeTruthy();
+    expect(screen.queryByText('Password updated. Sign in with your new password.')).toBeNull();
+    expect(callback.current.getSnapshot()).toBe('saved');expect(callback.current.apiRevoked).toBe(true);
+    expect(recovery.updatePassword).toHaveBeenCalledOnce();expect(recovery.signOut).toHaveBeenCalledOnce();
+    auth.getSession.mockResolvedValue({data:{session:null},error:null});
+    fireEvent.click(screen.getByRole('button',{name:'Finish signing out'}));
+    expect(await screen.findByText('Password updated. Sign in with your new password.')).toBeTruthy();
+    expect(recovery.updatePassword).toHaveBeenCalledOnce();expect(recovery.signOut).toHaveBeenCalledOnce();
   });
 
   it('continues token-bound cleanup for the original account after another account signs in', async () => {

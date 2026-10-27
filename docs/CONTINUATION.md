@@ -1,3 +1,9 @@
+## October27 - recovery completion feedback repaired locally
+
+**LOCALLY BUILT** on codex/account-browser-confirmation-20261027, based c3118d89. Actual installed SDK/synthetic storage reproduced a rejected refresh returning no session while retaining the original session; UI RED confirmed premature completion. The new independent public session read refuses false success and preserves B/new-A storage; it does not implement storage removal. Reviewer Minor malformed-ID finding fixed, no remaining bounded source findings.
+
+Final full471 tests:470passed/1existing DirectMessages5s timeout,36files,299.10s; all25 recovery/helper/UI checks passed. The message test subsequently passed alone, but QA-001/full regression gate remains open. Earlier focused24/1 and23/2 confirmation/sign-in timeouts and type-only Buffer error are preserved; no deadline/assertion/worker/isolation weakening or cause inference. TypeScript/build1672 pass. [Receipt](releases/2026-10-27-account-browser-local.md), work/account-browser-20261027. No CI/publish/migration/deployment; PR23 remains live. Browser removal/provider retry/real Auth/SMTP/inbox and rollout/rollback gates remain open.145 protected primary source/assets preserved.
+
 ## October27 - local server recovery-revocation barrier
 
 **LOCALLY BUILT**, not deployed: app-owned primary-auth/session barriers, transaction-serialized admission and cleanup, post-commit cookies, immutable recovery operation retries, linked-password race guard and deny-only admission control. Independent review's delayed-cookie race was reproduced and fixed; bearer cleanup sends no cookie header. Full463/35, final focused32/4, TypeScript/build1671, HTTP30+15, disposable PostgreSQL17.10/67 and bounded dependency security checks passed. Full run began before final router-only fix/additional retry assertion; final HTTP/focused/build cover those changes. No exact candidate CI/hosted acceptance claim.

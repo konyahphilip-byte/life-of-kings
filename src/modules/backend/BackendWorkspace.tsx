@@ -5,6 +5,7 @@ import { supabase, accountCallback, makeRecoveryOperation } from '../../lib/supa
 import '../marketplace-variants.css';
 import RefundReviewCard, { type RefundRequest } from './RefundReviewCard';
 import { accountEmailError } from './auth-errors';
+import { confirmRecoveryBrowserState } from '../../lib/recovery-browser';
 
 type Role='customer'|'seller'|'provider'|'admin'|'trust_staff'|'support_staff';
 type User={id:string;eco_id:string;display_name:string;created_at?:string;roles:Role[]};
@@ -60,11 +61,7 @@ export default function BackendWorkspace(){
    }catch{throw new Error('Your password was updated, but EcoVibes sign-out could not be confirmed. Choose Finish signing out to retry; do not reset the password again.');}
   }
   try{await operation.signOut();}catch{throw new Error('Your password was updated, but sign-out could not be confirmed. Choose Finish signing out to retry.');}
-  // Refresh under the SDK's storage lock. This refreshes any different current
-  // account normally; it never targets it with password mutation or sign-out.
-  const refreshed=await client.auth.refreshSession();
-  const expectedExpiry=['refresh_token_not_found','refresh_token_already_used','session_not_found','session_expired'];
-  if((refreshed.error&&!expectedExpiry.includes(refreshed.error.code||''))||refreshed.data.session?.user.id===operation.ownerId)throw new Error('Your password was updated and provider sign-out was accepted, but browser session refresh is unconfirmed. Choose Finish signing out to retry.');
+  await confirmRecoveryBrowserState(client.auth,operation.ownerId);
   accountCallback.clear();setUser(null);setCsrf('');setRecoveryMode(false);setProviderRegister(false);
   window.history.replaceState({},'',window.location.pathname);window.dispatchEvent(new Event('ecovibes:identity_changed'));
   setSuccess('Password updated. Sign in with your new password.');
