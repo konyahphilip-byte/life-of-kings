@@ -8,7 +8,7 @@ const stateLabels = {
 };
 type Group = { workflow: 'quickhandi' | 'waste'; status: keyof typeof stateLabels; count: number };
 type Summary = { asOf: string; groups: Group[] };
-type Props = { userId: string; online: boolean; onNavigate: (page: AssistantDestination) => void };
+type Props = { userId: string; online: boolean; onNavigate: (page: AssistantDestination) => void; autoCheck?: () => boolean };
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 
 function checkedSummary(value: unknown, userId: string): Summary {
@@ -28,18 +28,22 @@ function checkedSummary(value: unknown, userId: string): Summary {
   return { asOf: value.asOf, groups };
 }
 
-export default function WorkStatusCard({ userId, online, onNavigate }: Props) {
+export default function WorkStatusCard({ userId, online, onNavigate, autoCheck }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const pending = useRef<{ controller: AbortController; timer: ReturnType<typeof setTimeout> } | null>(null);
   useEffect(() => {
+    let disposed = false;
     const cancel = () => {
       if (pending.current) { clearTimeout(pending.current.timer); pending.current.controller.abort(); pending.current = null; }
     };
     if (!online) { cancel(); setSummary(null); setBusy(false); setFailed(false); }
-    return cancel;
-  }, [online, userId]);
+    // The parent consumes the explicit request across panel remounts. Defer
+    // dispatch so StrictMode cleanup cannot consume an attempt before it starts.
+    else if (autoCheck) queueMicrotask(() => { if (!disposed && autoCheck()) void refresh(); });
+    return () => { disposed = true; cancel(); };
+  }, [online, userId, autoCheck]);
 
   async function refresh() {
     if (!online || pending.current) return;

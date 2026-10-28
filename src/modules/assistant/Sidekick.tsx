@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
 import type { AssistantDestination } from './assistant';
 import WorkStatusCard from './WorkStatusCard';
+import { privateWorkIntent } from './work-intent';
 import { apiUrl } from '../../lib/api';
 import { chaleGreeting } from '../../../shared/chale-greeting.mjs';
 import { readPublicUpdates, type PublicUpdate } from '../../../shared/chale-updates.mjs';
@@ -24,7 +25,7 @@ type Diagnostic = {
 };
 type ChatEntry = {
   id: number; role: 'assistant' | 'user'; text: string; pending?: boolean;
-  source?: 'model' | 'app_guide' | 'greeting' | 'public_updates'; updates?: PublicUpdate[]; newsRequested?: boolean; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
+  source?: 'model' | 'app_guide' | 'greeting' | 'public_updates' | 'work_status'; privateContext?: boolean; updates?: PublicUpdate[]; newsRequested?: boolean; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
 };
 type AIStatus = { configured: boolean; unavailable?: boolean; hosting?: 'local' | 'remote'; allowance?: number };
 type LearningState = { enabled: boolean };
@@ -171,6 +172,14 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   const [feedbackBusy, setFeedbackBusy] = useState<string | null>(null);
   const [signals, setSignals] = useState<Record<string, { saved?: boolean; dismissed?: boolean }>>({});
   const [notice, setNotice] = useState('');
+  const [workRequest, setWorkRequest] = useState<{ owner: string; sequence: number } | null>(null);
+  const requestedWork = workRequest?.owner === userId ? workRequest : null;
+  const consumedWorkRequest = useRef<typeof workRequest>(null);
+  const beginWorkCheck = useCallback(() => {
+    if (!requestedWork || consumedWorkRequest.current === requestedWork) return false;
+    consumedWorkRequest.current = requestedWork;
+    return true;
+  }, [requestedWork]);
   const inputRef = useRef<HTMLInputElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const launchRef = useRef<HTMLButtonElement>(null);
@@ -186,7 +195,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     if (chatRequest.current) clearTimeout(chatRequest.current.timer);
     feedbackRequest.current?.abort();
     chatRequest.current = null; feedbackRequest.current = null; busyRef.current = false;
-    setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null);
+    setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null); setWorkRequest(null); consumedWorkRequest.current = null;
     return () => {
       generation.current += 1;
       chatRequest.current?.controller.abort();
@@ -282,6 +291,20 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     const entryId = nextId.current++;
     const replyId = nextId.current++;
     setDraft(''); setNotice('');
+    const workIntent = privateWorkIntent(query);
+    if (workIntent) {
+      const text = workIntent === 'unsupported'
+        ? 'I can check only the work linked to your signed-in account. A name or record ID cannot give access to private work.'
+        : !userId ? 'Sign in with your EcoVibes ID to check your own work. No private records have been read.'
+        : !online ? 'Your private work needs a connection. It stays outside the model conversation.'
+        : 'I’ll check your signed-in work below. These counts and this request stay out of model conversations.';
+      // Neither the question nor its private screen result may become later
+      // model history. The card independently verifies the API account binding.
+      setEntries(current => [...current, { id: entryId, role: 'user', text: query, privateContext: true },
+        { id: replyId, role: 'assistant', source: 'work_status', text, privateContext: true }]);
+      if (workIntent === 'mine' && userId && online) setWorkRequest(current => ({ owner: userId, sequence: current?.owner === userId ? current.sequence + 1 : 1 }));
+      return;
+    }
     const greeting = chaleGreeting(query);
     if (greeting) {
       setEntries(current => [...current, { id: entryId, role: 'user', text: query }, { id: replyId, role: 'assistant', source: 'greeting', text: greeting }]);
@@ -300,7 +323,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     setEntries((current) => [...current, { id: entryId, role: 'user', text: query }, { id: replyId, role: 'assistant', pending: true, text: 'Finding a way forward…' }]);
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = [{ role: 'user', content: query }];
     let totalCharacters = query.length;
-    const recent = entries.filter((entry) => entry.id > 0 && !entry.pending && (entry.role === 'user' || entry.source === 'model')).slice(-7);
+    const recent = entries.filter((entry) => entry.id > 0 && !entry.pending && !entry.privateContext && (entry.role === 'user' || entry.source === 'model')).slice(-7);
     for (const entry of recent.reverse()) {
       const content = entry.text.slice(0, 1200);
       if (totalCharacters + content.length > 6000) break;
@@ -424,9 +447,9 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       </header>
       <div className="sidekick-context"><span className="context-orbit"><span/><i/><b/></span><span><b>A way forward, together.</b><small>You’re in {page}. {dataMode === 'extreme' ? 'Text first, with fewer listings.' : 'Your choices stay yours.'}</small></span></div>
       <div ref={threadRef} className="sidekick-thread" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
-        {userId && (page === 'Waste' || page === 'Quick&Handi') && <WorkStatusCard key={userId} userId={userId} online={online} onNavigate={navigate}/>}
+        {userId && (page === 'Waste' || page === 'Quick&Handi' || requestedWork) && <WorkStatusCard key={`${userId}:${requestedWork?.sequence || 0}`} userId={userId} online={online} onNavigate={navigate} autoCheck={requestedWork ? beginWorkCheck : undefined}/>}
         {entries.map((entry) => <div className={`assistant-message ${entry.role}`} key={entry.id}>
-          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'public_updates' ? 'Updates and sources' : entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
+          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'work_status' ? 'Signed-in work' : entry.source === 'public_updates' ? 'Updates and sources' : entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
           <p>{entry.pending && <LoaderCircle size={13} className="chale-thinking" aria-hidden="true"/>}{entry.text}</p>
           {entry.source === 'public_updates' && <div className="chale-guides">
             {(['app','ghana','world'] as const).map(kind=>entry.updates?.some(item=>item.kind===kind) && <article key={kind} aria-label={kind==='app'?'EcoVibes updates':kind==='ghana'?'Ghana news':'World news'}>

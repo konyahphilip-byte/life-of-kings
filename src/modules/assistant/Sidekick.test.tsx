@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Sidekick from './Sidekick';
 import { appGuides } from './guide';
@@ -41,6 +42,134 @@ function ask(value: string) {
 describe('Chale AI app integration', () => {
   beforeEach(() => { props.onNavigate.mockReset(); mockFetch(); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('checks my private work from Home without inference or model availability',async()=>{
+    const fetch=mockFetch(path=>path.endsWith('/ai/work-status')?response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}):response({configured:false,enabled:false}));
+    render(<Sidekick {...props} page="Home"/>);openPanel();ask('What is the status of my Waste collection?');
+    expect((await screen.findByLabelText('Waste open jobs')).textContent).toContain('2');
+    expect(fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/work-status'))).toHaveLength(1);
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(false);
+    const init=fetch.mock.calls.find(([url])=>String(url).endsWith('/ai/work-status'))?.[1];
+    expect(init?.credentials).toBe('include');expect(init?.cache).toBe('no-store');expect(init?.body).toBeUndefined();
+  });
+
+  it('keeps private work questions and results out of subsequent model history',async()=>{
+    const query='Check my collection request status';
+    const fetch=mockFetch(path=>path.endsWith('/ai/work-status')?response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}):path.endsWith('/ai/chat')?response({text:'General preparation advice.',source:'model'}):response({configured:true,enabled:false}));
+    render(<Sidekick {...props} page="Home"/>);openPanel();ask(query);await screen.findByLabelText('Waste open jobs');
+    ask('Any bottle preparation tips?');await screen.findByText('General preparation advice.');
+    const calls=fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/chat'));expect(calls).toHaveLength(1);
+    const sent=String(calls[0][1]?.body);
+    for(const forbidden of [query,'job_status_counts','account-a','"groups"','"count"'])expect(sent).not.toContain(forbidden);
+  });
+
+  it('does not send another person or private record selectors to the model or work API',()=>{
+    const fetch=mockFetch();render(<Sidekick {...props} page="Home"/>);openPanel();ask('Show @another_user job status');
+    expect(screen.getByText(/I can check only the work linked to your signed-in account/)).toBeTruthy();
+    expect(fetch.mock.calls.some(([url])=>/ai\/(chat|work-status)$/.test(String(url)))).toBe(false);
+  });
+
+  it('requires sign-in for a private question without pretending to read any work',()=>{
+    const fetch=mockFetch();render(<Sidekick {...props} page="Home" userId={null} csrfToken=""/>);openPanel();ask('Check my work status');
+    expect(screen.getByText(/Sign in with your EcoVibes ID to check your own work/)).toBeTruthy();
+    expect(fetch.mock.calls.some(([url])=>/ai\/(chat|work-status)$/.test(String(url)))).toBe(false);
+  });
+
+  it('does not read private work offline or claim completion',()=>{
+    const fetch=mockFetch();render(<Sidekick {...props} page="Home" online={false}/>);openPanel();ask('Check my work status');
+    expect(screen.getByText(/Your private work needs a connection/)).toBeTruthy();
+    expect(fetch.mock.calls.some(([url])=>/ai\/(chat|work-status)$/.test(String(url)))).toBe(false);
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+  });
+
+  it('rejects mismatched account data from an automatically requested summary',async()=>{
+    const fetch=mockFetch(path=>path.endsWith('/ai/work-status')?response({accountId:'account-b',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:99}]}):response({configured:false,enabled:false}));
+    render(<Sidekick {...props} page="Home"/>);openPanel();ask('Check my work status');
+    await screen.findByText(/Could not check your work/);expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(false);
+  });
+
+  it('cancels an automatic work read without reading the replacement account',async()=>{
+    let resolveWork!:(value:Response)=>void;let pendingSignal:AbortSignal|null|undefined;
+    const fetch=mockFetch((path,init)=>path.endsWith('/ai/work-status')?(pendingSignal=init?.signal,new Promise(resolve=>{resolveWork=resolve;})):response({configured:false,enabled:false}));
+    const view=render(<Sidekick {...props} page="Home"/>);openPanel();ask('Check my work status');
+    await waitFor(()=>expect(fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/work-status'))).toHaveLength(1));
+    view.rerender(<Sidekick {...props} page="Home" userId="account-b" csrfToken="csrf-b"/>);
+    expect(pendingSignal?.aborted).toBe(true);
+    await act(async()=>resolveWork(response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]})));
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+    expect(fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/work-status'))).toHaveLength(1);
+  });
+
+  it('respects smart-apostrophe negation without a private read',async()=>{
+    const fetch=mockFetch();render(<Sidekick {...props} page="Home"/>);openPanel();ask('Don’t show my job status');
+    await screen.findByText('Here is a practical next step.');
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/work-status'))).toBe(false);
+  });
+
+  it('refuses named workflow selectors locally and excludes them from later history',async()=>{
+    const query='Show Philip’s Waste collection status',fetch=mockFetch();
+    render(<Sidekick {...props} page="Home"/>);openPanel();ask(query);
+    expect(screen.getByText(/I can check only the work linked to your signed-in account/)).toBeTruthy();
+    expect(fetch.mock.calls.some(([url])=>/ai\/(chat|work-status)$/.test(String(url)))).toBe(false);
+    ask('Any recycling tips?');await screen.findByText('Here is a practical next step.');
+    const body=fetch.mock.calls.find(([url])=>String(url).endsWith('/ai/chat'))?.[1]?.body;
+    expect(String(body)).not.toContain(query);
+  });
+
+  it('consumes a completed private request once across close and reconnect',async()=>{
+    const fetch=mockFetch(path=>path.endsWith('/ai/work-status')?response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}):response({configured:false,enabled:false}));
+    const view=render(<Sidekick {...props} page="Home"/>);openPanel();ask('Check my work status');await screen.findByLabelText('Waste open jobs');
+    fireEvent.click(screen.getByRole('button',{name:'Close Chale AI'}));openPanel();
+    await act(async()=>{await Promise.resolve();});
+    expect(fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/work-status'))).toHaveLength(1);
+    view.rerender(<Sidekick {...props} page="Home" online={false}/>);
+    view.rerender(<Sidekick {...props} page="Home" online={true}/>);
+    await act(async()=>{await Promise.resolve();});
+    expect(fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/work-status'))).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button',{name:'Check my work status'}));await screen.findByLabelText('Waste open jobs');
+    expect(fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/work-status'))).toHaveLength(2);
+  });
+
+  it('does not resume a cancelled private attempt until another explicit request',async()=>{
+    const resolves:Array<(value:Response)=>void>=[],signals:Array<AbortSignal|null|undefined>=[];
+    const fetch=mockFetch((path,init)=>path.endsWith('/ai/work-status')?(signals.push(init?.signal),new Promise(resolve=>resolves.push(resolve))):response({configured:false,enabled:false}));
+    render(<Sidekick {...props} page="Home"/>);openPanel();ask('Check my work status');
+    await waitFor(()=>expect(resolves).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button',{name:'Close Chale AI'}));expect(signals[0]?.aborted).toBe(true);openPanel();
+    await act(async()=>{await Promise.resolve();});expect(resolves).toHaveLength(1);
+    await act(async()=>resolves[0](response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]})));
+    expect(screen.queryByLabelText('Waste open jobs')).toBeNull();
+    ask('Check my work status');await waitFor(()=>expect(resolves).toHaveLength(2));
+    await act(async()=>resolves[1](response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]})));
+    expect(screen.getByLabelText('Waste open jobs')).toBeTruthy();
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/chat'))).toBe(false);
+  });
+
+  it.each(['Can you not show my job status?','I would rather not check my work status','You shouldn’t show my job status'])('does not auto-read a negative work request: %s',async query=>{
+    const fetch=mockFetch();render(<Sidekick {...props} page="Home"/>);openPanel();ask(query);
+    await screen.findByText('Here is a practical next step.');
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/work-status'))).toBe(false);
+  });
+
+  it.each(['Does Chale check my work status automatically?','How does Chale check my work status?'])('keeps capability questions on the guidance path: %s',async query=>{
+    const fetch=mockFetch();render(<Sidekick {...props} page="Home"/>);openPanel();ask(query);
+    await screen.findByText('Here is a practical next step.');
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/work-status'))).toBe(false);
+  });
+
+  it('does not queue an offline private request for automatic reconnect',async()=>{
+    const fetch=mockFetch(),view=render(<Sidekick {...props} page="Home" online={false}/>);openPanel();ask('Check my work status');
+    view.rerender(<Sidekick {...props} page="Home" online={true}/>);
+    await act(async()=>{await Promise.resolve();});
+    expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/ai/work-status'))).toBe(false);
+  });
+
+  it('starts an explicit private check once under StrictMode',async()=>{
+    const fetch=mockFetch(path=>path.endsWith('/ai/work-status')?response({accountId:'account-a',source:'job_status_counts',asOf:'2026-10-28T12:00:00.000Z',groups:[{workflow:'waste',status:'open',count:2}]}):response({configured:false,enabled:false}));
+    render(<StrictMode><Sidekick {...props} page="Home"/></StrictMode>);openPanel();ask('Check my work status');await screen.findByLabelText('Waste open jobs');
+    expect(fetch.mock.calls.filter(([url])=>String(url).endsWith('/ai/work-status'))).toHaveLength(1);
+  });
 
   it('shows app records and news as separate linked source groups, not a model answer',async()=>{
     const date=new Date().toISOString();
