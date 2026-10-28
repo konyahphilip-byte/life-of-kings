@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   local-verification:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -25,6 +25,13 @@ jobs:
       - run: npm run test:identity-roles
       - run: npm run test:account-recovery
       - run: npm run test:auth-revocation
+      - name: Verify disposable PostgreSQL revocation barriers
+        env:
+          PG_BINDIR: /usr/lib/postgresql/16/bin
+        run: |
+          test -x "$PG_BINDIR/initdb"
+          test -x "$PG_BINDIR/postgres"
+          npm run test:auth-revocation-postgres
       - run: npm run test:jobs
       - run: npm run test:support
       - run: npm run test:chale-workflow

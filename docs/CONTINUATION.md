@@ -1,3 +1,9 @@
+## October 28 - Phase 0 draft CI and browser-cleanup investigation
+
+**LOCALLY BUILT** on codex/account-recovery-ci-20261028, based c69cce9. Only release-checks.yml adds required disposable PostgreSQL CI and pins Ubuntu24.04/installed PG16; product/server/migration/dependency source unchanged. Fresh local PG17.10 passes67 checks. Aggregate independent review permits explicitly blocked draft publication only, not merge/deploy. Exact remote result remains in the PR and work/account-ci-20261028. [Snapshot](releases/2026-10-28-account-ci-draft.md).
+
+Actual installed SDK synthetic delayed local sign-out erased both replacement B and new-A sessions. Existing EcoVibes helper preserved B/zero removal; unsafe mutable sign-out was not added. Browser cleanup remains UNVERIFIED; work/account-browser-removal-research-20261027. No real provider/account/storage/email mutation. Initial missing PG_BINDIR and CLI401 retained; connected GitHub app is authorised. SMTP/domain/private credential workflow, real Auth/inboxes, transaction-time authorization and guard-first rollout/rollback remain gates.145 primary source/assets preserved; no source deployment or paid/new-service activity.
+
 ## October 27 - Phase 0 audit and unconfirmed-outcome repair
 
 **LOCALLY BUILT** on codex/account-logout-outcome-20261027, based d415f6c3. Resent 522-line brief matches canonical directive. Fresh read-only Render/Supabase audit: live still 26c1b555; SMTP off/default-template editing locked; confirmation on / OTP 3600; root+exact recovery redirects retained; leaked-password warning/plan restriction remains. No settings/credentials/private Users/inboxes changed/read. Main Bag false-success, fixed Chale launcher and local-only publishing/ranking boundaries were audited and remain queued.
