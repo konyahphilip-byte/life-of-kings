@@ -18,6 +18,7 @@ import {
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
+import { createAuthRevocations, AUTH_REVOCATIONS_SQLITE_SCHEMA, AUTH_REVOCATIONS_VERSION } from './auth-revocations.mjs';
 import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
 import { createPublicUpdates } from "./chale-updates.mjs";
 import { chaleUpdateIntent } from "../shared/chale-updates.mjs";
@@ -78,6 +79,8 @@ if (postgresMode) {
       "The hosted database is missing the current EcoVibes migration. Apply the Supabase migrations before starting this API.",
     );
   }
+  const revocations=await pool.query('SELECT 1 FROM public.ecovibes_schema_version WHERE version=$1',[AUTH_REVOCATIONS_VERSION]);
+  if(!revocations.rowCount)throw new Error('The account security migration is required before starting this API.');
 }
 let db = null;
 if (!postgresMode) {
@@ -91,6 +94,7 @@ if (!postgresMode) {
  CREATE TABLE IF NOT EXISTS roles(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK(role IN ('customer','seller','provider')), created_at TEXT NOT NULL, PRIMARY KEY(user_id,role));
  CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, csrf_token TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, auth_assurance TEXT NOT NULL DEFAULT 'aal1' CHECK(auth_assurance IN ('aal1','aal2')));
  CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+ ${AUTH_REVOCATIONS_SQLITE_SCHEMA}
  CREATE TABLE IF NOT EXISTS rate_limit_buckets(bucket_key TEXT PRIMARY KEY,window_started_at TEXT NOT NULL,expires_at TEXT NOT NULL,hits INTEGER NOT NULL CHECK(hits>=0));
  CREATE INDEX IF NOT EXISTS rate_limit_buckets_expiry ON rate_limit_buckets(expires_at);
  CREATE TABLE IF NOT EXISTS recommendation_preferences(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,topic TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,topic));
@@ -253,6 +257,7 @@ async function run(sql, ...params) {
   }
   return statement.run(...params);
 }
+let sqliteTransactionTail=Promise.resolve();
 async function transaction(work) {
   if (postgresMode) {
     const client = await pool.connect();
@@ -268,16 +273,19 @@ async function transaction(work) {
       client.release();
     }
   }
-  db.exec("BEGIN IMMEDIATE");
+  // SQLite has one connection. Queue complete transactions so interleaved async
+  // requests cannot nest BEGIN or commit another request's revocation writes.
+  const previous=sqliteTransactionTail;
+  let release;
+  sqliteTransactionTail=new Promise(resolve=>{release=resolve;});
+  await previous;
   try {
-    const result = await work();
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+    db.exec('BEGIN IMMEDIATE');
+    try {const result=await work();db.exec('COMMIT');return result;}
+    catch(error){db.exec('ROLLBACK');throw error;}
+  } finally {release();}
 }
+const authRevocations=createAuthRevocations({q,run,postgresMode});
 function fault(status, code, message) {
   const error = new Error(message);
   error.status = status;
@@ -511,7 +519,7 @@ function cleanupSessions() {
     if (entry.until < t) sessions.delete(key);
 }
 setInterval(cleanupSessions, 60_000).unref();
-async function session(ctx, res, req, authAssurance = "aal1") {
+async function session(ctx, res, req, authAssurance = "aal1", deferCookie=false) {
   const raw = randomBytes(32).toString("base64url");
   const csrf = randomBytes(24).toString("base64url");
   const expires = new Date(Date.now() + (authAssurance === "aal2" ? 12 * 60 * 60_000 : 7 * 24 * 60 * 60_000)).toISOString();
@@ -525,11 +533,13 @@ async function session(ctx, res, req, authAssurance = "aal1") {
     authAssurance === "aal2" ? "aal2" : "aal1",
   );
   ctx.csrfToken = csrf;
-  setCookie(res, "ev_session", raw, {
+  const publishCookie=()=>setCookie(res, "ev_session", raw, {
     httpOnly: true,
     secure: isProduction,
     maxAge: 7 * 24 * 60 * 60,
   });
+  if(!deferCookie)publishCookie();
+  return publishCookie;
 }
 function originCheck(req) {
   const origin = req.headers.origin;
@@ -1594,13 +1604,36 @@ async function route(ctx, req, res, method, path, body, query) {
       "invalid_login",
       "EcoVibes ID or password is incorrect.",
     );
-    ctx.user = await safeUser(user.id);
-    await session(ctx, res, req);
+    let publishCookie;
+    await transaction(async()=>{
+      await q(`SELECT id FROM users WHERE id=?${postgresMode?' FOR UPDATE':''}`,user.id);
+      ctx.user = await safeUser(user.id);
+      assert(ctx.user?.status==='active',401,'invalid_login','This account is unavailable.');
+      assert(!await q("SELECT 1 ok FROM supabase_identities WHERE user_id=?", user.id), 401, 'email_signin_required', 'Use email sign-in for this EcoVibes ID. Its old ID password is no longer accepted.');
+      publishCookie=await session(ctx,res,req,'aal1',true);
+    });
+    publishCookie();
     return { user: ctx.user, csrfToken: ctx.csrfToken };
+  }
+  if (method === "POST" && path === "/auth/supabase/logout") {
+    assert(Object.keys(body).length===1&&typeof body.operationId==='string',400,'invalid_request','A recovery reference is required; account selectors are not accepted.');
+    await rateLimit(`supabase-logout:${req.socket.remoteAddress}`, 12, 60_000);
+    const verified = await authenticateSupabaseRequest(req);
+    if (verified.error) fault(verified.error.status || 401, verified.error.code || 'invalid_token', 'Sign in again to finish account sign-out.');
+    await transaction(async () => {
+      const identity = await q('SELECT user_id FROM supabase_identities WHERE supabase_user_id=?', verified.user.id);
+      if (!identity) return;
+      await authRevocations.revoke(identity.user_id,verified.authContext,body.operationId);
+    });
+    // Revoke server records only. An earlier bearer request cannot know which
+    // account a concurrent response has since installed in the browser cookie.
+    // Sending Set-Cookie here could erase B or a fresh A session after commit.
+    return { ok: true };
   }
   if (method === "GET" && path === "/auth/me")
     return {
       user: ctx.user,
+      emailSignInLinked: Boolean(ctx.user && await q("SELECT 1 ok FROM supabase_identities WHERE user_id=?", ctx.user.id)),
       csrfToken: ctx.csrfToken || null,
       assuranceLevel: ctx.authAssurance || null,
       staffMfaRequired: Boolean(isProduction && ctx.user?.roles?.some((role) => ["admin", "trust_staff", "support_staff"].includes(role)) && ctx.authAssurance !== "aal2"),
@@ -1626,6 +1659,7 @@ async function route(ctx, req, res, method, path, body, query) {
     };
   }
   if (method === "POST" && path === "/auth/supabase/session") {
+    assert(process.env.ECOVIBES_SUPABASE_ADMISSION_DISABLED!=='true',503,'signin_temporarily_disabled','Email sign-in is temporarily unavailable. Please try again later.');
     await rateLimit(`supabase-session:${req.socket.remoteAddress}`, 12, 15 * 60_000);
     const result = await authenticateSupabaseRequest(req);
     if (result.error) {
@@ -1640,7 +1674,16 @@ async function route(ctx, req, res, method, path, body, query) {
     let userId;
     let created = false;
     let linked = false;
+    let publishCookie;
     await transaction(async () => {
+     await resolveIdentity();
+     await authRevocations.admit(userId,result.authContext);
+     ctx.user=await safeUser(userId);
+     assert(ctx.user?.status==='active',403,'account_unavailable','This EcoVibes account is unavailable. Contact support if you believe this is a mistake.');
+     publishCookie=await session(ctx,res,req,ctx.authAssurance,true);
+    });
+    publishCookie();
+    async function resolveIdentity(){
       let identity = await q(
         "SELECT user_id FROM supabase_identities WHERE supabase_user_id=?",
         result.user.id,
@@ -1726,11 +1769,7 @@ async function route(ctx, req, res, method, path, body, query) {
         now(),
       );
       created = true;
-    });
-
-    ctx.user = await safeUser(userId);
-    assert(ctx.user?.status === "active", 403, "account_unavailable", "This EcoVibes account is unavailable. Contact support if you believe this is a mistake.");
-    await session(ctx, res, req, ctx.authAssurance);
+    }
     return {
       user: ctx.user,
       csrfToken: ctx.csrfToken,
@@ -3228,7 +3267,7 @@ const server = createServer(async (req, res) => {
     );
     const allowedMigrationRequest =
       (method === "GET" && url.pathname === "/api/v1/auth/me") ||
-      (method === "POST" && url.pathname === "/api/v1/auth/supabase/session") ||
+      (method === "POST" && ['/api/v1/auth/supabase/session', '/api/v1/auth/supabase/logout'].includes(url.pathname)) ||
       (method === "POST" && url.pathname === "/api/v1/auth/logout");
     if (legacyMigrationOnly && !allowedMigrationRequest) {
       fault(
@@ -3240,7 +3279,7 @@ const server = createServer(async (req, res) => {
     const authOpen =
       (method === "GET" && url.pathname === "/api/v1/auth/me") ||
       (method === "GET" && url.pathname === "/api/v1/auth/supabase/me") ||
-      (method === "POST" && url.pathname === "/api/v1/auth/supabase/session") ||
+      (method === "POST" && ['/api/v1/auth/supabase/session', '/api/v1/auth/supabase/logout'].includes(url.pathname)) ||
       (method === "POST" &&
         ["/api/v1/auth/register", "/api/v1/auth/login"].includes(
           url.pathname,

@@ -65,6 +65,15 @@ try {
   const concurrent = await signup('roles.concurrent'), repair = await signup('roles.repair');
   const initial = snapshot(owner), otherInitial = snapshot(other);
 
+  // Own-session linkage is a boolean only, never another user's identity map.
+  assert.equal((await expect('/auth/me', {})).emailSignInLinked, false); checks++;
+  assert.equal((await expect('/auth/me', { account: owner })).emailSignInLinked, false); checks++;
+  db.prepare('INSERT INTO supabase_identities(supabase_user_id,user_id,created_at) VALUES(?,?,?)').run('synthetic-external-id', owner.id, new Date().toISOString());
+  const linkedSession = await expect('/auth/me', { account: owner });
+  assert.equal(linkedSession.emailSignInLinked, true);
+  assert.equal(JSON.stringify(linkedSession).includes('synthetic-external-id'), false); checks++;
+  assert.equal((await expect(`/auth/me?userId=${owner.id}`, { account: other })).emailSignInLinked, false); checks++;
+
   // Reproduce the prior partial-save bug before checking the happy path.
   db.exec("CREATE TRIGGER fail_role_audit BEFORE INSERT ON audit_logs WHEN NEW.action='ROLE_ADDED' BEGIN SELECT RAISE(ABORT,'Synthetic role audit failure'); END");
   await expect(path, grant(owner), 500);
