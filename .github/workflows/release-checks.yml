@@ -32,6 +32,11 @@ jobs:
         env:
           PG_BINDIR: /usr/lib/postgresql/16/bin
         run: |
+          if ! test -x "$PG_BINDIR/initdb"; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends postgresql-16
+          fi
           test -x "$PG_BINDIR/initdb"
           test -x "$PG_BINDIR/postgres"
+          "$PG_BINDIR/postgres" --version
           node scripts/test-message-receipts-postgres.mjs
