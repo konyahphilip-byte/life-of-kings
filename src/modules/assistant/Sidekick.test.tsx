@@ -480,6 +480,7 @@ describe('Chale AI app integration', () => {
     await screen.findByText(product.title);
     expect(screen.queryByRole('button', { name: 'Save Recycled plant pot' })).toBeNull();
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/recommendations/signals'))).toHaveLength(0);
+    fireEvent.click(screen.getByText('About replies & learning'));
     fireEvent.click(screen.getByRole('button', { name: 'Tune learning on Home' }));
     expect(props.onNavigate).toHaveBeenCalledWith('Home');
   });

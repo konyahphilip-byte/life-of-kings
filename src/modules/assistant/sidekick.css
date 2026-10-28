@@ -63,3 +63,32 @@
 .chale-work-status ul{padding-left:18px;margin:8px 0}
 .chale-work-status small{display:block;color:var(--muted)}
 .chale-work-links{display:flex;flex-wrap:wrap;gap:6px}
+
+/* Compact access, explicit placement and safe-area/keyboard-aware chat. */
+.sidekick-launch[hidden]{display:none}
+.sidekick-launch.chale-launcher-compact{width:56px;height:56px;min-height:56px;padding:6px;justify-content:center}
+.chale-launcher-compact>span:not(.sidekick-orb),.chale-launcher-compact>i{display:none}
+.sidekick-launch[data-edge]{bottom:calc(80px + env(safe-area-inset-bottom,0px));right:12px}
+.sidekick-launch[data-edge="left"]{left:12px;right:auto}
+.sidekick-launch:focus-visible{outline:3px solid #8bbd66;outline-offset:3px}
+.sidekick-panel.chale-panel{right:12px;bottom:calc(80px + env(safe-area-inset-bottom,0px));height:min(700px,calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px)));max-height:calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px));overflow-y:auto}
+.sidekick-panel.chale-panel[data-edge="left"]{left:12px;right:auto}
+.sidekick-panel.chale-panel.chale-keyboard{bottom:calc(var(--chale-keyboard-inset,0px) + 8px);height:calc(var(--chale-viewport-height,100dvh) - 16px);max-height:calc(var(--chale-viewport-height,100dvh) - 16px)}
+.chale-keyboard .sidekick-context{display:none}
+.chale-panel .sidekick-thread{min-height:96px}
+.chale-panel .sidekick-head button,.chale-panel .sidekick-input button{min-width:44px;min-height:44px}
+.chale-personalization{display:grid;gap:12px}
+.chale-personalization h2{margin:0;font-size:18px}
+.chale-personalization p{margin:0;font-size:13px;line-height:1.55;color:var(--muted);overflow-wrap:anywhere}
+.chale-personalization>label{display:grid;gap:6px;font-size:14px;font-weight:700}
+.chale-personalization select,.chale-personalization>button{min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--paper);color:var(--ink);font:inherit}
+.chale-personalization>button{justify-self:start;cursor:pointer}
+.chale-personalization .chale-character-choice{display:flex;align-items:center;min-height:44px;gap:10px}
+.chale-character-choice input{width:22px;height:22px}
+.chale-personalization :focus-visible{outline:3px solid #8bbd66;outline-offset:3px}
+@media(max-width:780px){.chale-panel .sidekick-input input,.chale-personalization select{font-size:16px}}
+
+.chale-about{flex-shrink:0;border-top:1px solid var(--line)}
+.chale-about summary{min-height:44px;padding:12px 14px;font-size:12px;cursor:pointer;color:var(--green2)}
+.chale-panel .sidekick-head{position:sticky;top:0;z-index:1;background:var(--paper)}
+@media(max-height:480px){.sidekick-panel.chale-panel{bottom:8px;height:calc(var(--chale-viewport-height,100dvh) - 16px);max-height:calc(var(--chale-viewport-height,100dvh) - 16px)}}
