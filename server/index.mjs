@@ -24,7 +24,7 @@ import { chaleUpdateIntent } from "../shared/chale-updates.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { createChaleWorkStatus } from "./chale-work-status.mjs";
 import { createPeopleFriends, FRIENDS_SQLITE_SCHEMA } from "./people-friends.mjs";
-import { createDirectMessages, DIRECT_MESSAGES_SQLITE_SCHEMA, DIRECT_MESSAGES_VERSION } from "./direct-messages.mjs";
+import { createDirectMessages, DIRECT_MESSAGES_SQLITE_SCHEMA, DIRECT_MESSAGES_VERSION, DIRECT_MESSAGE_RECEIPTS_VERSION } from "./direct-messages.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
 import { chaleGreeting } from "../shared/chale-greeting.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
@@ -1103,7 +1103,8 @@ const providers = createProviderService({ q, all, run, transaction, assert, inpu
 const chaleWorkStatus = createChaleWorkStatus({ all, transaction, rateLimit, assert, now });
 const peopleFriends = createPeopleFriends({q,all,run,transaction,assert,now,notify,event,rateLimit,postgresMode});
 const directMessagesAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',DIRECT_MESSAGES_VERSION));
-const directMessages=createDirectMessages({q,all,run,transaction,assert,now,id,event,rateLimit,postgresMode,available:directMessagesAvailable});
+const receiptsAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?",DIRECT_MESSAGE_RECEIPTS_VERSION));
+const directMessages=createDirectMessages({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:directMessagesAvailable,receiptsAvailable});
 const chalePublicUpdates = createPublicUpdates();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
@@ -2070,6 +2071,13 @@ async function route(ctx, req, res, method, path, body, query) {
     const info = await ingress.createIngress(IngressInput.RTMP_INPUT, { name: `${media.title} · ${ctx.user.eco_id}`, roomName: media.room_name, participantIdentity: `stream-${media.id}`, participantName: `${ctx.user.display_name} stream`, });
     return { url: info.url, streamKey: info.streamKey };
   }
+  if (method === "GET" && path === "/notifications/summary") {
+    assert(query.size===0,400,"invalid_notification_query","Use your own notification centre.");
+    await rateLimit(`notification-summary:${ctx.user.id}`,30,60_000);
+    const items=await all("SELECT id,type,title,body,target_type,target_id,read_at,created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 51",ctx.user.id);
+    const count=await q("SELECT count(*) n FROM notifications WHERE user_id=? AND read_at IS NULL",ctx.user.id);
+    return {ownerId:ctx.user.id,items:items.slice(0,50),unread:Number(count.n),truncated:items.length>50};
+  }
   if (method === "GET" && path === "/notifications")
     return await all(
       "SELECT id,type,title,body,target_type,target_id,read_at,created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
@@ -2078,7 +2086,7 @@ async function route(ctx, req, res, method, path, body, query) {
   let match = path.match(/^\/notifications\/([a-f0-9-]+)\/read$/);
   if (method === "POST" && match) {
     const result = await run(
-      "UPDATE notifications SET read_at=? WHERE id=? AND user_id=?",
+      "UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?",
       now(),
       match[1],
       ctx.user.id,

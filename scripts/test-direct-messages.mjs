@@ -52,6 +52,25 @@ try{
   assert.equal(sent.message.body,'Hello from alpha');assert.equal(sent.message.senderId,a.id);
   const read=await ok(`${base}/${a.id}`,{account:b});assert.equal(read.revision,2);assert.equal(read.messages[0].body,'Hello from alpha');assert.equal(read.hasOlder,false);
  });
+ await check('private notification summary belongs only to recipient and read writes are scoped',async()=>{
+  assert.equal((await request('/notifications/summary')).status,401);
+  const bNotices=await ok('/notifications/summary',{account:b});assert.equal(bNotices.ownerId,b.id);
+  const n=bNotices.items.find(x=>x.type==='direct_message');assert(n);assert(!JSON.stringify(n).includes('Hello from alpha'));
+  assert.equal((await ok('/notifications/summary',{account:c})).unread,0);
+  assert.equal((await request(`/notifications/${n.id}/read`,{account:a,method:'POST',body:{}})).status,404);
+  await ok(`/notifications/${n.id}/read`,{account:b,method:'POST',body:{}});
+  const reread=await ok('/notifications/summary',{account:b});assert(reread.items.find(x=>x.id===n.id).read_at);
+  assert.equal((await request('/notifications/summary?userId=forged',{account:b})).status,400);
+ });
+ await check('two delivery ticks require recipient POST acknowledgement with CSRF and current consent',async()=>{
+  assert.equal((await ok(path,{account:a})).messages[0].deliveredAt,null);
+  const receipt=`${base}/${a.id}/receipts`,body={revision:2,messageIds:[sent.message.id]};
+  assert.equal((await request(receipt,{account:b,method:'POST',body,csrf:false})).status,403);
+  assert.equal((await request(receipt,{account:c,method:'POST',body})).status,404);
+  await ok(receipt,{account:b,method:'POST',body});
+  const stamp=(await ok(path,{account:a})).messages[0].deliveredAt;assert(stamp);
+  await ok(receipt,{account:b,method:'POST',body});assert.equal((await ok(path,{account:a})).messages[0].deliveredAt,stamp);
+ });
  await check('identical retry is idempotent; reused key cannot replace text',async()=>{
   const retry=await ok(path,{account:a,method:'POST',body:{body:'Hello from alpha',revision:2,clientId}});assert.equal(retry.message.id,sent.message.id);
   assert.equal((await request(path,{account:a,method:'POST',body:{body:'changed',revision:2,clientId}})).status,409);

@@ -2,8 +2,8 @@ import { useCallback,useEffect,useRef,useState,type FormEvent } from 'react';
 import { apiUrl } from '../../lib/api';
 
 type Peer={id:string;eco_id:string;display_name:string;revision:number};
-type Message={id:string;sequence:string;senderId:string;body:string;createdAt:string};
-type Page={ownerId:string;revision:number;messages:Message[];hasOlder:boolean;beforeCursor:string|null};
+type Message={id:string;sequence:string;senderId:string;body:string;createdAt:string;deliveredAt?:string|null};
+type Page={ownerId:string;revision:number;messages:Message[];receiptsEnabled?:boolean;hasOlder:boolean;beforeCursor:string|null};
 type Outcome='ok'|'retry'|'stop';
 class MessageError extends Error{constructor(message:string,readonly status:number){super(message);}}
 async function request(path:string,signal:AbortSignal,csrfToken='',body?:unknown){
@@ -36,13 +36,14 @@ function useForegroundMessages(load:()=>Promise<Outcome>,pause:()=>void,interval
  },[load,pause,interval]);
 }
 function checkedPage(value:Page){
- if(!value||typeof value.ownerId!=='string'||!Number.isSafeInteger(value.revision)||!Array.isArray(value.messages)||value.messages.length>50||typeof value.hasOlder!=='boolean'||!(value.beforeCursor===null||typeof value.beforeCursor==='string')||value.messages.some(item=>!item||typeof item.id!=='string'||typeof item.senderId!=='string'||typeof item.body!=='string'||item.body.length>2000||typeof item.createdAt!=='string'||typeof item.sequence!=='string'||!(/^[1-9][0-9]*$/.test(item.sequence))))throw Error('Messages could not be read. Please refresh.');
+ if(value?.receiptsEnabled!==undefined&&typeof value.receiptsEnabled!=='boolean'||!value||typeof value.ownerId!=='string'||!Number.isSafeInteger(value.revision)||!Array.isArray(value.messages)||value.messages.length>50||typeof value.hasOlder!=='boolean'||!(value.beforeCursor===null||typeof value.beforeCursor==='string')||value.messages.some(item=>!item||typeof item.id!=='string'||(item.deliveredAt!==undefined&&item.deliveredAt!==null&&(typeof item.deliveredAt!=='string'||!Number.isFinite(Date.parse(item.deliveredAt))))||typeof item.senderId!=='string'||typeof item.body!=='string'||item.body.length>2000||typeof item.createdAt!=='string'||typeof item.sequence!=='string'||!(/^[1-9][0-9]*$/.test(item.sequence))))throw Error('Messages could not be read. Please refresh.');
  return value;
 }
 function Conversation({userId,csrfToken,peer,rosterReady}:{userId:string;csrfToken:string;peer:Peer;rosterReady:boolean}){
  const [page,setPage]=useState<Page|null>(null),[draft,setDraft]=useState(''),[error,setError]=useState(''),[sending,setSending]=useState(false),[saved,setSaved]=useState(false),[before,setBefore]=useState<string|null>(null);
  const [attempt,setAttempt]=useState<{body:string;revision:number;clientId:string}|null>(null);
  const generation=useRef(0),writeGeneration=useRef(0),readPending=useRef<AbortController|null>(null),writePending=useRef<AbortController|null>(null),busy=useRef(false);
+ const acknowledged=useRef(new Set<string>());
  const path=`/connect/messages/${encodeURIComponent(peer.id)}`;
  const pause=useCallback(()=>{generation.current++;readPending.current?.abort();readPending.current=null;},[]);
  const load=useCallback(async():Promise<Outcome>=>{
@@ -62,6 +63,22 @@ function Conversation({userId,csrfToken,peer,rosterReady}:{userId:string;csrfTok
   }
  },[path,before,peer.revision,userId]);
  useForegroundMessages(load,pause,before?60000:5000);
+ useEffect(()=>{
+  if(!page?.receiptsEnabled||!rosterReady||document.visibilityState==='hidden'||!navigator.onLine)return;
+  const messageIds=page.messages.filter(m=>m.senderId===peer.id&&!m.deliveredAt&&!acknowledged.current.has(m.id)).map(m=>m.id);
+  if(!messageIds.length)return;
+  const controller=new AbortController();
+  void request(`${path}/receipts`,controller.signal,csrfToken,{revision:page.revision,messageIds}).then(result=>{
+   if(controller.signal.aborted)return;
+   if(result.ownerId!==userId||result.revision!==peer.revision||!Array.isArray(result.acknowledged)||result.acknowledged.length!==messageIds.length||result.acknowledged.some((v:string)=>!messageIds.includes(v)))throw Error('Delivery confirmation could not be verified.');
+   messageIds.forEach(id=>acknowledged.current.add(id));
+  }).catch(e=>{
+   if(controller.signal.aborted)return;
+   if(e instanceof MessageError&&[401,403,404,409].includes(e.status)){setPage(null);setDraft('');setAttempt(null);}
+   setError('Delivery confirmation is unavailable. Messages already saved are unchanged.');
+  });
+  return()=>controller.abort();
+ },[page,rosterReady,peer.id,peer.revision,path,userId,csrfToken]);
  useEffect(()=>()=>{pause();writeGeneration.current++;writePending.current?.abort();},[pause]);
  async function send(e?:FormEvent){
   e?.preventDefault();if(!page||sending||before||!rosterReady)return;
@@ -83,10 +100,11 @@ function Conversation({userId,csrfToken,peer,rosterReady}:{userId:string;csrfTok
  }
  return <section className="direct-conversation" aria-label={`Conversation with ${peer.display_name}`}>
   <header><div><h2>{peer.display_name}</h2><p>@{peer.eco_id}</p></div><button type="button" disabled={sending} onClick={()=>window.dispatchEvent(new Event('ecovibes:messages_refresh'))}>Refresh conversation</button></header>
-  <p>Private text between accepted friends. Updates while this page is open. Calls, attachments and read receipts are not connected here.</p>
+  <p>Private text between accepted friends. Updates while this page is open. ✓ Saved by server · ✓✓ Received by their app. Ticks do not mean read. Calls, attachments and read receipts are not connected here.</p>
+  {page&&!page.receiptsEnabled&&<p>Recipient delivery confirmation is unavailable for this conversation.</p>}
   {error&&<p role="alert">{error}</p>}{saved&&<p role="status">Saved to conversation.</p>}
   <div className="direct-message-history" aria-label="Conversation messages">
-   {rosterReady&&page?.messages.map(item=><article key={item.id} className={item.senderId===userId?'direct-mine':'direct-theirs'}><small>{item.senderId===userId?'You':peer.display_name} · <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time></small><p>{item.body}</p></article>)}
+   {rosterReady&&page?.messages.map(item=><article key={item.id} className={item.senderId===userId?'direct-mine':'direct-theirs'}><small>{item.senderId===userId?'You':peer.display_name} · <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time></small><p>{item.body}</p>{item.senderId===userId&&<span className="message-receipt" aria-label={page.receiptsEnabled&&item.deliveredAt?'Received by their app':'Saved by server'}>{page.receiptsEnabled&&item.deliveredAt?'✓✓ Received':'✓ Saved'}</span>}</article>)}
    {page&&!page.messages.length&&<p>No messages yet. Say hello.</p>}
   </div>
   {before?<button type="button" onClick={()=>setBefore(null)}>Back to latest messages</button>:null}
