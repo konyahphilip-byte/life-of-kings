@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { ArrowUp, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
 import type { AssistantDestination } from './assistant';
 import WorkStatusCard from './WorkStatusCard';
 import { privateWorkIntent } from './work-intent';
+import { useChaleUI } from './chale-ui';
 import { apiUrl } from '../../lib/api';
 import { chaleGreeting } from '../../../shared/chale-greeting.mjs';
 import { readPublicUpdates, type PublicUpdate } from '../../../shared/chale-updates.mjs';
@@ -183,6 +184,11 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   const inputRef = useRef<HTMLInputElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const launchRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
+  const display = useChaleUI();
+  const [editing, setEditing] = useState(false);
+  const [viewport, setViewport] = useState({ height: window.innerHeight, bottom: 0, keyboard: false });
   const generation = useRef(0);
   const nextId = useRef(1);
   const busyRef = useRef(false);
@@ -205,10 +211,45 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   }, [userId]);
 
   useEffect(() => {
-    const openAssistant = () => setOpen(true);
+    const openAssistant = () => { openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setOpen(true); };
     window.addEventListener('ecovibes:assistant_open', openAssistant);
     return () => window.removeEventListener('ecovibes:assistant_open', openAssistant);
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    const updateEditing = () => {
+      const el = document.activeElement;
+      setEditing(el instanceof HTMLElement && !el.closest('#ecovibes-sidekick') &&
+        (el.matches('textarea,select,input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"])') || el.isContentEditable));
+    };
+    const leave = () => queueMicrotask(() => { if (!disposed) updateEditing(); });
+    document.addEventListener('focusin', updateEditing); document.addEventListener('focusout', leave); updateEditing();
+    return () => { disposed = true; document.removeEventListener('focusin', updateEditing); document.removeEventListener('focusout', leave); };
+  }, []);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const resize = () => {
+      const height = vv && Number.isFinite(vv.height) && vv.height > 0 ? vv.height : window.innerHeight;
+      const offset = vv && Number.isFinite(vv.offsetTop) ? vv.offsetTop : 0;
+      const bottom = Math.max(0, window.innerHeight - height - offset);
+      setViewport({ height, bottom, keyboard: bottom > 140 });
+    };
+    resize(); window.addEventListener('resize', resize); vv?.addEventListener('resize', resize); vv?.addEventListener('scroll', resize);
+    return () => { window.removeEventListener('resize', resize); vv?.removeEventListener('resize', resize); vv?.removeEventListener('scroll', resize); };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) { wasOpen.current = true; return; }
+    if (!wasOpen.current) return;
+    wasOpen.current = false;
+    for (const el of [openerRef.current, launchRef.current, document.getElementById('chale-open-from-settings')]) {
+      if (!el?.isConnected || el === document.body || el === document.documentElement || el.hidden || el.closest('[hidden]') || el.matches(':disabled')) continue;
+      el.focus();
+      if (document.activeElement === el) break;
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open || !online) { setAiStatus(null); return; }
@@ -274,7 +315,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     if (!open) return;
     inputRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { setOpen(false); launchRef.current?.focus(); }
+      if (event.key === 'Escape') setOpen(false);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
@@ -436,17 +477,17 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   const connection = !online ? 'Offline app guide' : aiStatus === null ? 'Checking configuration…' : aiStatus.unavailable ? 'App guide available' : aiStatus.configured ? 'Model configured' : 'App guide available';
 
   return <>
-    <button ref={launchRef} className="sidekick-launch" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="ecovibes-sidekick">
+    <button ref={launchRef} className={`sidekick-launch chale-launcher-${display.launcher}`} data-edge={display.edge} hidden={open || display.launcher === 'hidden' || editing || page === 'Settings'} onClick={event => { openerRef.current = event.currentTarget; setOpen(true); }} aria-label="Ask Chale AI" aria-expanded={open} aria-controls="ecovibes-sidekick">
       <span className="sidekick-orb" aria-hidden="true"><Sparkles size={19}/></span><span>Ask Chale AI</span><i>AI</i>
     </button>
-    {open && <section className="sidekick-panel chale-panel" id="ecovibes-sidekick" role="dialog" aria-label="Chale AI">
+    {open && <section className={`sidekick-panel chale-panel${viewport.keyboard ? ' chale-keyboard' : ''}`} data-edge={display.edge} style={{ '--chale-viewport-height': `${viewport.height}px`, '--chale-keyboard-inset': `${viewport.bottom}px` } as CSSProperties} id="ecovibes-sidekick" role="dialog" aria-label="Chale AI">
       <header className="sidekick-head">
         <span className="sidekick-avatar"><Sparkles size={19}/></span>
         <span><b>Chale AI</b><small><i className={online && aiStatus?.configured && !aiStatus.unavailable ? 'connected' : ''}/>{connection}</small></span>
-        <button aria-label="Close Chale AI" onClick={() => { setOpen(false); launchRef.current?.focus(); }}><X size={17}/></button>
+        <button aria-label="Close Chale AI" onClick={() => setOpen(false)}><X size={17}/></button>
       </header>
       <div className="sidekick-context"><span className="context-orbit"><span/><i/><b/></span><span><b>A way forward, together.</b><small>You’re in {page}. {dataMode === 'extreme' ? 'Text first, with fewer listings.' : 'Your choices stay yours.'}</small></span></div>
-      <div ref={threadRef} className="sidekick-thread" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
+      <div ref={threadRef} className="sidekick-thread" tabIndex={0} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
         {userId && (page === 'Waste' || page === 'Quick&Handi' || requestedWork) && <WorkStatusCard key={`${userId}:${requestedWork?.sequence || 0}`} userId={userId} online={online} onNavigate={navigate} autoCheck={requestedWork ? beginWorkCheck : undefined}/>}
         {entries.map((entry) => <div className={`assistant-message ${entry.role}`} key={entry.id}>
           {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'work_status' ? 'Signed-in work' : entry.source === 'public_updates' ? 'Updates and sources' : entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
@@ -500,13 +541,14 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
         </div>)}
         {entries.length === 1 && <div className="sidekick-prompts"><span>START WHERE YOU ARE</span>{pagePrompts(page).map((prompt) => <button type="button" disabled={busy} key={prompt} onClick={() => void ask(prompt)}>{prompt}<ChevronRight size={13}/></button>)}</div>}
       </div>
-      <div className="chale-learning"><span>{!userId ? 'Sign in to manage your learning profile.' : learning?.enabled ? 'Learning is on. Save or show less to tune it.' : learning ? 'Learning is paused.' : 'Your learning choices are available on Home.'}</span><button type="button" onClick={() => navigate('Home')}>Tune learning on Home<ChevronRight size={12}/></button></div>
       {notice && <p className="chale-notice" role="status">{notice}</p>}
       <form className="sidekick-input" onSubmit={submit}>
         <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask about EcoVibes or an app problem" aria-label="Ask Chale AI" maxLength={1200}/>
         {busy ? <button type="button" className="chale-stop" aria-label="Stop answer" onClick={() => chatRequest.current?.controller.abort('stopped')}><X size={17}/></button> : <button disabled={!draft.trim()} aria-label="Send question"><ArrowUp size={17}/></button>}
       </form>
-      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : `Live replies use recent messages, safe app context and public listings with ${aiStatus?.hosting === 'local' ? 'the model on the EcoVibes server' : 'the configured model service'}. Keep passwords and payment codes private. Review drafts before sharing.${aiStatus?.allowance ? ` Free allowance: ${aiStatus.allowance} requests per day, resetting at 00:00 UTC. Failed or busy attempts count.` : ''}`}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p>
+      <details className="chale-about"><summary>About replies &amp; learning</summary>
+      <div className="chale-learning"><span>{!userId ? 'Sign in to manage your learning profile.' : learning?.enabled ? 'Learning is on. Save or show less to tune it.' : learning ? 'Learning is paused.' : 'Your learning choices are available on Home.'}</span><button type="button" onClick={() => navigate('Home')}>Tune learning on Home<ChevronRight size={12}/></button></div>
+      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : `Live replies use recent messages, safe app context and public listings with ${aiStatus?.hosting === 'local' ? 'the model on the EcoVibes server' : 'the configured model service'}. Keep passwords and payment codes private. Review drafts before sharing.${aiStatus?.allowance ? ` Free allowance: ${aiStatus.allowance} requests per day, resetting at 00:00 UTC. Failed or busy attempts count.` : ''}`}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p></details>
     </section>}
   </>;
 }
