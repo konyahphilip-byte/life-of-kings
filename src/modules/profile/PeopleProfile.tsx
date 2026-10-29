@@ -2,6 +2,7 @@ import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
 import {Camera,X} from 'lucide-react';
 import {apiUrl} from '../../lib/api';
 import './profile-media.css';
+import {FileAccessNotice,UploadConsent} from '../privacy/consent';
 type Identity={id:string;eco_id:string;display_name:string};
 type Profile={viewerId:string;ownerId:string;mediaEnabled:boolean;avatarAssetId:string|null;bannerAssetId:string|null;revision:number;updatedAt:string|null;counts:{friends:number;followers:number;following:number}};
 function checked(value:Profile,owner:string):Profile{
@@ -31,6 +32,7 @@ async function fileData(file:File,signal:AbortSignal){
 export default function PeopleProfile({identity,csrfToken,dataMode,onAccount,onFriends}:{identity:Identity;csrfToken:string;dataMode:string;onAccount:()=>void;onFriends:()=>void}){
  const [draftBase,setDraftBase]=useState<Profile|null>(null);
  const [conflict,setConflict]=useState(false);
+ const [uploadConsent,setUploadConsent]=useState(false);
  const [profile,setProfile]=useState<Profile|null>(null),[error,setError]=useState(''),[editing,setEditing]=useState(false),[busy,setBusy]=useState(false),[saved,setSaved]=useState(false),[showPhotos,setShowPhotos]=useState(dataMode!=='extreme');
  const [avatar,setAvatar]=useState<File|null>(null),[banner,setBanner]=useState<File|null>(null),[removeAvatar,setRemoveAvatar]=useState(false),[removeBanner,setRemoveBanner]=useState(false);
  const generation=useRef(0),pending=useRef<AbortController|null>(null),write=useRef<AbortController|null>(null),uploaded=useRef(new WeakMap<File,string>());
@@ -48,7 +50,7 @@ export default function PeopleProfile({identity,csrfToken,dataMode,onAccount,onF
  },[refresh]);
  useEffect(()=>setShowPhotos(dataMode!=='extreme'),[dataMode]);
  function discardDraft(){
-  setAvatar(null);setBanner(null);setRemoveAvatar(false);setRemoveBanner(false);setDraftBase(null);setEditing(false);setConflict(false);
+  setUploadConsent(false);setAvatar(null);setBanner(null);setRemoveAvatar(false);setRemoveBanner(false);setDraftBase(null);setEditing(false);setConflict(false);
  }
  function toggleEditor(){
   if(editing){discardDraft();return;}
@@ -65,7 +67,7 @@ export default function PeopleProfile({identity,csrfToken,dataMode,onAccount,onF
   if(typeof result.id!=='string'||!/^[0-9a-f-]{36}$/i.test(result.id))throw Error('The image upload was not confirmed.');uploaded.current.set(file,result.id);return result.id;
  }
  async function save(event:FormEvent){
-  event.preventDefault();if(!profile||busy||!profile.mediaEnabled||!navigator.onLine)return;
+  event.preventDefault();if(!profile||busy||!profile.mediaEnabled||!navigator.onLine||((avatar||banner)&&!uploadConsent))return;
   const captured=draftBase||profile,photo=avatar,cover=banner,clearPhoto=removeAvatar,clearCover=removeBanner;
   const controller=new AbortController();write.current=controller;setBusy(true);setSaved(false);setConflict(false);setError('');const deadline=setTimeout(()=>controller.abort(),60000);
   try{
@@ -88,8 +90,8 @@ export default function PeopleProfile({identity,csrfToken,dataMode,onAccount,onF
   {conflict&&<div><p>Your draft is still here. Reload saved profile discards these choices so you can edit the latest version.</p><button type="button" disabled={busy} onClick={reloadSaved}>Reload saved profile</button></div>}
   {profile&&!profile.mediaEnabled&&<p>Profile photo editing is not available yet. Relationship counts still use your saved EcoVibes records.</p>}
   {editing&&(profile||draftBase)&&<form className="profile-media-editor" onSubmit={save}><header><h2>Edit profile photos</h2><button type="button" aria-label="Close profile editor" disabled={busy} onClick={discardDraft}><X size={20}/></button></header><p>Your saved photo and cover are visible to signed-in EcoVibes members. Blocking limits new access. Choose images you have permission to share.</p>
-   <label>Profile photo<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{setAvatar(e.target.files?.[0]||null);setRemoveAvatar(false);}}/></label><label><input type="checkbox" checked={removeAvatar} disabled={busy} onChange={e=>setRemoveAvatar(e.target.checked)}/>Remove profile photo</label>
-   <label>Cover banner<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{setBanner(e.target.files?.[0]||null);setRemoveBanner(false);}}/></label><label><input type="checkbox" checked={removeBanner} disabled={busy} onChange={e=>setRemoveBanner(e.target.checked)}/>Remove cover banner</label><small>JPG, PNG or WebP · up to 5 MB each. Uploads need a connection.</small><button type="submit" disabled={busy||!profile?.mediaEnabled||(!avatar&&!banner&&!removeAvatar&&!removeBanner)}>{busy?'Saving profile…':'Save profile photos'}</button>
+   <FileAccessNotice/><label>Profile photo<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{setUploadConsent(false);setAvatar(e.target.files?.[0]||null);setRemoveAvatar(false);}}/></label><label><input type="checkbox" checked={removeAvatar} disabled={busy} onChange={e=>setRemoveAvatar(e.target.checked)}/>Remove profile photo</label>
+   <label>Cover banner<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{setUploadConsent(false);setBanner(e.target.files?.[0]||null);setRemoveBanner(false);}}/></label><label><input type="checkbox" checked={removeBanner} disabled={busy} onChange={e=>setRemoveBanner(e.target.checked)}/>Remove cover banner</label>{(avatar||banner)&&<UploadConsent checked={uploadConsent} onChange={setUploadConsent} disabled={busy} purpose="these profile images, visible to signed-in EcoVibes members"/>}<small>JPG, PNG or WebP · up to 5 MB each. Uploads need a connection.</small><button type="submit" disabled={busy||!profile?.mediaEnabled||((avatar||banner)&&!uploadConsent)||(!avatar&&!banner&&!removeAvatar&&!removeBanner)}>{busy?'Saving profile…':'Save profile photos'}</button>
   </form>}
  </section>;
 }

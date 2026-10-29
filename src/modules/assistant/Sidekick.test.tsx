@@ -32,7 +32,7 @@ function mockFetch(handler?: FetchHandler) {
   return fetchMock;
 }
 
-function openPanel() { fireEvent.click(screen.getByRole('button', { name: /Ask Chale AI/ })); }
+function openPanel() { fireEvent.click(screen.getByRole('button', { name: /Ask Chale AI/ })); fireEvent.click(screen.getByRole('checkbox',{name:/Allow model processing/})); }
 function ask(value: string) {
   fireEvent.change(screen.getByRole('textbox', { name: 'Ask Chale AI' }), { target: { value } });
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
@@ -473,6 +473,7 @@ describe('Chale AI app integration', () => {
     view.rerender(<Sidekick {...props} userId="account-b" csrfToken="csrf-b"/>);
     expect(firstCall?.[1]?.signal?.aborted).toBe(true);
     expect(screen.queryByText('Private question from account A')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox',{name:/Allow model processing/}));
     ask('A question from account B');
     await screen.findByText('New account reply.');
     await act(async () => resolveOld(response({ text: 'Old private answer.' })));

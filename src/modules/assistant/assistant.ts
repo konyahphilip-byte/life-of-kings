@@ -1,7 +1,7 @@
 import { opportunities, products, initialPosts } from '../../data/seed';
 import { handiDirectory } from '../quickhandi/domain';
 
-export type AssistantDestination = 'Home' | 'Explore' | 'Create' | 'Messages' | 'Calls & Live' | 'Reels' | 'Profile' | 'Marketplace' | 'Opportunities' | 'Gaming' | 'Communities' | 'Quick&Handi' | 'Waste' | 'EcoVibes ID' | 'Rewards' | 'Wallet' | 'Money & Trust' | 'Settings';
+export type AssistantDestination = 'Home' | 'Explore' | 'Create' | 'Messages' | 'Calls & Live' | 'Reels' | 'Profile' | 'Marketplace' | 'Opportunities' | 'Gaming' | 'Communities' | 'Quick&Handi' | 'Waste' | 'EcoVibes ID' | 'Rewards' | 'Wallet' | 'Money & Trust' | 'Settings' | 'Privacy & Permissions';
 export type AssistantItem = { id: string; eyebrow: string; title: string; detail: string; destination: AssistantDestination; score: number };
 export type AssistantReply = { text: string; items: AssistantItem[]; suggestions: string[] };
 

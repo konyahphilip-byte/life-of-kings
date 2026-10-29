@@ -1998,6 +1998,7 @@ async function route(ctx, req, res, method, path, body, query) {
     return {stories};
   }
   if (method === "POST" && path === "/stories") {
+    if(body.expectedOwnerId!==undefined)assert(body.expectedOwnerId===ctx.user.id,403,"account_changed","Your sign-in changed. Reopen this form before submitting.");
     const text=inputString(body.text||"","Story status",{min:0,max:500,optional:true});const assetId=body.assetId?inputString(body.assetId,"Media asset ID",{max:64}):null;assert(text||assetId,400,"empty_story","Write a status or add a photo.");if(assetId)assert(await q("SELECT 1 ok FROM media_assets WHERE id=? AND owner_id=?",assetId,ctx.user.id),404,"media_not_found","Upload your media before posting.");const visibility=body.visibility==="followers"?"followers":"public";const storyId=id(),created=now(),expires=new Date(Date.now()+24*60*60_000).toISOString();await run("INSERT INTO stories(id,author_id,text,asset_id,visibility,created_at,expires_at) VALUES(?,?,?,?,?,?,?)",storyId,ctx.user.id,text,assetId,visibility,created,expires);await event(ctx.user.id,"story",storyId,"STORY_POSTED",{hasMedia:Boolean(assetId),visibility});return {id:storyId,expiresAt:expires};
   }
   let storyMatch=path.match(/^\/stories\/([a-f0-9-]+)\/view$/);
@@ -2009,6 +2010,7 @@ async function route(ctx, req, res, method, path, body, query) {
     return {reels,algorithm:"shared cross-pillar interests + freshness + watch/like signals + followed creators; recently watched Reels are down-ranked"};
   }
   if (method === "POST" && path === "/reels") {
+    if(body.expectedOwnerId!==undefined)assert(body.expectedOwnerId===ctx.user.id,403,"account_changed","Your sign-in changed. Reopen this form before submitting.");
     const assetId=inputString(body.assetId,"Video asset ID",{max:64});const asset=await q("SELECT id,mime_type FROM media_assets WHERE id=? AND owner_id=?",assetId,ctx.user.id);assert(asset&&asset.mime_type.startsWith("video/"),400,"video_required","Upload a video before posting a Reel.");const caption=inputString(body.caption||"","Caption",{max:500,optional:true});const reelId=id();await run("INSERT INTO reels(id,author_id,caption,asset_id,created_at) VALUES(?,?,?,?,?)",reelId,ctx.user.id,caption,assetId,now());await event(ctx.user.id,"reel",reelId,"REEL_POSTED",{assetId});return {id:reelId};
   }
   let reelMatch=path.match(/^\/reels\/([a-f0-9-]+)\/(view|like)$/);
@@ -2273,6 +2275,7 @@ async function route(ctx, req, res, method, path, body, query) {
       : rows.map((row) => publicProduct(row, ctx));
   }
   if (method === "POST" && path === "/marketplace/products") {
+    if(body.expectedOwnerId!==undefined)assert(body.expectedOwnerId===ctx.user.id,403,"account_changed","Your sign-in changed. Reopen this form before submitting.");
     await requireRole(ctx, "seller");
     const name = inputString(body.name, "Product name", { max: 100 });
     const description = inputString(body.description || "", "Description", {
@@ -2399,6 +2402,7 @@ async function route(ctx, req, res, method, path, body, query) {
     return rowProduct(await q("SELECT * FROM products WHERE id=?", product.id), ctx.user.eco_id);
   }
   if (method === "POST" && path === "/marketplace/products/import") {
+    if(body.expectedOwnerId!==undefined)assert(body.expectedOwnerId===ctx.user.id,403,"account_changed","Your sign-in changed. Reopen this form before submitting.");
     await requireRole(ctx, "seller");
     assert(
       Array.isArray(body.items) &&

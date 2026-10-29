@@ -35,7 +35,7 @@ describe('synced profile editor',()=>{
  });
  it('rejects an unsupported file before any upload or false success',async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>Response.json(empty)));render(<PeopleProfile {...props}/>);await screen.findByText('12');fireEvent.click(screen.getByRole('button',{name:'Edit profile photos'}));
-  fireEvent.change(screen.getByLabelText('Profile photo'),{target:{files:[new File(['fake'],'clip.mp4',{type:'video/mp4'})]}});fireEvent.click(screen.getByRole('button',{name:'Save profile photos'}));
+  fireEvent.change(screen.getByLabelText('Profile photo'),{target:{files:[new File(['fake'],'clip.mp4',{type:'video/mp4'})]}});fireEvent.click(screen.getByRole('checkbox',{name:/upload and store.*profile/i}));fireEvent.click(screen.getByRole('button',{name:'Save profile photos'}));
   await screen.findByText(/Choose a JPG, PNG or WebP/);expect(vi.mocked(fetch).mock.calls.some(([,init])=>init?.method==='POST')).toBe(false);
  });
 
@@ -51,6 +51,7 @@ describe('synced profile editor',()=>{
   render(<PeopleProfile {...props}/>);await screen.findByText('12');
   fireEvent.click(screen.getByRole('button',{name:'Edit profile photos'}));
   fireEvent.change(screen.getByLabelText('Profile photo'),{target:{files:[new File(['synthetic-photo-bytes'],'photo.png',{type:'image/png'})]}});
+  fireEvent.click(screen.getByRole('checkbox',{name:/upload and store.*profile/i}));
   fireEvent.click(screen.getByRole('button',{name:'Save profile photos'}));
   await screen.findByText('Save acknowledgement unavailable');
   expect(screen.queryByText('Profile saved to your EcoVibes account.')).toBeNull();
@@ -140,6 +141,7 @@ describe('synced profile editor',()=>{
   render(<PeopleProfile {...props}/>);await screen.findByText('12');
   fireEvent.click(screen.getByRole('button',{name:'Edit profile photos'}));
   fireEvent.change(screen.getByLabelText('Profile photo'),{target:{files:[new File(['chosen-photo'],'visible.png',{type:'image/png'})]}});
+  fireEvent.click(screen.getByRole('checkbox',{name:/upload and store.*profile/i}));
   fireEvent.click(screen.getByRole('button',{name:'Refresh profile'}));await screen.findByText('Profile connection interrupted');
   expect((screen.getByLabelText('Profile photo') as HTMLInputElement).files?.length).toBe(1);
   expect((screen.getByRole('button',{name:'Save profile photos'}) as HTMLButtonElement).disabled).toBe(true);

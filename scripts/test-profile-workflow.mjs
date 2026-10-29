@@ -30,6 +30,11 @@ try{
  assert(origin,'Isolated API did not start');
  const register=async name=>{const r=await request('/auth/register',{method:'POST',body:{ecoId:`test.${name}`,displayName:name,password:'Synthetic-only-password-273!'}});assert.equal(r.status,200);return{id:r.data.user.id,csrf:r.data.csrfToken,cookie:r.cookie};};
  const a=await register('alpha'),b=await register('beta'),c=await register('gamma');
+ await check('changed-account media and catalog submissions fail before reading or writing another owner',async()=>{
+  for(const path of ['/stories','/reels','/marketplace/products','/marketplace/products/import','/social/assets']){
+   const r=await request(path,{account:a,method:'POST',body:{expectedOwnerId:b.id}});assert.equal(r.status,403,path);assert.equal(r.data.error.code,'account_changed',path);
+  }
+ });
  const base='/connect/messages',path=`${base}/${b.id}`;
  await check('anonymous inbox is private/no-store',async()=>{const r=await request(base);assert.equal(r.status,401);assert.equal(r.cache,'no-store');});
  await check('signed-in inbox returns no fabricated conversation',async()=>{assert.deepEqual(await ok(base,{account:a}),{ownerId:a.id,friends:[],truncated:false});});

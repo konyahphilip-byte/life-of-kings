@@ -15,7 +15,7 @@ export type GuideEntry = {
 const destinations = new Set<AssistantDestination>([
   'Home', 'Explore', 'Create', 'Messages', 'Calls & Live', 'Reels', 'Profile',
   'Marketplace', 'Opportunities', 'Gaming', 'Communities', 'Quick&Handi', 'Waste',
-  'EcoVibes ID', 'Rewards', 'Wallet', 'Money & Trust', 'Settings',
+  'EcoVibes ID', 'Rewards', 'Wallet', 'Money & Trust', 'Settings', 'Privacy & Permissions',
 ]);
 
 export function isAssistantDestination(value: unknown): value is AssistantDestination {
