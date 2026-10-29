@@ -164,6 +164,7 @@ async function searchLiveListings(query: string, dataMode: DataMode, signal: Abo
 export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode, online }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const [modelConsent,setModelConsent]=useState(false);
   const [entries, setEntries] = useState<ChatEntry[]>([welcome]);
   const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
   const [learning, setLearning] = useState<LearningState | null>(null);
@@ -186,7 +187,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     if (chatRequest.current) clearTimeout(chatRequest.current.timer);
     feedbackRequest.current?.abort();
     chatRequest.current = null; feedbackRequest.current = null; busyRef.current = false;
-    setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null);
+    setModelConsent(false);setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null);
     return () => {
       generation.current += 1;
       chatRequest.current?.controller.abort();
@@ -275,6 +276,8 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, [entries, open]);
 
+  function changeModelConsent(value:boolean){setModelConsent(value);if(!value){generation.current++;chatRequest.current?.controller.abort('consent-withdrawn');if(chatRequest.current)clearTimeout(chatRequest.current.timer);chatRequest.current=null;busyRef.current=false;setBusy(false);setEntries([welcome]);setDraft('');setNotice('Model processing is off. Already sent requests cannot be recalled. Local app guidance remains available.');}}
+  useEffect(()=>{const revoke=()=>changeModelConsent(false);window.addEventListener('ecovibes:revoke_ai',revoke);window.addEventListener('ecovibes:identity_changed',revoke);return()=>{window.removeEventListener('ecovibes:revoke_ai',revoke);window.removeEventListener('ecovibes:identity_changed',revoke);};},[]);
   const ask = async (value: string) => {
     const query = value.trim().slice(0, 1200);
     if (!query || busyRef.current) return;
@@ -288,10 +291,10 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       return;
     }
     const guides = localAppGuides(query, page);
-    if (!online) {
+    if (!online || !modelConsent) {
       setEntries((current) => [...current, { id: entryId, role: 'user', text: query }, {
         id: replyId, role: 'assistant', source: 'app_guide',
-        text: 'You’re offline. I can still help you find your way using the EcoVibes app guide. Live answers and listings need a connection.',
+        text: !modelConsent ? 'Model processing is off. These app steps run locally; no question has been sent to the model. Enable processing below if you want a live answer.' : 'You’re offline. I can still help you find your way using the EcoVibes app guide. Live answers and listings need a connection.',
         guides, drafts: localDraft(query, page),
       }]);
       return;
@@ -479,6 +482,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       </div>
       <div className="chale-learning"><span>{!userId ? 'Sign in to manage your learning profile.' : learning?.enabled ? 'Learning is on. Save or show less to tune it.' : learning ? 'Learning is paused.' : 'Your learning choices are available on Home.'}</span><button type="button" onClick={() => navigate('Home')}>Tune learning on Home<ChevronRight size={12}/></button></div>
       {notice && <p className="chale-notice" role="status">{notice}</p>}
+      <div className="privacy-ai-choice"><p>Live answers send your question, recent chat messages, current screen name and data mode to EcoVibes’ configured model service, with relevant public listings. Photos, contacts, private messages and device location are not included. Do not enter secrets. This choice lasts for this signed-in chat session; it is separate from recommendation learning and the optional character.</p><label><input type="checkbox" checked={modelConsent} onChange={e=>changeModelConsent(e.target.checked)}/>Allow model processing for this chat session</label><button type="button" onClick={()=>navigate('Privacy & Permissions')}>Privacy &amp; Permissions</button></div>
       <form className="sidekick-input" onSubmit={submit}>
         <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask about EcoVibes or an app problem" aria-label="Ask Chale AI" maxLength={1200}/>
         {busy ? <button type="button" className="chale-stop" aria-label="Stop answer" onClick={() => chatRequest.current?.controller.abort('stopped')}><X size={17}/></button> : <button disabled={!draft.trim()} aria-label="Send question"><ArrowUp size={17}/></button>}

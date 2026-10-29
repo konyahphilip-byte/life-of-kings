@@ -1,0 +1,16 @@
+.privacy-permissions{max-width:760px;margin:auto;padding:20px 12px 100px;color:var(--text,#193b2e)}
+.privacy-permissions h1{font-size:clamp(26px,5vw,38px);line-height:1.15;margin:10px 0 16px}
+.privacy-permissions>section{padding:20px 0;border-bottom:1px solid var(--border,#dce4d8)}
+.privacy-permissions p,.privacy-permissions li,.privacy-help{line-height:1.6}
+.privacy-permissions dl>div{display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid var(--border,#dce4d8)}
+.privacy-permissions dd{font-weight:700}
+.privacy-permissions button,.privacy-room button{background:var(--green,#185b45);color:white;border:0;border-radius:10px;min-height:44px;padding:10px 14px;margin:6px 8px 6px 0;font:inherit;cursor:pointer}
+.privacy-permissions button:focus-visible,.privacy-room button:focus-visible,.privacy-consent input:focus-visible,.privacy-ai-choice input:focus-visible{outline:3px solid #769c2a;outline-offset:3px}
+.privacy-room section{padding:12px;border:1px solid var(--border,#dce4d8);border-radius:12px;margin:12px 0}
+.privacy-room button:disabled{opacity:.5;cursor:default}
+.privacy-help{font-size:13px;color:var(--muted,#55655b);margin:8px 0}
+.privacy-consent{display:flex!important;align-items:flex-start!important;gap:10px;margin:14px 0!important;font-size:14px;line-height:1.5;white-space:normal}
+.privacy-consent input,.privacy-ai-choice input{width:20px!important;height:20px!important;flex:0 0 20px;margin:2px 0!important;accent-color:#185b45}
+.privacy-ai-choice{padding:8px 16px;border-top:1px solid var(--border,#dce4d8);font-size:12px;line-height:1.45;max-height:145px;overflow:auto}
+.privacy-ai-choice p{margin:0 0 6px}.privacy-ai-choice label{display:flex;gap:8px;align-items:flex-start}.privacy-ai-choice button{margin:5px 0;background:transparent;border:0;text-decoration:underline;color:inherit;font:inherit;min-height:32px}
+@media(max-width:480px){.privacy-permissions{padding:14px 8px 95px}.privacy-permissions button{width:100%;margin-right:0}.privacy-room .lk-grid-layout{min-height:170px}}
