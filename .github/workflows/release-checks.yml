@@ -28,7 +28,8 @@ jobs:
       - run: npm run test:chale-workflow
       - run: npm run test:chale-work-status
       - run: node scripts/test-direct-messages.mjs
-      - name: Verify disposable PostgreSQL message receipts
+      - run: node scripts/test-profile-workflow.mjs
+      - name: Verify disposable PostgreSQL profiles and receipts
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends postgresql
@@ -43,4 +44,4 @@ jobs:
           test -x "$PG_BINDIR/initdb"
           test -x "$PG_BINDIR/postgres"
           "$PG_BINDIR/postgres" --version
-          node scripts/test-message-receipts-postgres.mjs
+          node scripts/test-profile-postgres.mjs

@@ -1,3 +1,4 @@
+import {createPeopleProfile,PROFILE_SQLITE_SCHEMA,PROFILE_VERSION} from './people-profile.mjs';
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { Pool } from "pg";
@@ -187,6 +188,7 @@ if (!postgresMode) {
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
   db.exec(FRIENDS_SQLITE_SCHEMA);
   db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
+  db.exec(PROFILE_SQLITE_SCHEMA);
 }
 
 const now = () => new Date().toISOString();
@@ -1109,7 +1111,14 @@ const chalePublicUpdates = createPublicUpdates();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
+const profileMediaAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',PROFILE_VERSION));
+const peopleProfile=createPeopleProfile({q,run,transaction,assert,now,event,rateLimit,postgresMode,available:profileMediaAvailable});
 async function route(ctx, req, res, method, path, body, query) {
+  if(path.startsWith('/people/profiles/')){
+    const result=await peopleProfile.route(ctx,method,path,body,query);
+    if(result.mediaAsset){const file=await loadMediaAsset(result.mediaAsset.id);res.statusCode=200;res.setHeader('Content-Type',result.mediaAsset.mime_type);res.setHeader('Content-Length',file.length);res.setHeader('Cache-Control','private, no-store');res.end(file);return {__sent:true};}
+    return result;
+  }
   if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {
     assert([...query.keys()].length === 0, 400, 'invalid_query', 'This view accepts no account or organization selectors.');
@@ -1920,6 +1929,7 @@ async function route(ctx, req, res, method, path, body, query) {
   if (method === "DELETE" && assetMatch) {
     const asset = await q("SELECT * FROM media_assets WHERE id=? AND owner_id=?", assetMatch[1], ctx.user.id);
     assert(asset, 404, "asset_not_found", "Media asset not found.");
+    if(profileMediaAvailable)assert(!await q('SELECT 1 ok FROM people_profiles WHERE avatar_asset_id=? OR banner_asset_id=?',asset.id,asset.id),409,'media_in_use','Remove this image from your profile before deleting it.');
     const references = await q("SELECT (EXISTS(SELECT 1 FROM stories WHERE asset_id=?) OR EXISTS(SELECT 1 FROM reels WHERE asset_id=?) OR EXISTS(SELECT 1 FROM products WHERE image_url=? AND status!='removed')) AS used", asset.id, asset.id, `/social/assets/${asset.id}`);
     assert(!references?.used, 409, "media_in_use", "Remove the media from its listing or post before deleting it.");
     await run("DELETE FROM media_assets WHERE id=? AND owner_id=?", asset.id, ctx.user.id);
@@ -1927,6 +1937,7 @@ async function route(ctx, req, res, method, path, body, query) {
     return { deleted: true };
   }
   if (method === "POST" && path === "/social/assets") {
+    if(body.expectedOwnerId!==undefined)assert(body.expectedOwnerId===ctx.user.id,403,'account_changed','Your sign-in changed. Reopen the upload before trying again.');
     const mime = body.mimeType;
     const allowed = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"]);
     assert(allowed.has(mime), 400, "unsupported_media_type", "Upload a JPG, PNG, WebP, MP4, or WebM file.");
