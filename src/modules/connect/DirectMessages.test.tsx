@@ -21,6 +21,22 @@ function network(){
  return{saved,block:()=>{unavailable=true;},failSend:()=>{failSend=true;},restore:()=>{failSend=false;}};
 }
 describe('accepted-friend text conversations',()=>{
+ it('shows two ticks only from a server-confirmed recipient acknowledgement',async()=>{
+  let delivered=false;vi.stubGlobal('fetch',vi.fn(async(input)=>String(input).endsWith('/connect/messages')?Response.json({ownerId:A,friends:[peer],truncated:false}):Response.json({ownerId:A,revision:2,receiptsEnabled:true,messages:[{...message,senderId:A,deliveredAt:delivered?'2026-10-28T20:00:00Z':null}],hasOlder:false,beforeCursor:'1'})));
+  render(<ConnectInbox userId={A} csrfToken="csrf" onOpenJobs={()=>{}}/>);fireEvent.click(await screen.findByRole('button',{name:'Message Beta'}));
+  await screen.findByLabelText('Saved by server');expect(screen.queryByLabelText('Received by their app')).toBeNull();
+  delivered=true;fireEvent.click(screen.getByRole('button',{name:'Refresh conversation'}));await screen.findByLabelText('Received by their app');
+ });
+ it('acknowledges only received peer messages, never its own, after verified rendering',async()=>{
+  const messageId='00000000-0000-4000-8000-000000000099';vi.stubGlobal('fetch',vi.fn(async(input,init)=>{
+   if(String(input).endsWith('/connect/messages'))return Response.json({ownerId:A,friends:[peer],truncated:false});
+   if(init?.method==='POST')return Response.json({ownerId:A,revision:2,acknowledged:[messageId]});
+   return Response.json({ownerId:A,revision:2,receiptsEnabled:true,messages:[{...message,id:messageId,deliveredAt:null},{...message,id:'own',senderId:A,sequence:'2',deliveredAt:null}],hasOlder:false,beforeCursor:'1'});
+  }));
+  render(<ConnectInbox userId={A} csrfToken="csrf" onOpenJobs={()=>{}}/>);fireEvent.click(await screen.findByRole('button',{name:'Message Beta'}));
+  await waitFor(()=>expect(vi.mocked(fetch).mock.calls.some(([url,init])=>String(url).endsWith('/receipts')&&init?.method==='POST')).toBe(true));
+  const write=vi.mocked(fetch).mock.calls.find(([,init])=>init?.method==='POST');expect(JSON.parse(String(write?.[1]?.body))).toEqual({revision:2,messageIds:[messageId]});
+ });
  it('opens a real friend conversation, displays saved text and sends without HTML execution',async()=>{
   network();render(<ConnectInbox userId={A} csrfToken="csrf" onOpenJobs={()=>{}}/>);
   fireEvent.click(await screen.findByRole('button',{name:'Message Beta'}));
