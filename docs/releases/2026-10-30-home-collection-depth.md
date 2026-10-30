@@ -15,10 +15,21 @@ Founder selected **Home and collection views**, preserving EcoVibes' green ident
 
 Initial missing-module RED retained in primary `work/depth-view-red.json`; first focused **23/23** (depth behavior plus 18 real page smoke checks). A first TypeScript check found an obsolete Leaf import after replacing the old decoration; it was removed. Final local full **483/483**, TypeScript, production build **1676 modules**, and eight dependency security assertions pass. No timeouts, assertions, workers or isolation were weakened. Historical QA-001 remains undiagnosed. Existing large bundle warnings remain.
 
-Primary evidence directory: `work/home-collection-depth-20261030/`. Exact CI/browser screenshots and independent review start UNVERIFIED until their actual results are recorded. mac13 cannot install the current isolated Chromium; Linux CI supplies browser verification. Narrow desktop emulation is not a physical phone or low-end-device acceptance pass.
+Primary evidence directory: `work/home-collection-depth-20261030/`. The initial pending-CI note is superseded by the final evidence below. mac13 cannot install the current isolated Chromium; Linux CI supplies browser verification. Narrow desktop emulation is not a physical phone or low-end-device acceptance pass.
 
 ## Boundaries and remaining work
 
 The 3D art is decorative CSS depth, not a geographic map, live collector position, completed pickup, verified impact, payout, functioning game or rigged character. GPS draft PR32, geographic maps/routes, owned media, Finance, checkout, email and profile/privacy releases retain their own acceptance gates. No new permissions are requested by these scenes; separate privacy controls remain a distinct draft.
 
 Safe release has no database change. A source rollback retains domain data and restores the prior visual presentation. Exact candidate CI, bounded desktop/narrow screenshot review, explicit merge/deployment authorization and hosted checks are required. Real phones/low-end rendering, physical GPS and server/provider journeys remain UNVERIFIED or BLOCKED. Approval to style pages does not authorize production deployment.
+
+
+## Final reviewed implementation evidence
+
+Draft PR34 final implementation remote `5d9922f8462f6e17538920294af59ddfee5c1995` / local `6f4746e80e188ca783c14dda2b55c83d5ea0ae0d` share tree `a29133a25ec8fd6164ca263f2d051fe61aab3c3f`. Exact release CI **41031696807** (job123982701444) and browser CI **41031696809** (job123982700818) passed. Actual logs read: **484 tests / 37 files**, TypeScript/build1676, audit0, dependency security assertions, all eight existing HTTP workflows, disposable PostgreSQL18.6/84 and **20 built Chromium desktop/narrow scenarios**. These remain synthetic, not hosted or physical-account acceptance.
+
+Six valid captures in primary `work/home-collection-depth-20261030/browser-reviewed/`: Home and Waste at1280/390 plus flat alternatives at390. Archive12966157569 SHA256 `00cdbb61dbc042930bd87ff7b62cf39a35255b3968e9a17e88e362912945ca71` verified. The first Home capture caught existing entrance effects before settling; it is retained and superseded. Final capture walks lazy content and finishes finite entrance effects without changing product motion.
+
+Source review found noCritical/Important issues; a Minor conflicting toggle announcement was removed. Finish review confirmed the extension's materials, type, responsive reflow, actions and truthful disclosures; it required removing the touched Waste hero eyebrow. Final verdict **ship** scores that fix resolved, with valid recaptures and no visible regression from it. Documenter confirms the surface contract matches the incumbent system; missing PRODUCT/DESIGN files are pre-existing context debt, not a new visual system.
+
+An actual mode-label RED exposed the sidebar's hardcoded Data Saver text in Standard mode; it now reflects the selected mode. All failed/interrupted attempts and QA001 history are retained. No schema, merge, deploy, provider configuration, money or hardware action occurred. Release still requires explicit bounded merge/deployment approval, green main CI and hosted checks. Later documentation-only updates retain the reviewed implementation source unchanged.
