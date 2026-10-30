@@ -13,10 +13,18 @@ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0
 const origin=`http://127.0.0.1:${server.address().port}`;
 let browser,failure;
 const checks=[];
+async function settleCapture(page){
+ // Exercise existing below-fold lazy images, then finish finite entrance effects.
+ const height=await page.evaluate(()=>document.documentElement.scrollHeight);
+ for(let top=0;top<height;top+=700){await page.evaluate(y=>scrollTo(0,y),top);await page.waitForTimeout(60);}
+ await page.evaluate(async()=>{await document.fonts.ready;await Promise.allSettled([...document.images].map(img=>img.decode()));for(const animation of document.getAnimations()){if(animation.effect?.getTiming().iterations!==Infinity)try{animation.finish();}catch{}}scrollTo({top:0,behavior:'instant'});});
+ await page.waitForTimeout(100);
+}
 try{
  browser=await chromium.launch();
  for(const width of [1280,390]){
-  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce',serviceWorkers:'block'});
+  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'no-preference',serviceWorkers:'block'});
+  await context.addInitScript(()=>{if(!localStorage.getItem('ecovibes:v1'))localStorage.setItem('ecovibes:v1',JSON.stringify({saver:'standard'}));});
   await context.routeWebSocket('**/*',socket=>socket.close());
   const page=await context.newPage(),errors=[];
   page.on('pageerror',()=>errors.push('page_error'));
@@ -31,7 +39,17 @@ try{
    await page.getByRole('heading',{name:title,exact:true}).waitFor();
    assert.equal(await page.locator('.screen-recovery[role="alert"]').count(),0);
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${hash}: horizontal overflow at ${width}`);
-   if(hash==='home'||hash==='waste')await page.screenshot({path:`${output}/${hash}-${width}.png`,fullPage:false});
+   if(hash==='home'||hash==='waste'){
+    await page.locator('[data-depth="3d"]').waitFor();
+    await settleCapture(page);
+    await page.screenshot({path:`${output}/${hash}-${width}.png`,fullPage:true});
+    await page.getByRole('button',{name:'Use 2D view'}).click();
+    assert.equal(await page.locator('[data-depth="3d"]').count(),0);
+    await page.locator('[data-depth="2d"]').waitFor();
+    if(width===390)await page.screenshot({path:`${output}/${hash}-flat-${width}.png`,fullPage:true});
+    await page.getByRole('button',{name:'Use 3D view'}).click();
+    checks.push({width,check:`${hash}: CSS 3D and user-selected flat view both render`});
+   }
    checks.push({width,check:`${hash}: real page renders during synthetic API outage`});
   }
   await page.goto(`${origin}/#create`);
@@ -58,6 +76,12 @@ try{
   assert.deepEqual(errors,[]);
   checks.push({width,check:'Unsupported URL and invalid event recover without render crash or payload echo'});
   await context.close();
+  const flat=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce',serviceWorkers:'block'});
+  await flat.route('**/*',route=>new URL(route.request().url()).origin===origin&&!route.request().url().includes('/api/')?route.continue():route.abort());
+  const flatPage=await flat.newPage();await flatPage.goto(`${origin}/#waste`);await flatPage.locator('[data-depth="2d"]').waitFor();assert.equal(await flatPage.locator('[data-depth="3d"]').count(),0);
+  await flatPage.getByRole('button',{name:/Request a collection/}).click();await flatPage.getByRole('heading',{name:'One account. Shared services.'}).waitFor();
+  checks.push({width,check:'Reduced-motion/default Data Saver flat view retains collection sign-in action'});
+  await flat.close();
  }
 }catch(error){failure={name:error.name,message:error.message};}
 finally{
