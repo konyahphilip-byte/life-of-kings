@@ -10,6 +10,7 @@ import Sidekick from './assistant/Sidekick';
 import QuickHandi from './quickhandi/QuickHandi';
 import WasteHub from './waste/WasteHub';
 import ConceptPhoto from './ConceptPhoto';
+import './mobile-navigation.css';
 import MarketplaceHub, { type CommerceProduct } from './MarketplaceHub';
 import { EcoVibesAfricaOSHome } from './EcoVibesAfricaOSHome';
 import Recommendations from './Recommendations';
@@ -24,7 +25,7 @@ const MoneyTrust = lazy(() => import('./money/MoneyTrust'));
 const sellerProductsKey='ecovibes:marketplace-products:v1';
 function loadSellerProducts(identityId:string|null):CommerceProduct[]{try{if(identityId){const legacy=localStorage.getItem(sellerProductsKey);if(legacy&&!localStorage.getItem(`${sellerProductsKey}:unassigned-backup`))localStorage.setItem(`${sellerProductsKey}:unassigned-backup`,legacy);if(legacy)localStorage.removeItem(sellerProductsKey);}return JSON.parse(localStorage.getItem(identityId?`${sellerProductsKey}:account:${identityId}`:sellerProductsKey)||'[]')}catch{return []}}
 
-const navItems: {page:Page; icon:typeof Home; label:string}[] = [{page:'Home',icon:Home,label:'Home'},{page:'Create',icon:Plus,label:'Create'},{page:'Explore',icon:Compass,label:'Explore'},{page:'Messages',icon:MessageCircle,label:'Messages'},{page:'Calls & Live',icon:Activity,label:'Calls & Live'},{page:'Profile',icon:Users,label:'Profile'},{page:'EcoVibes ID',icon:Fingerprint,label:'EcoVibes ID'}];
+const navItems: {page:Page; icon:typeof Home; label:string}[] = [{page:'Home',icon:Home,label:'Home'},{page:'Explore',icon:Compass,label:'Explore'},{page:'Messages',icon:MessageCircle,label:'Messages'},{page:'Create',icon:Plus,label:'Create'},{page:'Calls & Live',icon:Activity,label:'Calls & Live'},{page:'Profile',icon:Users,label:'Profile'},{page:'EcoVibes ID',icon:Fingerprint,label:'EcoVibes ID'}];
 const initials=(s:string)=>s.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();
 function Avatar({label,size='md',className=''}:{label:string;size?:'sm'|'md'|'lg';className?:string}){return <span className={`avatar avatar-${size} ${className}`}>{label}</span>}
 function Button({children,onClick,kind='secondary',className='',disabled=false}:{children:ReactNode;onClick?:()=>void;kind?:'primary'|'secondary'|'quiet';className?:string;disabled?:boolean}){return <button disabled={disabled} onClick={onClick} className={`button button-${kind} ${className}`}>{children}</button>}
