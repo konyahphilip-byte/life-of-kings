@@ -10,6 +10,7 @@ import Sidekick from './assistant/Sidekick';
 import QuickHandi from './quickhandi/QuickHandi';
 import WasteHub from './waste/WasteHub';
 import ConceptPhoto from './ConceptPhoto';
+import './mobile-navigation.css';
 import MarketplaceHub, { type CommerceProduct } from './MarketplaceHub';
 import { EcoVibesAfricaOSHome } from './EcoVibesAfricaOSHome';
 import Recommendations from './Recommendations';
