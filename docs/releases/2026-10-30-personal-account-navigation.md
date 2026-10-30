@@ -1,0 +1,9 @@
+# Personal accounts and centred Create — 30 October 2026
+
+LOCALLY BUILT, not deployed. Separate branch codex/personal-account-navigation-20261030 is stacked on the reviewed PR34 documentation checkpoint054ac4bd. Existing signup already allowed personal use; this increment corrects misleading presentation rather than changing server authorization.
+
+Create is fourth of seven mobile destinations, retaining the existing overlay. Signup has optional personal/creator/learner/community/shopper/seller/provider/collector/None purposes. These are usage_purpose metadata and entry points, never authorization roles. All members see Personal member; existing Seller/Provider activation and permissions remain unchanged. None opens Home and performs no business activation.
+
+Independent read-only review found no blocking findings. Its optional seller/provider non-activation coverage was added. First full488/488 passed; final focused checks and production build are recorded in primary work/personal-account-*.json. TypeScript passed. Original personal/nav REDs and the denied heredoc attempt are retained. No assertions, deadlines or isolation weakened; historical QA001 cause remains undiagnosed. Browser checks for centre position and optional signup were added but have not run on this source. No physical, provider or hosted acceptance; no schema/source deployment or paid changes. Exact CI and explicit release approval remain required.
+
+Changed source: App.tsx, App.navigation.test.tsx, backend/BackendWorkspace.tsx, backend/PersonalUseOptions.tsx, backend/personal-account.css, backend/BackendWorkspace.personal.test.tsx and scripts/test-navigation-browser.mjs. The CSS extension follows existing green/type controls, visible focus and44px targets. Existing320px seven-item sizing is pre-existing and remains a whole-navigation audit item.
