@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { ArrowRight, BadgeCheck, CalendarDays, CircleHelp, Recycle, ShieldCheck, Truck, Users, Waves } from 'lucide-react';
+import { ArrowRight, BadgeCheck, CalendarDays, CircleHelp, ShieldCheck, Truck, Users, Waves } from 'lucide-react';
 import JobsBoard, { type NewJobInput, type NewOfferInput } from '../quickhandi/JobsBoard';
 import type { CustomJob, CustomJobEvent, CustomJobStatus, HandiProfile, JobOffer, ProviderType, ServiceCategory } from '../quickhandi/model';
 import { apiUrl } from '../../lib/api';
@@ -109,7 +109,7 @@ export default function WasteHub({identityId:nullIdentity=null,saver='saver'}:{i
 
   return <div className={`waste-hub waste-mode-${saver}`}>
     <section className="waste-hero">
-      <div className="waste-hero-copy"><span className="waste-mark"><Recycle size={16}/> ECOVIBES · CIRCULAR ECONOMY</span><h1>Waste, put to better use.</h1><p>Request local collection, connect with waste and recycling providers, and keep useful materials in circulation.</p><div className="waste-hero-actions"><button className="waste-primary" onClick={()=>{if(!identity){window.dispatchEvent(new CustomEvent('ecovibes:navigate',{detail:'EcoVibes ID'}));return;}setView('customer');document.getElementById('waste-requests')?.scrollIntoView({behavior:'smooth'});}}>Request a collection <ArrowRight size={16}/></button><button className="waste-secondary" onClick={()=>document.getElementById('waste-provider')?.scrollIntoView({behavior:'smooth'})}>Offer a service <Users size={15}/></button></div><small>EcoVibes ID required to create requests. Exact addresses should be shared only after a provider is selected.</small></div>
+      <div className="waste-hero-copy"><h1>Waste, put to better use.</h1><p>Request local collection, connect with waste and recycling providers, and keep useful materials in circulation.</p><div className="waste-hero-actions"><button className="waste-primary" onClick={()=>{if(!identity){window.dispatchEvent(new CustomEvent('ecovibes:navigate',{detail:'EcoVibes ID'}));return;}setView('customer');document.getElementById('waste-requests')?.scrollIntoView({behavior:'smooth'});}}>Request a collection <ArrowRight size={16}/></button><button className="waste-secondary" onClick={()=>document.getElementById('waste-provider')?.scrollIntoView({behavior:'smooth'})}>Offer a service <Users size={15}/></button></div><small>EcoVibes ID required to create requests. Exact addresses should be shared only after a provider is selected.</small></div>
       <div className="collection-visual"><div className="collection-view-control"><DepthToggle view={depthView}/></div><div className={`collection-photo-frame ${depthView.depth?'has-depth':'is-flat'}`}><ConceptPhoto image="waste" saver={saver} className="waste-collection-photo"/></div><DepthScene kind="collection" depth={depthView.depth}/></div>
     </section>
 
