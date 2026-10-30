@@ -28,6 +28,7 @@ jobs:
       - run: npm run test:chale-workflow
       - run: npm run test:chale-work-status
       - run: node scripts/test-direct-messages.mjs
+      - run: node scripts/test-job-tracking.mjs
       - name: Verify disposable PostgreSQL message receipts
         run: |
           sudo apt-get update
@@ -44,3 +45,4 @@ jobs:
           test -x "$PG_BINDIR/postgres"
           "$PG_BINDIR/postgres" --version
           node scripts/test-message-receipts-postgres.mjs
+          node scripts/test-job-tracking-postgres.mjs

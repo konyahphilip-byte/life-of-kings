@@ -25,6 +25,7 @@ import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { createChaleWorkStatus } from "./chale-work-status.mjs";
 import { createPeopleFriends, FRIENDS_SQLITE_SCHEMA } from "./people-friends.mjs";
 import { createDirectMessages, DIRECT_MESSAGES_SQLITE_SCHEMA, DIRECT_MESSAGES_VERSION, DIRECT_MESSAGE_RECEIPTS_VERSION } from "./direct-messages.mjs";
+import { createJobTracking, TRACKING_SQLITE_SCHEMA, TRACKING_VERSION } from "./job-tracking.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
 import { chaleGreeting } from "../shared/chale-greeting.mjs";
 import { loadOpenAIEnvironment } from "./openai-env.mjs";
@@ -187,6 +188,7 @@ if (!postgresMode) {
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
   db.exec(FRIENDS_SQLITE_SCHEMA);
   db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
+  db.exec(TRACKING_SQLITE_SCHEMA);
 }
 
 const now = () => new Date().toISOString();
@@ -1105,11 +1107,14 @@ const peopleFriends = createPeopleFriends({q,all,run,transaction,assert,now,noti
 const directMessagesAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',DIRECT_MESSAGES_VERSION));
 const receiptsAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?",DIRECT_MESSAGE_RECEIPTS_VERSION));
 const directMessages=createDirectMessages({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:directMessagesAvailable,receiptsAvailable});
+const trackingAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',TRACKING_VERSION));
+const jobTracking=createJobTracking({q,run,transaction,assert,now,event,rateLimit,postgresMode,available:trackingAvailable,disabled:process.env.ECOVIBES_TRACKING_DISABLED==='true'});
 const chalePublicUpdates = createPublicUpdates();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
 async function route(ctx, req, res, method, path, body, query) {
+  if(/^\/jobs\/[^/]+\/tracking(?:\/|$)/.test(path))return jobTracking.route(ctx,method,path,body,query);
   if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {
     assert([...query.keys()].length === 0, 400, 'invalid_query', 'This view accepts no account or organization selectors.');
@@ -3059,6 +3064,7 @@ async function route(ctx, req, res, method, path, body, query) {
         job.status,
       );
       assert(change.changes === 1, 409, 'invalid_transition', 'This job has already changed. Refresh it before trying again.');
+      if(!['assigned','in_progress'].includes(next))await jobTracking.revoke(job.id);
       if (next === "completed") {
         const activity = { title: job.title, category: job.category };
         await recordRecommendationSignals(job.customer_id, "job", String(job.id), activity, "completed", true);
@@ -3322,6 +3328,10 @@ const unpaidOrderExpiry = setInterval(() => {
   void expireUnpaidOrders().catch((error) => console.error(JSON.stringify({ level: "error", event: "unpaid_order_cleanup_failed", errorType: error?.name || "Error", time: now() })));
 }, 60_000);
 unpaidOrderExpiry.unref();
+const trackingCleanup=setInterval(()=>{
+  void jobTracking.maintenance().catch(()=>console.error(JSON.stringify({level:'error',event:'tracking_cleanup_failed',time:now()})));
+},30_000);
+trackingCleanup.unref();
 const rateLimitCleanup = setInterval(() => {
   void cleanupRateLimitBuckets().catch((error) => console.error(JSON.stringify({ level: "error", event: "rate_limit_cleanup_failed", errorType: error?.name || "Error", time: now() })));
 }, 5 * 60_000);
@@ -3335,6 +3345,7 @@ server.listen(port, isProduction ? "0.0.0.0" : "127.0.0.1", () =>
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
     clearInterval(unpaidOrderExpiry);
+    clearInterval(trackingCleanup);
     clearInterval(rateLimitCleanup);
     server.close(() => {
       Promise.resolve(postgresMode ? pool.end() : db.close()).finally(() => process.exit(0));

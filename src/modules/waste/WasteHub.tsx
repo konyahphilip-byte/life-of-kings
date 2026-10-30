@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, BadgeCheck, CalendarDays, CircleHelp, Leaf, Recycle, ShieldCheck, Truck, Users, Waves } from 'lucide-react';
 import JobsBoard, { type NewJobInput, type NewOfferInput } from '../quickhandi/JobsBoard';
 import type { CustomJob, CustomJobEvent, CustomJobStatus, HandiProfile, JobOffer, ProviderType, ServiceCategory } from '../quickhandi/model';
 import { apiUrl } from '../../lib/api';
 import ConceptPhoto from '../ConceptPhoto';
+const LocationTracking=lazy(()=>import('./LocationTracking'));
 import './waste.css';
 
 type ApiIdentity = { id:string; eco_id:string; display_name:string; roles:string[] };
@@ -31,7 +32,10 @@ function mapJob(row:Record<string,unknown>):WasteJob {
   };
 }
 
-export default function WasteHub({identityId:nullIdentity=null,saver='saver'}:{identityId?:string|null;saver?:'standard'|'saver'|'extreme'}) {
+export default function WasteHub({identityId=null,saver='saver'}:{identityId?:string|null;saver?:'standard'|'saver'|'extreme'}) {
+  return <WasteWorkspace key={identityId||'guest'} identityId={identityId} saver={saver}/>;
+}
+function WasteWorkspace({identityId:nullIdentity,saver}:{identityId:string|null;saver:'standard'|'saver'|'extreme'}) {
   const [identity,setIdentity]=useState<ApiIdentity|null>(null);
   const [csrf,setCsrf]=useState('');
   const [jobs,setJobs]=useState<WasteJob[]>([]);
@@ -41,18 +45,26 @@ export default function WasteHub({identityId:nullIdentity=null,saver='saver'}:{i
   const [error,setError]=useState('');
   const [success,setSuccess]=useState('');
   const [view,setView]=useState<'customer'|'provider'>('customer');
+  const [trackingJobs,setTrackingJobs]=useState<Array<{id:string;title:string}>>([]);
+  const alive=useRef(true),revision=useRef(0);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;revision.current++;};},[]);
 
   const refresh=useCallback(async()=>{
+    const request=++revision.current;
     const me=await wasteApi<{user:ApiIdentity|null;csrfToken:string|null}>('/auth/me','');
+    if(!alive.current||request!==revision.current)return;
+    if(me.user?.id!==nullIdentity&&me.user)throw new Error('Your sign-in changed. Reopen Waste from your current account.');
     setIdentity(me.user);setCsrf(me.csrfToken||'');
-    if(!me.user){setJobs([]);setVerifications([]);return;}
+    if(!me.user){setJobs([]);setVerifications([]);setTrackingJobs([]);return;}
     const [jobRows,verificationRows]=await Promise.all([
       wasteApi<Array<Record<string,unknown>>>('/jobs',me.csrfToken||''),
       wasteApi<Verification[]>('/trust/verifications',me.csrfToken||''),
     ]);
+    if(!alive.current||request!==revision.current)return;
     setJobs(jobRows.filter(row=>String(row.category)==='Waste & Recycling').map(mapJob));
+    setTrackingJobs(jobRows.filter(row=>row.category==='Waste & Recycling'&&row.status!=='open'&&(row.customer_eco_id===me.user?.eco_id||row.assigned_provider_eco_id===me.user?.eco_id)).map(row=>({id:String(row.id),title:String(row.title)})));
     setVerifications(verificationRows);
-  },[]);
+  },[nullIdentity]);
 
   useEffect(()=>{let active=true;setLoading(true);void refresh().catch(reason=>{if(active)setError(reason instanceof Error?reason.message:'Waste services are temporarily unavailable.');}).finally(()=>{if(active)setLoading(false);});return()=>{active=false};},[refresh,nullIdentity]);
 
@@ -119,6 +131,8 @@ export default function WasteHub({identityId:nullIdentity=null,saver='saver'}:{i
       {identity?.roles.includes('provider')&&wasteVerification?.status==='pending'&&<div className="waste-review-status"><ShieldCheck size={16}/><span>Your waste-service application is <b>pending staff review</b>. Provider work is locked until it is approved.</span></div>}
       {identity?.roles.includes('provider')&&wasteVerification?.status==='approved'&&<div className="waste-review-status approved"><BadgeCheck size={16}/><span>Your Waste provider profile is approved. Open <b>Provider work</b> to make offers.</span></div>}
     </section>
+
+    {identity&&<Suspense fallback={<p role="status">Loading collection location controls…</p>}><LocationTracking ownerId={identity.id} csrf={csrf} jobs={trackingJobs} saver={saver}/></Suspense>}
 
     <section className="waste-section waste-provider-section" id="waste-provider"><div className="waste-section-heading"><div><span className="waste-kicker"><Waves size={14}/> PROVIDER ONBOARDING</span><h2>Bring your waste service onto EcoVibes</h2><p>Register your collection, sorting, recycling, repair or reuse service. Staff review is required before provider offers become available.</p></div><span className="waste-review-badge"><ShieldCheck size={14}/> Reviewed before offers</span></div>
       {wasteVerification?.status==='pending'?<div className="waste-sign-in"><ShieldCheck size={19}/><div><b>Application under review</b><p>We’ll show provider work after the EcoVibes trust team approves your profile.</p></div></div>:<form className="waste-onboarding-form" onSubmit={onboardProvider}><label>Business or provider name<input name="businessName" required maxLength={90} defaultValue={identity?.display_name||''} placeholder="Name customers will recognize"/></label><div className="waste-form-grid"><label>Provider type<select name="providerType" defaultValue="business"><option value="individual">Individual collector</option><option value="business">Small business</option><option value="company">Company</option><option value="team">Collection team</option></select></label><label>Operating area<input name="serviceArea" required maxLength={120} placeholder="Town, district or neighbourhoods"/></label></div><label>What service do you provide?<textarea name="services" required minLength={10} maxLength={300} rows={3} placeholder="For example: scheduled household pickup, office recycling collection, sorting or e-waste collection."/></label><label>What materials do you accept?<input name="materials" required maxLength={160} placeholder="Plastic, paper, metal, electronics, organic waste…"/></label><div className="waste-onboarding-foot"><p><ShieldCheck size={15}/> Your service is not published until staff review. Do not enter government ID or banking details here.</p><button className="waste-primary" disabled={busy||!identity}>{busy?'Submitting…':'Apply to provide a service'} <ArrowRight size={15}/></button></div></form>}
