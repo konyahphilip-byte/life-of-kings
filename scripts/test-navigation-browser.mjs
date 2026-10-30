@@ -31,6 +31,10 @@ try{
   await context.route('**/*',route=>{
    const url=new URL(route.request().url());
    if(url.origin!==origin)return route.abort();
+   if(url.pathname==='/api/v1/discover/happening'){
+    const date=new Date().toISOString(),expiresAt=new Date(Date.now()+599000).toISOString();
+    return route.fulfill({contentType:'application/json',body:JSON.stringify({asOf:date,sections:[{id:'searches',source:'Google Trends',label:'Trending searches in Ghana',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'',items:[{title:'Synthetic Ghana topic',subtitle:'',url:'https://trends.google.com/trends/explore?geo=GH&q=topic',date}]},{id:'music',source:'Apple Music',label:'Apple Music Ghana Top Songs',sourceUrl:'https://rss.marketingtools.apple.com/api/v2/gh/music/most-played/10/songs.json',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'Copyright © 2026 Apple Inc. All rights reserved.',items:[{title:'Synthetic Ghana song',subtitle:'Synthetic artist',url:'https://music.apple.com/gh/album/song/123?i=456',date}]}]})});
+   }
    if(url.pathname.startsWith('/api/v1/'))return route.fulfill({status:url.pathname.endsWith('/auth/me')?200:503,contentType:'application/json',body:JSON.stringify(url.pathname.endsWith('/auth/me')?{user:null,csrfToken:null}:{error:{code:'synthetic_outage',message:'Service temporarily unavailable'}})});
    return route.continue();
   });
@@ -52,6 +56,16 @@ try{
    }
    checks.push({width,check:`${hash}: real page renders during synthetic API outage`});
   }
+  await page.goto(`${origin}/#home`);
+  await page.getByRole('button',{name:'Check Ghana topics & music'}).click();
+  await page.getByRole('link',{name:'Synthetic Ghana song',exact:true}).waitFor();
+  await page.getByRole('link',{name:'Synthetic Ghana topic',exact:true}).waitFor();
+  assert(!await page.getByText('2.4k conversations',{exact:true}).count());
+  await page.locator('.app').evaluate(element=>element.classList.add('theme-dark'));
+  assert.equal(await page.locator('.happening-note').first().evaluate(element=>getComputedStyle(element).color),'rgb(190, 203, 187)');
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await page.locator('.happening-card').screenshot({path:`${output}/happening-${width}.png`});
+  checks.push({width,check:'Attributable Ghana topics/music render with no fabricated counts, dark-theme contrast and no overflow'});
   if(width===390){const buttons=page.locator('.mobile-nav button');assert.deepEqual(await buttons.allTextContents(),['Home','Explore','Messages','Create','Calls & Live','Profile','EcoVibes ID']);const box=await buttons.nth(3).boundingBox();assert(box&&Math.abs(box.x+box.width/2-width/2)<2);checks.push({width,check:'Create is fourth and visually centred among seven mobile destinations'});}
   await page.goto(`${origin}/#account`);
   await page.getByLabel('What would you like to try first? (optional)').waitFor();
