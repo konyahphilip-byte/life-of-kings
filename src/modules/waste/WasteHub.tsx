@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { ArrowRight, BadgeCheck, CalendarDays, CircleHelp, Leaf, Recycle, ShieldCheck, Truck, Users, Waves } from 'lucide-react';
+import { ArrowRight, BadgeCheck, CalendarDays, CircleHelp, Recycle, ShieldCheck, Truck, Users, Waves } from 'lucide-react';
 import JobsBoard, { type NewJobInput, type NewOfferInput } from '../quickhandi/JobsBoard';
 import type { CustomJob, CustomJobEvent, CustomJobStatus, HandiProfile, JobOffer, ProviderType, ServiceCategory } from '../quickhandi/model';
 import { apiUrl } from '../../lib/api';
 import ConceptPhoto from '../ConceptPhoto';
+import {DepthScene,DepthToggle,useDepthView} from '../DepthView';
 import './waste.css';
 
 type ApiIdentity = { id:string; eco_id:string; display_name:string; roles:string[] };
@@ -41,6 +42,7 @@ export default function WasteHub({identityId:nullIdentity=null,saver='saver'}:{i
   const [error,setError]=useState('');
   const [success,setSuccess]=useState('');
   const [view,setView]=useState<'customer'|'provider'>('customer');
+  const depthView=useDepthView(saver);
 
   const refresh=useCallback(async()=>{
     const me=await wasteApi<{user:ApiIdentity|null;csrfToken:string|null}>('/auth/me','');
@@ -105,10 +107,10 @@ export default function WasteHub({identityId:nullIdentity=null,saver='saver'}:{i
     finally{setBusy(false);}
   }
 
-  return <div className="waste-hub">
+  return <div className={`waste-hub waste-mode-${saver}`}>
     <section className="waste-hero">
       <div className="waste-hero-copy"><span className="waste-mark"><Recycle size={16}/> ECOVIBES · CIRCULAR ECONOMY</span><h1>Waste, put to better use.</h1><p>Request local collection, connect with waste and recycling providers, and keep useful materials in circulation.</p><div className="waste-hero-actions"><button className="waste-primary" onClick={()=>{if(!identity){window.dispatchEvent(new CustomEvent('ecovibes:navigate',{detail:'EcoVibes ID'}));return;}setView('customer');document.getElementById('waste-requests')?.scrollIntoView({behavior:'smooth'});}}>Request a collection <ArrowRight size={16}/></button><button className="waste-secondary" onClick={()=>document.getElementById('waste-provider')?.scrollIntoView({behavior:'smooth'})}>Offer a service <Users size={15}/></button></div><small>EcoVibes ID required to create requests. Exact addresses should be shared only after a provider is selected.</small></div>
-      <ConceptPhoto image="waste" saver={saver} className="waste-collection-photo"/><div className="waste-orbit" aria-hidden="true"><span className="waste-orbit-ring ring-a"/><span className="waste-orbit-ring ring-b"/><span className="waste-orbit-leaf"><Leaf size={31}/></span><i className="waste-orbit-dot dot-a"/><i className="waste-orbit-dot dot-b"/><b>REUSE<br/>REPAIR<br/>RECYCLE</b></div>
+      <div className="collection-visual"><div className="collection-view-control"><DepthToggle view={depthView}/></div><div className={`collection-photo-frame ${depthView.depth?'has-depth':'is-flat'}`}><ConceptPhoto image="waste" saver={saver} className="waste-collection-photo"/></div><DepthScene kind="collection" depth={depthView.depth}/></div>
     </section>
 
     <div className="waste-pillars"><article><span><Truck size={18}/></span><b>Collection requests</b><small>Post material, quantity estimate, area and timing.</small></article><article><span><Users size={18}/></span><b>Local providers</b><small>Providers send scoped offers for you to compare.</small></article><article><span><ShieldCheck size={18}/></span><b>Reviewed providers</b><small>Waste-service offers require EcoVibes staff review.</small></article></div>
