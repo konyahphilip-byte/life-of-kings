@@ -19,6 +19,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authenticateSupabaseRequest } from "./supabase-auth.mjs";
 import { generateChaleAIReply, isChaleAIConfigured } from "./chale-ai.mjs";
+import { createPublicTrends } from "./public-trends.mjs";
 import { createPublicUpdates } from "./chale-updates.mjs";
 import { chaleUpdateIntent } from "../shared/chale-updates.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
@@ -1106,6 +1107,7 @@ const directMessagesAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM p
 const receiptsAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?",DIRECT_MESSAGE_RECEIPTS_VERSION));
 const directMessages=createDirectMessages({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:directMessagesAvailable,receiptsAvailable});
 const chalePublicUpdates = createPublicUpdates();
+const publicTrends = createPublicTrends();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
@@ -1208,6 +1210,11 @@ async function route(ctx, req, res, method, path, body, query) {
       await recordRecommendationSignals(ctx.user.id, itemType, itemId, item, action, active, stamp);
     });
     return { ok: true, active, action };
+  }
+  if (method === "GET" && path === "/discover/happening") {
+    assert([...query.keys()].length === 0, 400, 'invalid_trends_query', 'This public feed does not accept account details or search queries.');
+    await rateLimit(`public-trends:${req.socket.remoteAddress}`, 6, 60_000);
+    return publicTrends();
   }
   if (method === "GET" && path === "/ai/status") {
     return {

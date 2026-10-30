@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Activity, ArrowDownLeft, ArrowUpRight, Bell, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Compass, Disc3, Download, Ellipsis, Film, Fingerprint, Gamepad2, Globe2, Heart, Home, ImagePlus, Layers3, Leaf, MessageCircle, MessageSquare, MoreHorizontal, Plus, Recycle, Search, Send, ShoppingBag, Sparkles, Store, Sun, TrendingUp, Users, Wallet, Wrench, X, Zap } from 'lucide-react';
+import { Activity, ArrowDownLeft, ArrowUpRight, Bell, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Compass, Disc3, Download, Film, Fingerprint, Gamepad2, Globe2, Heart, Home, ImagePlus, Layers3, Leaf, MessageCircle, MessageSquare, MoreHorizontal, Plus, Recycle, Search, Send, ShoppingBag, Sparkles, Store, Sun, Users, Wallet, Wrench, X, Zap } from 'lucide-react';
 import { fmt, initialPosts, opportunities, products, type FeedPost } from '../data/seed';
 import { loadState, saveState, type SavedState } from '../lib/storage';
 import { apiUrl } from '../lib/api';
@@ -10,6 +10,7 @@ import Sidekick from './assistant/Sidekick';
 import QuickHandi from './quickhandi/QuickHandi';
 import WasteHub from './waste/WasteHub';
 import ConceptPhoto from './ConceptPhoto';
+import HappeningNow from './HappeningNow';
 import './mobile-navigation.css';
 import MarketplaceHub, { type CommerceProduct } from './MarketplaceHub';
 import { EcoVibesAfricaOSHome } from './EcoVibesAfricaOSHome';
@@ -129,7 +130,7 @@ function App(){
       <div className="feed-tabs">{['For you','Following','Nearby'].map(t=><button onClick={()=>setFeedTab(t)} className={feedTab===t?'selected':''} key={t}>{t}</button>)}</div>
       <button className="compose-prompt" onClick={()=>setShowComposer(true)}><Avatar label="PK"/><span>Share something with your community…</span><span className="compose-plus"><Plus size={18}/></span></button>
       <div className="feed-list">{posts.map(post=><PostCard key={post.id} post={post} liked={state.liked.includes(post.id)} saved={state.saved.includes(post.id)} onLike={()=>toggle('liked',post.id)} onSave={()=>toggle('saved',post.id)} onComment={()=>go('Messages')}/>)}{posts.length===0&&<Empty title="No posts found" detail="Try another search or share something new."/>}</div>
-     </section><aside className="home-rail"><div className="rail-card trend-card"><div className="rail-heading"><h3><TrendingUp size={16}/> Happening now</h3><button aria-label="More trends"><Ellipsis size={18}/></button></div><button className="trend-item" onClick={()=>go('Explore')}><span className="trend-rank">01</span><span><b>#MadeInGhana</b><small>2.4k conversations</small></span><ChevronRight size={15}/></button><button className="trend-item" onClick={()=>go('Gaming')}><span className="trend-rank">02</span><span><b>Weekend Arena</b><small>Gaming · 840 playing</small></span><ChevronRight size={15}/></button><button className="trend-item" onClick={()=>go('Opportunities')}><span className="trend-rank">03</span><span><b>Open Call: Creators</b><small>Opportunity · 3 days left</small></span><ChevronRight size={15}/></button></div>
+     </section><aside className="home-rail happening-rail"><HappeningNow/>
        <PeopleToFollow onSignIn={()=>go('EcoVibes ID')}/>
        <div className="mini-promo"><span className="promo-spark">✳</span><p className="eyebrow">MADE FOR YOUR DATA</p><h3>More of what matters.<br/>Less of what doesn’t.</h3><p>EcoVibes works with your connection, not against it.</p><button onClick={()=>go('Settings')}>Your data settings <ChevronRight size={14}/></button></div>
        <footer className="rail-footer">About · Community guidelines · Privacy<br/>© 2026 EcoVibes <span>Built for more.</span></footer>
