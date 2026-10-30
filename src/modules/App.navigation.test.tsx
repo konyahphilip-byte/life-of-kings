@@ -11,6 +11,9 @@ beforeEach(()=>{
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 const navigate=(detail:unknown)=>act(()=>window.dispatchEvent(new CustomEvent('ecovibes:navigate',{detail})));
 describe('actual app navigation recovery',()=>{
+ it('describes the actual data mode instead of claiming Data Saver in Standard mode',()=>{
+  localStorage.setItem('ecovibes:v1',JSON.stringify({saver:'standard'}));render(<App/>);expect(screen.getByText('Standard mode')).toBeTruthy();expect(screen.queryByText('Data saver is on')).toBeNull();
+ });
  it('keeps the current screen mounted when mobile Create opens its composer',()=>{
   render(<App/>);navigate('Profile');const nav=screen.getByRole('navigation',{name:'Main navigation'});fireEvent.click(within(nav).getByRole('button',{name:'Create'}));expect(screen.getByRole('heading',{name:'Share a moment'})).toBeTruthy();expect(screen.getByRole('heading',{name:'Guest preview'})).toBeTruthy();expect(window.location.hash).toBe('#profile');
  });

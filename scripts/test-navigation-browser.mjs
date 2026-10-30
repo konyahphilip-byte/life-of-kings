@@ -13,6 +13,13 @@ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0
 const origin=`http://127.0.0.1:${server.address().port}`;
 let browser,failure;
 const checks=[];
+async function settleCapture(page){
+ // Exercise existing below-fold lazy images, then finish finite entrance effects.
+ const height=await page.evaluate(()=>document.documentElement.scrollHeight);
+ for(let top=0;top<height;top+=700){await page.evaluate(y=>scrollTo(0,y),top);await page.waitForTimeout(60);}
+ await page.evaluate(async()=>{await document.fonts.ready;await Promise.allSettled([...document.images].map(img=>img.decode()));for(const animation of document.getAnimations()){if(animation.effect?.getTiming().iterations!==Infinity)try{animation.finish();}catch{}}scrollTo({top:0,behavior:'instant'});});
+ await page.waitForTimeout(100);
+}
 try{
  browser=await chromium.launch();
  for(const width of [1280,390]){
@@ -34,7 +41,7 @@ try{
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${hash}: horizontal overflow at ${width}`);
    if(hash==='home'||hash==='waste'){
     await page.locator('[data-depth="3d"]').waitFor();
-    await page.evaluate(async()=>{await document.fonts.ready;await Promise.allSettled([...document.images].filter(img=>img.getBoundingClientRect().top<innerHeight).map(img=>img.decode()));});
+    await settleCapture(page);
     await page.screenshot({path:`${output}/${hash}-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Use 2D view'}).click();
     assert.equal(await page.locator('[data-depth="3d"]').count(),0);
