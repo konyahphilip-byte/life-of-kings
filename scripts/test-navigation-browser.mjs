@@ -13,6 +13,8 @@ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0
 const origin=`http://127.0.0.1:${server.address().port}`;
 let browser,failure;
 const checks=[];
+// Component-only captures hide unrelated fixed chrome; original whole-app captures remain.
+const panelCaptureStyle='.topbar,.mobile-nav,.sidekick-launch{visibility:hidden!important}';
 async function settleCapture(page){
  // Exercise existing below-fold lazy images, then finish finite entrance effects.
  const height=await page.evaluate(()=>document.documentElement.scrollHeight);
@@ -66,6 +68,7 @@ try{
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await settleCapture(page);
   await page.locator('.happening-card').screenshot({path:`${output}/happening-${width}.png`});
+  await page.locator('.happening-card').screenshot({path:`${output}/happening-component-${width}.png`,style:panelCaptureStyle});
   checks.push({width,check:'Automatic attributable trends/music/news render with no fabricated counts, dark-theme contrast and no overflow'});
   const beforeFilter=happeningRequests;
   await page.getByRole('button',{name:'News',exact:true}).click();
@@ -75,6 +78,7 @@ try{
   assert.equal(await page.getByRole('link',{name:'Synthetic Ghana headline',exact:true}).getAttribute('href'),'https://myjoyonline.com/synthetic-news');
   assert.equal(happeningRequests,beforeFilter);
   await page.locator('.happening-card').screenshot({path:`${output}/happening-news-${width}.png`});
+  await page.locator('.happening-card').screenshot({path:`${output}/happening-news-component-${width}.png`,style:panelCaptureStyle});
   checks.push({width,check:'News filters locally, with publisher links and distinct trend/publication dates'});
   await context.setOffline(true);await page.getByRole('status').filter({hasText:'You’re offline'}).waitFor();
   await context.setOffline(false);await page.getByRole('status').filter({hasText:'Updates automatically'}).waitFor();
