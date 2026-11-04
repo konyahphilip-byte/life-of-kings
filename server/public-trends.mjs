@@ -1,3 +1,5 @@
+import {createWorldBriefings,relatedGhanaNews} from './happening-news.mjs';
+import {emptyHeadlines} from '../shared/happening-news.mjs';
 import {happeningSources,plainPublicText,publicTrendItem} from '../shared/public-trends.mjs';
 const iso=value=>{const time=Date.parse(value);return Number.isFinite(time)?new Date(time).toISOString():null;};
 function xmlText(value){
@@ -28,7 +30,7 @@ async function body(response,id){
  return Buffer.concat(chunks).toString('utf8');
 }
 export function createPublicTrends({fetchImpl=(...args)=>fetch(...args),clock=Date.now,disabled=()=>process.env.ECOVIBES_PUBLIC_TRENDS_DISABLED==='true'}={}){
- const cache=new Map(),pending=new Map();
+ const cache=new Map(),pending=new Map(),worldBriefings=createWorldBriefings({fetchImpl,clock,disabled});
  async function section(id){
   const cfg=happeningSources[id],time=clock(),checkedAt=new Date(time).toISOString();
   const base={id,source:cfg.source,label:cfg.label,sourceUrl:cfg.sourceUrl,checkedAt,updatedAt:null,expiresAt:new Date(time+300000).toISOString(),copyright:'',items:[]};
@@ -40,11 +42,18 @@ export function createPublicTrends({fetchImpl=(...args)=>fetch(...args),clock=Da
     const text=await body(response,id),completedAt=clock(),parsed=id==='music'?musicRecords(text,completedAt):{items:searchRecords(text,completedAt),copyright:''};
     const seen=new Set(),items=parsed.items.filter(item=>{const key=item.url;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,4);
     result={...base,status:items.length?'available':'empty',items,copyright:parsed.copyright,updatedAt:items.length?(parsed.date||items.map(item=>item.date).sort().at(-1)):null,expiresAt:new Date(items.length?Math.min(time+cfg.ttl,...items.map(item=>Date.parse(item.date)+cfg.maxAge)):time+300000).toISOString()};
+    if(id==='searches')result._relatedNews=relatedGhanaNews(text,completedAt,Date.parse(result.expiresAt));
    }catch{result={...base,status:'unavailable'};}
    // A switch changed during an upstream request also prevents returning its data.
    if(disabled())result={...base,status:'disabled'};
    cache.set(id,result);return result;
   })();pending.set(id,operation);try{return await operation;}finally{pending.delete(id);}
  }
- return async()=>({asOf:new Date(clock()).toISOString(),sections:await Promise.all(['searches','music'].map(section))});
+ return async()=>{
+  const [searches,music,world]=await Promise.all([section('searches'),section('music'),worldBriefings()]),completed=clock();
+  const denied=disabled();
+  const current=value=>denied?{...value,status:'disabled',checkedAt:new Date(completed).toISOString(),expiresAt:new Date(completed+300000).toISOString(),updatedAt:null,items:[]}:Date.parse(value.expiresAt)>completed?value:{...value,status:'unavailable',checkedAt:new Date(completed).toISOString(),expiresAt:new Date(completed+300000).toISOString(),updatedAt:null,items:[]};
+  const { _relatedNews:ghana,...publicSearches}=searches;
+  return {asOf:new Date(completed).toISOString(),sections:[current(publicSearches),current(music)],news:[current(ghana||emptyHeadlines('ghana-news',completed,disabled()?'disabled':'unavailable')),current(world)]};
+ };
 }

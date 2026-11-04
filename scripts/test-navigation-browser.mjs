@@ -26,14 +26,15 @@ try{
   const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'no-preference',serviceWorkers:'block'});
   await context.addInitScript(()=>{if(!localStorage.getItem('ecovibes:v1'))localStorage.setItem('ecovibes:v1',JSON.stringify({saver:'standard'}));});
   await context.routeWebSocket('**/*',socket=>socket.close());
-  const page=await context.newPage(),errors=[];
+  const page=await context.newPage(),errors=[];let happeningRequests=0;
   page.on('pageerror',()=>errors.push('page_error'));
   await context.route('**/*',route=>{
    const url=new URL(route.request().url());
    if(url.origin!==origin)return route.abort();
    if(url.pathname==='/api/v1/discover/happening'){
+    happeningRequests++;
     const date=new Date().toISOString(),expiresAt=new Date(Date.now()+599000).toISOString();
-    return route.fulfill({contentType:'application/json',body:JSON.stringify({asOf:date,sections:[{id:'searches',source:'Google Trends',label:'Trending searches in Ghana',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'',items:[{title:'Synthetic Ghana topic',subtitle:'',url:'https://trends.google.com/trends/explore?geo=GH&q=topic',date}]},{id:'music',source:'Apple Music',label:'Apple Music Ghana Top Songs',sourceUrl:'https://rss.marketingtools.apple.com/api/v2/gh/music/most-played/10/songs.json',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'Copyright © 2026 Apple Inc. All rights reserved.',items:[{title:'Synthetic Ghana song',subtitle:'Synthetic artist',url:'https://music.apple.com/gh/album/song/123?i=456',date}]}]})});
+    return route.fulfill({contentType:'application/json',body:JSON.stringify({asOf:date,sections:[{id:'searches',source:'Google Trends',label:'Trending searches in Ghana',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'',items:[{title:'Synthetic Ghana topic',subtitle:'',url:'https://trends.google.com/trends/explore?geo=GH&q=topic',date}]},{id:'music',source:'Apple Music',label:'Apple Music Ghana Top Songs',sourceUrl:'https://rss.marketingtools.apple.com/api/v2/gh/music/most-played/10/songs.json',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'Copyright © 2026 Apple Inc. All rights reserved.',items:[{title:'Synthetic Ghana song',subtitle:'Synthetic artist',url:'https://music.apple.com/gh/album/song/123?i=456',date}]}],news:[{id:'ghana-news',source:'Google Trends',label:'News behind Ghana’s searches',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,items:[{title:'Synthetic Ghana headline',url:'https://myjoyonline.com/synthetic-news',publisher:'MyJoyOnline',date,dateKind:'trend'}]},{id:'world-news',source:'UN Geneva',label:'UN world briefings',sourceUrl:'https://www.ungeneva.org/en/news-media/press-items-list/rss.xml',status:'available',checkedAt:date,updatedAt:date,expiresAt,items:[{title:'Synthetic world briefing',url:'https://www.ungeneva.org/en/news-media/press-briefing/2026/11/synthetic',publisher:'UN Geneva',date,dateKind:'published'}]}]})});
    }
    if(url.pathname.startsWith('/api/v1/'))return route.fulfill({status:url.pathname.endsWith('/auth/me')?200:503,contentType:'application/json',body:JSON.stringify(url.pathname.endsWith('/auth/me')?{user:null,csrfToken:null}:{error:{code:'synthetic_outage',message:'Service temporarily unavailable'}})});
    return route.continue();
@@ -57,15 +58,28 @@ try{
    checks.push({width,check:`${hash}: real page renders during synthetic API outage`});
   }
   await page.goto(`${origin}/#home`);
-  await page.getByRole('button',{name:'Check Ghana topics & music'}).click();
   await page.getByRole('link',{name:'Synthetic Ghana song',exact:true}).waitFor();
   await page.getByRole('link',{name:'Synthetic Ghana topic',exact:true}).waitFor();
   assert(!await page.getByText('2.4k conversations',{exact:true}).count());
   await page.locator('.app').evaluate(element=>element.classList.add('theme-dark'));
   assert.equal(await page.locator('.happening-note').first().evaluate(element=>getComputedStyle(element).color),'rgb(190, 203, 187)');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await settleCapture(page);
   await page.locator('.happening-card').screenshot({path:`${output}/happening-${width}.png`});
-  checks.push({width,check:'Attributable Ghana topics/music render with no fabricated counts, dark-theme contrast and no overflow'});
+  checks.push({width,check:'Automatic attributable trends/music/news render with no fabricated counts, dark-theme contrast and no overflow'});
+  const beforeFilter=happeningRequests;
+  await page.getByRole('button',{name:'News',exact:true}).click();
+  await page.getByRole('link',{name:'Synthetic Ghana headline',exact:true}).waitFor();
+  await page.getByRole('link',{name:'Synthetic world briefing',exact:true}).waitFor();
+  assert.equal(await page.getByRole('link',{name:'Synthetic Ghana topic',exact:true}).count(),0);
+  assert.equal(await page.getByRole('link',{name:'Synthetic Ghana headline',exact:true}).getAttribute('href'),'https://myjoyonline.com/synthetic-news');
+  assert.equal(happeningRequests,beforeFilter);
+  await page.locator('.happening-card').screenshot({path:`${output}/happening-news-${width}.png`});
+  checks.push({width,check:'News filters locally, with publisher links and distinct trend/publication dates'});
+  await context.setOffline(true);await page.getByRole('status').filter({hasText:'You’re offline'}).waitFor();
+  await context.setOffline(false);await page.getByRole('status').filter({hasText:'Updates automatically'}).waitFor();
+  await page.getByRole('button',{name:'All',exact:true}).click();
+  checks.push({width,check:'Offline status and online recovery retain source data without manual reload'});
   if(width===390){const buttons=page.locator('.mobile-nav button');assert.deepEqual(await buttons.allTextContents(),['Home','Explore','Messages','Create','Calls & Live','Profile','EcoVibes ID']);const box=await buttons.nth(3).boundingBox();assert(box&&Math.abs(box.x+box.width/2-width/2)<2);checks.push({width,check:'Create is fourth and visually centred among seven mobile destinations'});}
   await page.goto(`${origin}/#account`);
   await page.getByLabel('What would you like to try first? (optional)').waitFor();
