@@ -52,6 +52,12 @@ try{
    }
    checks.push({width,check:`${hash}: real page renders during synthetic API outage`});
   }
+  if(width===390){const buttons=page.locator('.mobile-nav button');assert.deepEqual(await buttons.allTextContents(),['Home','Explore','Messages','Create','Calls & Live','Profile','EcoVibes ID']);const box=await buttons.nth(3).boundingBox();assert(box&&Math.abs(box.x+box.width/2-width/2)<2);checks.push({width,check:'Create is fourth and visually centred among seven mobile destinations'});}
+  await page.goto(`${origin}/#account`);
+  await page.getByLabel('What would you like to try first? (optional)').waitFor();
+  assert.equal(await page.getByLabel('What would you like to try first? (optional)').getAttribute('required'),null);
+  await page.getByLabel('What would you like to try first? (optional)').selectOption('none');
+  checks.push({width,check:'Signup offers an optional personal/None purpose without business activation'});
   await page.goto(`${origin}/#create`);
   await page.getByRole('button',{name:/Write a post/}).click();
   await page.getByRole('heading',{name:'Share a moment'}).waitFor();

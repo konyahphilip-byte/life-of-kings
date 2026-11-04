@@ -11,6 +11,9 @@ beforeEach(()=>{
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 const navigate=(detail:unknown)=>act(()=>window.dispatchEvent(new CustomEvent('ecovibes:navigate',{detail})));
 describe('actual app navigation recovery',()=>{
+ it('places Create in the fourth, centre position while retaining all seven destinations',()=>{
+  render(<App/>);const nav=screen.getByRole('navigation',{name:'Main navigation'});expect(within(nav).getAllByRole('button').map(button=>button.textContent)).toEqual(['Home','Explore','Messages','Create','Calls & Live','Profile','EcoVibes ID']);
+ });
  it('describes the actual data mode instead of claiming Data Saver in Standard mode',()=>{
   localStorage.setItem('ecovibes:v1',JSON.stringify({saver:'standard'}));render(<App/>);expect(screen.getByText('Standard mode')).toBeTruthy();expect(screen.queryByText('Data saver is on')).toBeNull();
  });
