@@ -70,3 +70,17 @@ it('aborts a stalled request after twelve seconds then backs off before retrying
  vi.stubGlobal('fetch',vi.fn((_url,options)=>new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError'))))));
  render(<HappeningNow/>);await flush(11999);expect(fetch).toHaveBeenCalledOnce();expect(screen.getByRole('button',{name:'Updating…'})).toBeDisabled();await flush(1);expect(screen.getByRole('status')).toHaveTextContent('Could not check');await flush(59999);expect(fetch).toHaveBeenCalledOnce();await flush(1);expect(fetch).toHaveBeenCalledTimes(2);
 });
+
+it('keeps the mixed discovery view compact and expands a category without extra requests',async()=>{
+ const p=payload();p.sections=p.sections.map(s=>({...s,items:Array.from({length:4},(_,i)=>({...s.items[0],title:s.id+' item '+i,url:s.id==='searches'?'https://trends.google.com/trends/explore?geo=GH&q=topic'+i:'https://music.apple.com/gh/album/song/123?i='+i}))}));
+ vi.mocked(fetch).mockResolvedValueOnce(Response.json({...p,news:[news('ghana-news'),news('world-news')]}));render(<HappeningNow/>);await flush();
+ expect(screen.queryByRole('link',{name:'searches item 3'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'See all searches'}));
+ expect(screen.getByRole('link',{name:'searches item 3'})).toBeTruthy();expect(fetch).toHaveBeenCalledOnce();
+ expect(screen.getByRole('button',{name:'Trends'})).toHaveAttribute('aria-pressed','true');expect(document.activeElement).toBe(screen.getByRole('button',{name:'Trends'}));
+});
+it('offers source explanations on demand and never adds autoplay or external artwork',async()=>{
+ render(<HappeningNow/>);await flush();expect(screen.getByText('About these sources')).toBeTruthy();
+ expect(document.querySelector('audio,video,img,iframe')).toBeNull();expect(screen.getByText('Focus: Ghana')).toBeTruthy();
+ expect(screen.getByRole('region',{name:'Happening now'})).toHaveTextContent('Searches. Sounds. Stories.');
+});

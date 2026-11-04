@@ -36,7 +36,7 @@ try{
    if(url.pathname==='/api/v1/discover/happening'){
     happeningRequests++;
     const date=new Date().toISOString(),expiresAt=new Date(Date.now()+599000).toISOString();
-    return route.fulfill({contentType:'application/json',body:JSON.stringify({asOf:date,sections:[{id:'searches',source:'Google Trends',label:'Trending searches in Ghana',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'',items:[{title:'Synthetic Ghana topic',subtitle:'',url:'https://trends.google.com/trends/explore?geo=GH&q=topic',date}]},{id:'music',source:'Apple Music',label:'Apple Music Ghana Top Songs',sourceUrl:'https://rss.marketingtools.apple.com/api/v2/gh/music/most-played/10/songs.json',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'Copyright © 2026 Apple Inc. All rights reserved.',items:[{title:'Synthetic Ghana song',subtitle:'Synthetic artist',url:'https://music.apple.com/gh/album/song/123?i=456',date}]}],news:[{id:'ghana-news',source:'Google Trends',label:'News behind Ghana’s searches',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,items:[{title:'Synthetic Ghana headline',url:'https://myjoyonline.com/synthetic-news',publisher:'MyJoyOnline',date,dateKind:'trend'}]},{id:'world-news',source:'UN Geneva',label:'UN world briefings',sourceUrl:'https://www.ungeneva.org/en/news-media/press-items-list/rss.xml',status:'available',checkedAt:date,updatedAt:date,expiresAt,items:[{title:'Synthetic world briefing',url:'https://www.ungeneva.org/en/news-media/press-briefing/2026/11/synthetic',publisher:'UN Geneva',date,dateKind:'published'}]}]})});
+    return route.fulfill({contentType:'application/json',body:JSON.stringify({asOf:date,sections:[{id:'searches',source:'Google Trends',label:'Trending searches in Ghana',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'',items:[{title:'Accra’s weekend art markets',subtitle:'',url:'https://trends.google.com/trends/explore?geo=GH&q=topic',date}]},{id:'music',source:'Apple Music',label:'Apple Music Ghana Top Songs',sourceUrl:'https://rss.marketingtools.apple.com/api/v2/gh/music/most-played/10/songs.json',status:'available',checkedAt:date,updatedAt:date,expiresAt,copyright:'Copyright © 2026 Apple Inc. All rights reserved.',items:[{title:'A new sound for the weekend',subtitle:'Demo artist',url:'https://music.apple.com/gh/album/song/123?i=456',date}]}],news:[{id:'ghana-news',source:'Google Trends',label:'News behind Ghana’s searches',sourceUrl:'https://trends.google.com/trending?geo=GH',status:'available',checkedAt:date,updatedAt:date,expiresAt,items:[{title:'Young creators are turning old fabric into something new',url:'https://myjoyonline.com/synthetic-news',publisher:'MyJoyOnline',date,dateKind:'trend'}]},{id:'world-news',source:'UN Geneva',label:'UN world briefings',sourceUrl:'https://www.ungeneva.org/en/news-media/press-items-list/rss.xml',status:'available',checkedAt:date,updatedAt:date,expiresAt,items:[{title:'A closer look at the ideas shaping our cities',url:'https://www.ungeneva.org/en/news-media/press-briefing/2026/11/synthetic',publisher:'UN Geneva',date,dateKind:'published'}]}]})});
    }
    if(url.pathname.startsWith('/api/v1/'))return route.fulfill({status:url.pathname.endsWith('/auth/me')?200:503,contentType:'application/json',body:JSON.stringify(url.pathname.endsWith('/auth/me')?{user:null,csrfToken:null}:{error:{code:'synthetic_outage',message:'Service temporarily unavailable'}})});
    return route.continue();
@@ -60,11 +60,15 @@ try{
    checks.push({width,check:`${hash}: real page renders during synthetic API outage`});
   }
   await page.goto(`${origin}/#home`);
-  await page.getByRole('link',{name:'Synthetic Ghana song',exact:true}).waitFor();
-  await page.getByRole('link',{name:'Synthetic Ghana topic',exact:true}).waitFor();
+  await page.getByRole('link',{name:'A new sound for the weekend Demo artist',exact:true}).waitFor();
+  await page.getByRole('link',{name:'Accra’s weekend art markets',exact:true}).waitFor();
   assert(!await page.getByText('2.4k conversations',{exact:true}).count());
+  await settleCapture(page);
+  await page.locator('.happening-card').screenshot({path:`${output}/happening-discovery-light-${width}.png`,style:panelCaptureStyle});
   await page.locator('.app').evaluate(element=>element.classList.add('theme-dark'));
-  assert.equal(await page.locator('.happening-note').first().evaluate(element=>getComputedStyle(element).color),'rgb(190, 203, 187)');
+  const colors=await page.locator('.happening-status').evaluate(element=>({text:getComputedStyle(element).color,bg:getComputedStyle(element.closest('.happening-card')).backgroundColor}));
+  const luminance=value=>{const rgb=value.match(/[0-9.]+/g).slice(0,3).map(Number).map(n=>{const v=n/255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];};
+  const a=luminance(colors.text),b=luminance(colors.bg);assert((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5,'Feed status contrast');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await settleCapture(page);
   await page.locator('.happening-card').screenshot({path:`${output}/happening-${width}.png`});
@@ -72,17 +76,17 @@ try{
   checks.push({width,check:'Automatic attributable trends/music/news render with no fabricated counts, dark-theme contrast and no overflow'});
   const beforeFilter=happeningRequests;
   await page.getByRole('button',{name:'News',exact:true}).click();
-  await page.getByRole('link',{name:'Synthetic Ghana headline',exact:true}).waitFor();
-  await page.getByRole('link',{name:'Synthetic world briefing',exact:true}).waitFor();
-  assert.equal(await page.getByRole('link',{name:'Synthetic Ghana topic',exact:true}).count(),0);
-  assert.equal(await page.getByRole('link',{name:'Synthetic Ghana headline',exact:true}).getAttribute('href'),'https://myjoyonline.com/synthetic-news');
+  await page.getByRole('link',{name:'Young creators are turning old fabric into something new',exact:true}).waitFor();
+  await page.getByRole('link',{name:'A closer look at the ideas shaping our cities',exact:true}).waitFor();
+  assert.equal(await page.getByRole('link',{name:'Accra’s weekend art markets',exact:true}).count(),0);
+  assert.equal(await page.getByRole('link',{name:'Young creators are turning old fabric into something new',exact:true}).getAttribute('href'),'https://myjoyonline.com/synthetic-news');
   assert.equal(happeningRequests,beforeFilter);
   await page.locator('.happening-card').screenshot({path:`${output}/happening-news-${width}.png`});
   await page.locator('.happening-card').screenshot({path:`${output}/happening-news-component-${width}.png`,style:panelCaptureStyle});
   checks.push({width,check:'News filters locally, with publisher links and distinct trend/publication dates'});
   await context.setOffline(true);await page.getByRole('status').filter({hasText:'You’re offline'}).waitFor();
   await context.setOffline(false);await page.getByRole('status').filter({hasText:'Updates automatically'}).waitFor();
-  await page.getByRole('button',{name:'All',exact:true}).click();
+  await page.getByRole('button',{name:'The mix',exact:true}).click();
   checks.push({width,check:'Offline status and online recovery retain source data without manual reload'});
   if(width===390){const buttons=page.locator('.mobile-nav button');assert.deepEqual(await buttons.allTextContents(),['Home','Explore','Messages','Create','Calls & Live','Profile','EcoVibes ID']);const box=await buttons.nth(3).boundingBox();assert(box&&Math.abs(box.x+box.width/2-width/2)<2);checks.push({width,check:'Create is fourth and visually centred among seven mobile destinations'});}
   await page.goto(`${origin}/#account`);
