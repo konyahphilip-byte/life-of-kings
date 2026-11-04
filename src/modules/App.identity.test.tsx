@@ -23,6 +23,7 @@ describe('EcoVibes ID app-shell integration', () => {
   let signedIn = true;
 
   beforeEach(() => {
+    window.history.replaceState(null,'','/');
     signedIn = true;
     localStorage.clear();
     sessionStorage.clear();
