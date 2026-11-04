@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {TrendingUp} from 'lucide-react';
+import {TrendingUp,Headphones,Music2,Newspaper,Globe2,Sparkles,RefreshCw,ArrowUpRight,ArrowRight} from 'lucide-react';
 import {apiUrl} from '../lib/api';
 import {readHappening,type HappeningData} from '../../shared/public-trends.mjs';
 import {readHeadlines,type HeadlineSection} from '../../shared/happening-news.mjs';
@@ -11,6 +11,8 @@ export default function HappeningNow(){
  const [data,setData]=useState<FeedData|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[clock,setClock]=useState(Date.now),[online,setOnline]=useState(()=>navigator.onLine);
  const [filter,setFilter]=useState<'all'|'trends'|'music'|'news'>('all');
  const refresh=useRef<()=>void>(()=>{});
+ const tabBar=useRef<HTMLDivElement>(null);
+ const expand=(next:'trends'|'music'|'news')=>{setFilter(next);tabBar.current?.querySelector<HTMLButtonElement>('button[data-section="'+next+'"]')?.focus();};
  useEffect(()=>{
   let stopped=false,controller:AbortController|null=null,timer:ReturnType<typeof setTimeout>|undefined,deadline:ReturnType<typeof setTimeout>|undefined,nextDue=0,failures=0;
   const active=()=>!stopped&&navigator.onLine&&document.visibilityState==='visible';
@@ -42,9 +44,40 @@ export default function HappeningNow(){
   if(!data)return;const timers=expiries(data).filter(expires=>expires>Date.now()).map(expires=>setTimeout(()=>setClock(Date.now()),expires-Date.now()));
   return()=>timers.forEach(clearTimeout);
  },[data]);
+
  const status=!online?'You’re offline. Updates will resume when you reconnect.':error||(busy?'Checking current sources…':'Updates automatically while you’re here and online.');
- return <section className="rail-card happening-card" aria-label="Happening now"><div className="rail-heading"><h3><TrendingUp size={16} aria-hidden="true"/> Happening now</h3></div><p className="happening-intro">Trends, music and news — with the source in every story.</p><div className="happening-tabs" role="group" aria-label="Happening now sections">{([["all","All"],["trends","Trends"],["music","Music"],["news","News"]] as const).map(([id,label])=><button key={id} type="button" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div><p className="happening-status" role="status">{status}</p><button type="button" className="happening-load" disabled={busy||!online} onClick={()=>refresh.current()}>{busy?'Updating…':'Refresh now'}</button>{data?.sections.filter(section=>filter==='all'||(filter==='trends'&&section.id==='searches')||(filter==='music'&&section.id==='music')).map(section=>{
-  const expired=Date.parse(section.expiresAt)<=clock;
-  return <div key={section.id} className="happening-source"><h4>{section.label}</h4><p className="happening-note">{section.id==='searches'?'Search interest, not confirmed news or EcoVibes activity.':'This chart reflects Apple Music listening, not all Ghanaian listeners.'}</p>{expired?<p className="happening-stale">This source needs a fresh update.</p>:section.status==='available'?<ol>{section.items.map(item=><li key={item.url}><a href={item.url} target="_blank" rel="noopener noreferrer">{item.title}</a>{item.subtitle&&<span>{item.subtitle}</span>}</li>)}</ol>:<p>{section.status==='disabled'?'This source is turned off.':section.status==='empty'?'No recent entries returned.':'This source is unavailable. We’ll check again automatically.'}</p>}<a className="happening-attribution" href={section.sourceUrl} target="_blank" rel="noopener noreferrer">Data source: {section.source}</a>{section.updatedAt&&<small>{section.id==='music'?'Chart updated':'Latest source entry'} {time(section.updatedAt)}</small>}<small>Checked {time(section.checkedAt)}</small>{section.copyright&&<small>{section.copyright}</small>}</div>;
- })}{data&&(filter==='all'||filter==='news')&&(data.news?<section aria-label="News sources">{data.news.map(section=><div className="happening-source" key={section.id}><h4>{section.label}</h4><p className="happening-note">{section.id==='ghana-news'?'Publisher coverage linked to searches in Ghana, rather than a complete national news service.':'International reporting from UN Geneva, with original publication dates.'}</p>{Date.parse(section.expiresAt)<=clock?<p className="happening-stale">This source needs a fresh update.</p>:section.status==='available'?<ul className="happening-headlines">{section.items.map(item=><li key={item.url}><a href={item.url} target="_blank" rel="noopener noreferrer">{item.title}</a><span>{item.publisher}</span><small>{item.dateKind==='published'?'Published':'Trend date'} {time(item.date)}</small></li>)}</ul>:<p>{section.status==='disabled'?'This source is turned off.':section.status==='empty'?'No recent headlines from the selected sources.':'Headlines are temporarily unavailable. Updates will retry automatically.'}</p>}<a className="happening-attribution" href={section.sourceUrl} target="_blank" rel="noopener noreferrer">Data source: {section.source}</a><small>Checked {time(section.checkedAt)}</small></div>)}</section>:<p className="happening-note">News sources could not be checked. Trends and music remain separate.</p>)}</section>;
+ const limit=filter==='all'?2:4;
+ return <section className="rail-card happening-card" aria-label="Happening now">
+  <div className="happening-heading"><div><h3>Happening now</h3><p>Searches. Sounds. Stories.</p></div><Sparkles size={26} aria-hidden="true"/></div>
+  <div className="happening-toolbar"><span className="happening-region"><Globe2 size={13} aria-hidden="true"/>Focus: Ghana</span><button type="button" className="happening-load" disabled={busy||!online} onClick={()=>refresh.current()}><RefreshCw size={13} aria-hidden="true"/>{busy?'Updating…':'Refresh now'}</button></div>
+  <div ref={tabBar} className="happening-tabs" role="group" aria-label="Happening now sections">{([['all','The mix'],['trends','Trends'],['music','Music'],['news','News']] as const).map(([id,label])=><button key={id} data-section={id} type="button" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div>
+  <p className="happening-status" role="status">{status}</p>
+  {data?.sections.filter(section=>filter==='all'||(filter==='trends'&&section.id==='searches')||(filter==='music'&&section.id==='music')).map(section=>{
+   const expired=Date.parse(section.expiresAt)<=clock,music=section.id==='music';
+   return <div key={section.id} className={'happening-source '+(music?'happening-music':'happening-searches')}>
+    <div className="happening-section-heading"><h4>{section.label}</h4>{music?<Headphones size={20} aria-hidden="true"/>:<TrendingUp size={20} aria-hidden="true"/>}</div>
+    {expired?<p className="happening-stale">This source needs a fresh update.</p>:section.status==='available'?<>
+     <ul className={music?'happening-songs':'happening-topics'}>{section.items.slice(0,limit).map(item=><li key={item.url}><a href={item.url} target="_blank" rel="noopener noreferrer">
+      {music&&<span className="happening-track-icon"><Music2 size={19} aria-hidden="true"/></span>}
+      <span className="happening-item-copy"><b>{item.title}</b>{item.subtitle&&<span>{item.subtitle}</span>}</span><ArrowUpRight size={17} aria-hidden="true"/>
+     </a></li>)}</ul>
+     {filter==='all'&&section.items.length>limit&&<button className="happening-more" type="button" onClick={()=>expand(music?'music':'trends')}>See all {music?'songs':'searches'}<ArrowRight size={14} aria-hidden="true"/></button>}
+    </>:<p className="happening-empty">{section.status==='disabled'?'This source is turned off.':section.status==='empty'?'No recent entries returned.':'This source is unavailable. We’ll check again automatically.'}</p>}
+    <div className="happening-source-meta"><a className="happening-attribution" href={section.sourceUrl} target="_blank" rel="noopener noreferrer">{section.source}</a><small>{section.updatedAt?(music?'Chart updated ':'Latest source entry ')+time(section.updatedAt):'Checked '+time(section.checkedAt)}</small>{section.copyright&&<small>{section.copyright}</small>}</div>
+   </div>;
+  })}
+  {data&&(filter==='all'||filter==='news')&&(data.news?<section aria-label="News sources">{data.news.map(section=><div className={'happening-source happening-news '+(section.id==='world-news'?'happening-world':'')} key={section.id}>
+   <div className="happening-section-heading"><h4>{section.label}</h4>{section.id==='world-news'?<Globe2 size={20} aria-hidden="true"/>:<Newspaper size={20} aria-hidden="true"/>}</div>
+   {Date.parse(section.expiresAt)<=clock?<p className="happening-stale">This source needs a fresh update.</p>:section.status==='available'?<>
+    <ul className="happening-headlines">{section.items.slice(0,limit).map(item=><li key={item.url}><a href={item.url} target="_blank" rel="noopener noreferrer"><b>{item.title}</b><ArrowUpRight size={16} aria-hidden="true"/></a><span className="happening-publisher">{item.publisher}</span><small>{item.dateKind==='published'?'Published':'Trend date'} {time(item.date)}</small></li>)}</ul>
+    {filter==='all'&&section.items.length>limit&&<button className="happening-more" type="button" onClick={()=>expand('news')} aria-label={'See all headlines: '+section.label}>More headlines<ArrowRight size={14} aria-hidden="true"/></button>}
+   </>:<p className="happening-empty">{section.status==='disabled'?'This source is turned off.':section.status==='empty'?'No recent headlines from the selected sources.':'Headlines are temporarily unavailable. Updates will retry automatically.'}</p>}
+   <div className="happening-source-meta"><a className="happening-attribution" href={section.sourceUrl} target="_blank" rel="noopener noreferrer">{section.source}</a><small>Checked {time(section.checkedAt)}</small></div>
+  </div>)}</section>:<p className="happening-note">News sources could not be checked. Trends and music remain separate.</p>)}
+  <details className="happening-details"><summary>About these sources</summary>
+   <p className="happening-note">Search interest, not confirmed news or EcoVibes activity. This chart reflects Apple Music listening, not all Ghanaian listeners.</p>
+   <p className="happening-note">Ghana headlines are publisher coverage linked to local searches, with a trend date rather than an article publication date. World briefings are UN Geneva reporting with original publication dates. These are selected sources, not a complete news service.</p>
+   {data?.sections.map(section=><div key={section.id}><small>Checked {section.source}: {time(section.checkedAt)}</small></div>)}
+  </details>
+ </section>;
 }
