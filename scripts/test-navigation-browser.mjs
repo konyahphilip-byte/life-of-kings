@@ -134,7 +134,7 @@ try{
    await page.setViewportSize({width:844,height:180});
    await restore.click();
    const panel=page.getByRole('dialog',{name:'Chale AI'});
-   const box=await panel.boundingBox();assert(box&&box.y>=0&&box.y+box.height<=180,'Short-screen chat exceeds viewport');
+   const box=await panel.boundingBox();assert(box&&box.y>=0&&box.y+box.height<=180,`Short-screen chat exceeds viewport: ${JSON.stringify(box)}`);
    const thread=page.getByRole('log',{name:'Conversation with Chale AI'});await thread.focus();await thread.press('End');
    await page.getByRole('textbox',{name:'Ask Chale AI'}).scrollIntoViewIfNeeded();
    await page.getByRole('button',{name:'Close Chale AI',exact:true}).click();

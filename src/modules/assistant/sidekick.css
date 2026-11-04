@@ -73,7 +73,7 @@
 .sidekick-launch:focus-visible{outline:3px solid #8bbd66;outline-offset:3px}
 .sidekick-panel.chale-panel{right:12px;bottom:calc(80px + env(safe-area-inset-bottom,0px));height:min(700px,calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px)));max-height:calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px));overflow-y:auto}
 .sidekick-panel.chale-panel[data-edge="left"]{left:12px;right:auto}
-.sidekick-panel.chale-panel.chale-keyboard{bottom:calc(var(--chale-keyboard-inset,0px) + 8px);height:calc(var(--chale-viewport-height,100dvh) - 16px);max-height:calc(var(--chale-viewport-height,100dvh) - 16px)}
+.sidekick-panel.chale-panel.chale-keyboard{bottom:calc(var(--chale-keyboard-inset,0px) + 8px);height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);max-height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);animation:none}
 .chale-keyboard .sidekick-context{display:none}
 .chale-panel .sidekick-thread{min-height:96px}
 .chale-panel .sidekick-head button,.chale-panel .sidekick-input button{min-width:44px;min-height:44px}
@@ -91,7 +91,7 @@
 .chale-about{flex-shrink:0;border-top:1px solid var(--line)}
 .chale-about summary{min-height:44px;padding:12px 14px;font-size:12px;cursor:pointer;color:var(--green2)}
 .chale-panel .sidekick-head{position:sticky;top:0;z-index:1;background:var(--paper)}
-@media(max-height:480px){.sidekick-panel.chale-panel{bottom:8px;height:calc(var(--chale-viewport-height,100dvh) - 16px);max-height:calc(var(--chale-viewport-height,100dvh) - 16px)}}
+@media(max-height:480px){.sidekick-panel.chale-panel{bottom:8px;height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);max-height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);animation:none}}
 
 /* The shortcut occupies header space; it never floats over feed or form content. */
 .chale-header-slot{display:flex;align-items:center;flex:0 0 auto;min-width:44px;min-height:44px}
