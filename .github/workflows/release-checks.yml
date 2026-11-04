@@ -28,6 +28,7 @@ jobs:
       - run: npm run test:chale-workflow
       - run: npm run test:chale-work-status
       - run: node scripts/test-direct-messages.mjs
+      - run: node scripts/test-public-trends-http.mjs
       - name: Verify disposable PostgreSQL message receipts
         run: |
           sudo apt-get update
