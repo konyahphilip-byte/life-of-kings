@@ -42,6 +42,10 @@ try{
  r=await publish({...request,shippingInfo:'Changed retry'});assert.equal(r.status,409);pass('A saved publication operation cannot be repurposed');
  const image=await fetch(origin+'/api/v1'+product.image_url);assert.equal(image.status,200);assert((Buffer.from(await image.arrayBuffer())).equals(png));pass('Published product serves stored photo bytes through the owned asset route');
  mode='normal';r=await sync(seller);assert.equal(r.body.publishedKept,1);assert.equal((await owned()).stock,3);pass('Later source import preserves published EcoVibes allocation and does not duplicate listing');
+ db.prepare("DELETE FROM roles WHERE user_id=? AND role='seller'").run(seller.id);
+ assert.equal((await fetch(origin+'/api/v1'+product.image_url)).status,404);
+ assert.equal((await fetch(origin+'/api/v1'+product.image_url,{headers:{Cookie:buyer.cookie}})).status,404);
+ db.prepare("INSERT INTO roles VALUES(?,'seller',?)").run(seller.id,new Date().toISOString());pass('Withdrawn seller eligibility hides catalog photo from guests and signed-in buyers');
  const catalog=(await call('/marketplace/catalog?categoryId=fashion.clothing')).body;assert.equal(catalog.items[0].id,productId);assert.equal(catalog.items[0].variants[0].id,v1);pass('Buyer finds the canonical published product and size through category discovery');
  let cart=(await call('/marketplace/cart',{account:buyer})).body;r=await call('/marketplace/cart',{method:'PUT',account:buyer,body:{ownerId:buyer.id,revision:cart.revision,items:[{productId,variantId:v1,quantity:1}]}});assert.equal(r.status,200,JSON.stringify(r.body));cart=r.body;
  const checkout={ownerId:buyer.id,clientId:randomUUID(),revision:cart.revision,quoteId:cart.quoteId,totalMinor:cart.totalMinor};r=await call('/marketplace/cart/checkout',{method:'POST',account:buyer,body:checkout});assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.order.payment_status,'unpaid');const orderId=r.body.order.id;

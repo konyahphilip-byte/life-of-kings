@@ -1929,7 +1929,7 @@ async function route(ctx, req, res, method, path, body, query) {
   if (method === "GET" && assetMatch) {
     const imagePath = `/social/assets/${assetMatch[1]}`;
     const viewerId = ctx.user?.id || "";
-    const asset = await q("SELECT a.* FROM media_assets a WHERE a.id=? AND (EXISTS (SELECT 1 FROM stories s WHERE s.asset_id=a.id AND s.expires_at>? AND (s.visibility='public' OR s.author_id=? OR EXISTS (SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id))) OR EXISTS (SELECT 1 FROM reels r WHERE r.asset_id=a.id AND r.status='active') OR EXISTS (SELECT 1 FROM products p WHERE p.image_url=? AND p.status='active'))", assetMatch[1], now(), viewerId, viewerId, imagePath);
+    const asset = await q("SELECT a.* FROM media_assets a WHERE a.id=? AND (EXISTS (SELECT 1 FROM stories s WHERE s.asset_id=a.id AND s.expires_at>? AND (s.visibility='public' OR s.author_id=? OR EXISTS (SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id))) OR EXISTS (SELECT 1 FROM reels r WHERE r.asset_id=a.id AND r.status='active') OR EXISTS (SELECT 1 FROM products p JOIN users u ON u.id=p.seller_id WHERE p.image_url=? AND p.status='active' AND u.status='active' AND EXISTS(SELECT 1 FROM roles rr WHERE rr.user_id=u.id AND rr.role='seller')))", assetMatch[1], now(), viewerId, viewerId, imagePath);
     assert(asset, 404, "asset_not_found", "Media is no longer available.");
     const file = await loadMediaAsset(asset.id);
     res.statusCode = 200; res.setHeader("Content-Type", asset.mime_type); res.setHeader("Content-Length", file.length); res.setHeader("Cache-Control", "private, no-store"); res.end(file);
