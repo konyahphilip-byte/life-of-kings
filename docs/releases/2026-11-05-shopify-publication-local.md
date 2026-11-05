@@ -44,3 +44,9 @@ The immediate buyer/seller benefit is a reviewable source import that preserves 
 ## Initial exact CI checkpoint
 
 Code57823e1: releaseCI42106982689 passed678tests/56files/build1693/audit0/security8/all HTTP, PostgreSQL18.6 cart/catalog/classification/publication95 and message84; actual logs read. BrowserCI42106982749 cancelled during dependency installation and is not UI acceptance. A final repair adds a signed-in/guest withdrawn-seller photo check;16 local HTTP checks pass. Latest-head exact CI and browser acceptance remain required. Draft PR44 is open, unmerged and undeployed. Initial local failures remain retained and undiagnosed.
+
+## Exact-code CI and browser acceptance
+
+Code612ce575/tree2cf08ab0 equals tested merge1f967607. Exact release42114323494/browser42114323589 passed678tests/56files/build1693/audit0/security8/all HTTP including16 Shopify checks, PostgreSQL18.6 commerce/publication95/message84 and63 browser checks (41 baseline/6 cart/16 catalog-review) at1280/390. Actual logs read. Browser artifact13455596520 is7,187,902bytes, SHA25612b01624c42ec0ecf34f5fc40c2eec6682d88e5b7be119fbe817598c8b059f98; checksum verified, both review screenshots inspected. The official HTTPS Ubuntu mirror repaired the blocked dependency download while retaining all browser dependencies/assertions/time limits. CLI artifact retrieval timeouts and connector parameter correction are retained; connector-provided artifact retrieval succeeded.
+
+Final documentation-only head checks are tracked on PR44/primary evidence. This closes bounded code/CI/browser-fixture verification, not independent review, production storage, migration/release or real merchant acceptance. All145 protected primary source/assets remain unchanged. No hosted change or EcoVibes fee.
