@@ -12,11 +12,13 @@ Exact main CI41966280163/41966280204 passed565 tests /43 files, build1685, audit
 
 No architecture/commerce source below is merged or deployed.
 
-## Account-cart increment in progress
+## Account-cart increment — draft PR41
 
 LOCALLY BUILT on codex/commerce-cart-20261105, stacked on draft PR40/e6a0e689; not merged/deployed. Canonical account cart, absolute revisioned updates, immutable checkout requests and per-revision duplicate guard reuse the extracted existing order writer. Current app session/CSRF/actor/seller checks are transaction-bound. Signed-in Bag/catalog review flow preserves separate device previews. Three API-only additive tables are proposed in generated20261105084536 migration, UNAPPLIED; no provider/money activation.
 
-HTTP21 and legacy order23 pass; final focused22/22 covers cart boundary10, UI8 and Bag4 after retained6/8 UI RED. Reviewed item-price fingerprints catch offsetting price changes while product locks are held. Full600 assertions ended exit1 on DepthView worker termination; earlier focused54/1 retains untouched Home/Depth5s timeout. Initial unused test declarations fixed; TypeScript/build1687/security8/audit0 pass. Do not infer QA001 cause. Exact CI/PostgreSQL/browser, independent review, hosted/physical/sandbox and explicit release/migration approvals remain. Local PG guard stopped without PG_BINDIR. Production stays PR39/main56e0c2eb, other drafts preserved. Evidence work/commerce-cart-20261105; release receipt docs/releases/2026-11-05-account-cart.md.
+[Draft PR41](https://github.com/konyahphilip-byte/life-of-kings/pull/41) is stacked on40. Candidatea713522/tree30ed7aa0 passed exact CI42006534414/42006534388:616 tests/47 files, build1687, audit0/security8, all HTTP including cart21/order23, disposable PostgreSQL18.6 cart64/message84 and47 built-browser checks(6 account-cart checks at1280/390). Actual logs read. The first narrow browser attempt failed on a hidden sidebar selector; corrected visible-cart checks retain the same deadlines/assertions. Final stock-rejection UI refinement passed25 focused after3 retained REDs; current exact checks are tracked on PR41. Review includes a narrow API-only session-lock helper without widened session write grants.
+
+Retain prior UI6/8, full600 worker termination, focused54/1 unchanged Home/Depth5s timeout, wrong npm child-runtime rejection and earlier failures; QA001 cause remains undiagnosed. Independent review, explicit migration/merge/deployment approval and real buyer/seller/phone acceptance remain. Migration UNAPPLIED; no production schema/source/provider change. All145 protected primary source/assets unchanged. Evidence work/commerce-cart-20261105; [release receipt](../releases/2026-11-05-account-cart.md).
 
 
 ## Prior architecture increment
@@ -34,7 +36,7 @@ Actual local results:33 focused and598 full tests /45 files,23 isolated order HT
 | Happening now | DEPLOYED | Fixed attributed Google Ghana trends, Apple Music Ghana and source-linked Ghana/world news; cache expiry refresh previously verified on hosted UI. Source uptime/coverage/fact checking remain distinct. No fabricated popularity or paid X activation. |
 | Chale launcher/Stories/post artwork | DEPLOYED | PR39 header slot, compact phone target, panel/keyboard/focus and selector/spacing fixes. CI geometry/screenshots passed; new physical phone check remains. |
 | Main Bag false-success | LOCALLY BUILT; production remains broken | PR26 guard reused. Items remain, no unsaved order claim or payment request. Original draft26 preserved, not merged. |
-| Main Bag durable checkout | LOCALLY BUILT; not deployed | New signed-in canonical account Bag reuses existing orders, stock, events and notices with immutable owner/revision/quote-bound retries. Device previews remain separate.21 HTTP and22 focused checks pass; exact CI/PostgreSQL/browser, migration, independent review, release and real buyer/seller acceptance remain. No payment taken. |
+| Main Bag durable checkout | LOCALLY BUILT; not deployed | Draft41 canonical account Bag reuses existing orders/stock/events with owner/revision/quote-bound retries; device previews stay separate.21 HTTP,64 PostgreSQL,6 built-browser and25 focused checks provide bounded evidence; latest CI tracked on PR. Migration, independent review, release and real buyer/seller acceptance remain. No payment taken. |
 | Existing API orders | DEPLOYED; wider acceptance UNVERIFIED | Server creates unpaid order/items/groups with stock/event/audit/notice transaction and ownership projection. New input/rollback HTTP checks are local only; real buyer/seller/provider and PostgreSQL order contention need acceptance. |
 | Architecture and schema audit | LOCALLY BUILT | Seven layers/domain/data/API/events/Chale/security/operations/ADR/cost/debt documented.44 RLS tables and12 migrations inspected read-only; no private rows. API authority remains essential with broad runtime grants. Targets are not enabled features. |
 | Account recovery/security | LOCALLY BUILT, BLOCKED real acceptance | [Draft24](https://github.com/konyahphilip-byte/life-of-kings/pull/24) remains open. Guard migration unapplied; actual provider/browser cleanup, Auth policy, guarded rollout/rollback and two-account/device acceptance remain. Older source ignoring barriers is not a compatible recovery rollback. |
@@ -67,7 +69,7 @@ Actual local results:33 focused and598 full tests /45 files,23 isolated order HT
 
 ## Next smallest task and approvals
 
-Complete exact-source CI/PostgreSQL/browser and independent review for the locally built account-cart/order-command increment. Then verify a real buyer/seller journey after an explicitly approved migration/release. Request Market must consume this existing domain command, not create another checkout. Continue dependency-ready Auth/Chale/communication/tracking acceptance without rebuilding existing drafts.
+Complete independent review and confirm latest exact checks for draft PR41 and its PR40 parent. Then perform a real buyer/seller order/reload/retry/cancel journey after an explicitly approved migration/release. Request Market must consume this existing domain command, not create another checkout. Continue dependency-ready Auth/Chale/communication/tracking acceptance without rebuilding existing drafts.
 
 This architecture/commerce increment needs exact candidate CI and source/release review, then an explicit bounded founder merge/deployment approval before production. No purchase, paid model/resource, domain/DNS migration, real payment or external-user mutation is authorized. Launch core access and EcoVibes platform fees remain GH₵0 by policy; this increment adds no fees.
 
