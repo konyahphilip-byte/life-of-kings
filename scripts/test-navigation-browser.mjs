@@ -22,6 +22,20 @@ async function settleCapture(page){
  await page.evaluate(async()=>{await document.fonts.ready;await Promise.allSettled([...document.images].map(img=>img.decode()));for(const animation of document.getAnimations()){if(animation.effect?.getTiming().iterations!==Infinity)try{animation.finish();}catch{}}scrollTo({top:0,behavior:'instant'});});
  await page.waitForTimeout(100);
 }
+async function verifyChaleHeader(page){
+ const launcher=page.locator('.topbar .sidekick-launch');
+ await launcher.waitFor();
+ const geometry=await launcher.evaluate(element=>{
+  const r=element.getBoundingClientRect(),h=element.closest('.topbar').getBoundingClientRect();
+  const overlap=(a,b)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top;
+  return {position:getComputedStyle(element).position,width:r.width,height:r.height,inHeader:r.left>=h.left&&r.right<=h.right&&r.top>=h.top&&r.bottom<=h.bottom,
+   hitsOtherButton:[...element.closest('.topbar').querySelectorAll('button')].some(other=>other!==element&&overlap(r,other.getBoundingClientRect()))};
+ });
+ assert.equal(geometry.position,'static','Shortcut must occupy layout space, never float over page content');
+ assert(geometry.width>=44&&geometry.height>=44,'Shortcut touch target');
+ assert(geometry.inHeader&&!geometry.hitsOtherButton,'Header shortcut collides with other controls');
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Shortcut causes horizontal overflow');
+}
 try{
  browser=await chromium.launch();
  for(const width of [1280,390]){
@@ -46,6 +60,21 @@ try{
    await page.getByRole('heading',{name:title,exact:true}).waitFor();
    assert.equal(await page.locator('.screen-recovery[role="alert"]').count(),0);
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${hash}: horizontal overflow at ${width}`);
+   if(hash!=='settings')await verifyChaleHeader(page);
+   if(hash==='home'){
+    const storyHeading=await page.locator('.social-strip-heading>div').evaluate(element=>{
+     const eyebrow=element.querySelector('.eyebrow').getBoundingClientRect(),title=element.querySelector('h2').getBoundingClientRect();
+     return {eyebrowBottom:eyebrow.bottom,titleTop:title.top};
+    });
+    assert(storyHeading.titleTop>=storyHeading.eyebrowBottom+3,'Stories heading collides with its eyebrow');
+    checks.push({width,check:'Stories heading has a separate line and clear spacing below Your people'});
+    const posts=await page.locator('.post-card').evaluateAll(elements=>elements.filter(e=>e.querySelector('.post-art')).map(e=>{
+     const text=e.querySelector('.post-text').getBoundingClientRect(),art=e.querySelector('.post-art').getBoundingClientRect(),actions=e.querySelector('.post-actions').getBoundingClientRect();
+     return {textBottom:text.bottom,artTop:art.top,artBottom:art.bottom,actionsTop:actions.top,position:getComputedStyle(e.querySelector('.post-art')).position};
+    }));
+    assert(posts.length>=2&&posts.every(p=>p.position==='relative'&&p.textBottom<=p.artTop&&p.artBottom<=p.actionsTop),`Post artwork overlaps its text or actions: ${JSON.stringify(posts)}`);
+    checks.push({width,check:'Post artwork stays between its own text and actions; Explore decoration cannot escape into the feed'});
+   }
    if(hash==='home'||hash==='waste'){
     await page.locator('[data-depth="3d"]').waitFor();
     await settleCapture(page);
@@ -88,6 +117,45 @@ try{
   await context.setOffline(false);await page.getByRole('status').filter({hasText:'Updates automatically'}).waitFor();
   await page.getByRole('button',{name:'The mix',exact:true}).click();
   checks.push({width,check:'Offline status and online recovery retain source data without manual reload'});
+  await page.locator('.happening-card h3').evaluate(element=>element.scrollIntoView({block:'center'}));
+  const clearFeed=await page.evaluate(()=>{
+   const a=document.querySelector('.sidekick-launch').getBoundingClientRect(),b=document.querySelector('.happening-card h3').getBoundingClientRect();
+   return a.bottom<=b.top||a.top>=b.bottom||a.right<=b.left||a.left>=b.right;
+  });
+  assert(clearFeed,'Chale shortcut covers the Happening now heading');
+  await page.screenshot({path:`${output}/chale-header-feed-${width}.png`,fullPage:false});
+  checks.push({width,check:'Header shortcut keeps the visible feed heading and header controls unobstructed'});
+  await page.goto(`${origin}/#settings`);
+  await page.getByLabel('Chale shortcut').selectOption('labelled');
+  await page.goto(`${origin}/#home`);await verifyChaleHeader(page);
+  if(width===390){
+   await page.setViewportSize({width:320,height:844});await verifyChaleHeader(page);
+   await page.screenshot({path:`${output}/chale-header-320.png`,fullPage:false});
+   checks.push({width:320,check:'Label preference remains compact on a small phone without covering header controls'});
+   await page.setViewportSize({width,height:900});
+  }
+  await page.goto(`${origin}/#settings`);
+  await page.getByLabel('Chale shortcut').selectOption('hidden');
+  assert.equal(await page.locator('.sidekick-launch:visible').count(),0);
+  const restore=page.getByRole('button',{name:'Open Chale AI',exact:true});
+  await restore.click();await page.getByRole('dialog',{name:'Chale AI'}).waitFor();
+  assert.equal(await page.locator('.topbar [role="dialog"]').count(),0,'Chat must not be clipped by its header host');
+  await page.getByRole('button',{name:'Close Chale AI',exact:true}).click();
+  assert(await restore.evaluate(element=>document.activeElement===element),'Return focus to Settings opener');
+  await page.getByLabel('Chale shortcut').selectOption('compact');
+  checks.push({width,check:'Hidden shortcut reopens from Settings; panel stays outside header and returns focus'});
+  if(width===390){
+   await page.setViewportSize({width:844,height:180});
+   await restore.click();
+   const panel=page.getByRole('dialog',{name:'Chale AI'});
+   const box=await panel.boundingBox();assert(box&&box.y>=0&&box.y+box.height<=180,`Short-screen chat exceeds viewport: ${JSON.stringify(box)}`);
+   const thread=page.getByRole('log',{name:'Conversation with Chale AI'});await thread.focus();await thread.press('End');
+   await page.getByRole('textbox',{name:'Ask Chale AI'}).scrollIntoViewIfNeeded();
+   await page.getByRole('button',{name:'Close Chale AI',exact:true}).click();
+   checks.push({width:844,height:180,check:'Short-screen chat can reach its input and close without being clipped'});
+   await page.setViewportSize({width,height:900});
+  }
+  await page.goto(`${origin}/#home`);await verifyChaleHeader(page);
   if(width===390){const buttons=page.locator('.mobile-nav button');assert.deepEqual(await buttons.allTextContents(),['Home','Explore','Messages','Create','Calls & Live','Profile','EcoVibes ID']);const box=await buttons.nth(3).boundingBox();assert(box&&Math.abs(box.x+box.width/2-width/2)<2);checks.push({width,check:'Create is fourth and visually centred among seven mobile destinations'});}
   await page.goto(`${origin}/#account`);
   await page.getByLabel('What would you like to try first? (optional)').waitFor();
