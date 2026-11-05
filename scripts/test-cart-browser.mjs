@@ -39,7 +39,7 @@ try{
    return route.continue();
   });
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(origin+'/#home');await page.getByText('@synthetic.cart',{exact:true}).first().waitFor();
+  await page.goto(origin+'/#home');
   await page.getByRole('button',{name:/^Bag/}).click();await page.getByRole('heading',{name:'Your account bag'}).waitFor();
   await page.getByRole('button',{name:'Choose current listings'}).click();await page.getByLabel('Current listing').selectOption(productId);
   await page.getByLabel('Quantity',{exact:true}).fill('2');await page.getByRole('button',{name:'Save item to account bag'}).click();

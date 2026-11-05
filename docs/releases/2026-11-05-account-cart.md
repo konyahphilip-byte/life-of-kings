@@ -33,6 +33,11 @@ Rollout/recovery:
 4. With no schema marker, cart routes fail closed; ECOVIBES_CART_DISABLED=true is a deny switch. Verify old/new app compatibility and real buyer/seller devices before enablement.
 5. Disable cart first for rollback. Retain carts, successful orders and immutable commands; never delete command history to permit a retry. Existing Auth-barrier drafts have independent rollback requirements.
 
+First exact candidate9b2ddbf/treea189f910 CI:
+- Release42005995899 passed616 tests/47 files, build1687, audit0/security8, all existing HTTP workflows plus order23/cart21. Disposable PostgreSQL18.6 passed existing message84 and new cart64 checks, including exact migration, public/runtime grants, binding, real stock/price/session contention, rollback and immutable retries.
+- Browser42005995991 passed existing41 checks and3 new desktop checks, then failed before the narrow cart journey: the synthetic @name selector was present but hidden in the responsive sidebar. Removed that irrelevant sidebar wait; the test still requires the visible Bag and signed-in account-cart heading and retains all order/retry/overflow assertions and deadlines. Latest corrected candidate CI remains required.
+- Full original logs retained in primary work/commerce-cart-20261105. No real account/provider/hosted/phone acceptance is inferred.
+
 Remaining:
 - Exact CI and independent review; hosted migration/release/real buyer-seller and physical-network acceptance.
 - The old direct /marketplace/orders API is retained for compatibility and does not acquire the new cart idempotency guarantee for callers without the cart command.
