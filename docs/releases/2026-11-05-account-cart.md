@@ -38,6 +38,10 @@ First exact candidate9b2ddbf/treea189f910 CI:
 - Browser42005995991 passed existing41 checks and3 new desktop checks, then failed before the narrow cart journey: the synthetic @name selector was present but hidden in the responsive sidebar. Removed that irrelevant sidebar wait; the test still requires the visible Bag and signed-in account-cart heading and retains all order/retry/overflow assertions and deadlines. Latest corrected candidate CI remains required.
 - Full original logs retained in primary work/commerce-cart-20261105. No real account/provider/hosted/phone acceptance is inferred.
 
+Follow-up candidatea713522/tree30ed7aa0 passed exact release42006534414 and browser42006534388:616/47/build1687/audit0/security8/all existing HTTP plus order23/cart21, PostgreSQL18.6 message84/cart64, existing41 browser plus6 account-cart checks at1280/390px. Actual logs read. This is a synthetic built-browser/disposable-database pass, not production or phone acceptance.
+
+Final stock-recovery refinement: three UI REDs reproduced stock_changed, variant_stock_changed and product_unavailable trapping a known rolled-back request in uncertain retry mode. Those explicit transaction-rejection codes now clear the command and refresh for review/removal; unknown/network outcomes still keep the original immutable command. Final focused25/25(11 UI,10 boundary,4 Bag) passes. Latest exact source/checks are linked on draft PR41; independent review and release approval remain.
+
 Remaining:
 - Exact CI and independent review; hosted migration/release/real buyer-seller and physical-network acceptance.
 - The old direct /marketplace/orders API is retained for compatibility and does not acquire the new cart idempotency guarantee for callers without the cart command.

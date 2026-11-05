@@ -68,7 +68,7 @@ export default function ServerCart({ownerId,csrfToken,online,selection,onOpenOrd
    }catch(e){
     if(!active())throw e;
     const known=e as {status?:number;code?:string};
-    if([400,404,409].includes(known.status||0)&&['cart_price_changed','cart_unavailable','cart_empty','cart_changed','invalid_checkout'].includes(known.code||'')){
+    if([400,404,409].includes(known.status||0)&&['cart_price_changed','cart_unavailable','cart_empty','cart_changed','invalid_checkout','product_unavailable','own_product','external_checkout','variant_required','variant_unavailable','stock_changed','variant_stock_changed','invalid_quantity','invalid_total','invalid_items'].includes(known.code||'')){
      pending.current=null;setUncertain(false);await refresh();
     }else setUncertain(true);
     throw e;

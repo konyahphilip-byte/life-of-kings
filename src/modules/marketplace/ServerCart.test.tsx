@@ -33,6 +33,12 @@ describe('server account bag',()=>{
   let reads=0;vi.stubGlobal('fetch',vi.fn(async(input:unknown)=>path(input).endsWith('/checkout')?Response.json({error:{code:'cart_price_changed',message:'Review new price'}},{status:409}):Response.json(++reads===1?cart():{...cart(),totalMinor:2600,items:cart().items.map(i=>({...i,unitPriceMinor:1300}))})));
   render(<ServerCart {...props}/>);await screen.findByText('Canonical item');fireEvent.click(screen.getByRole('button',{name:'Place unpaid order'}));await screen.findByText('Review new price');expect(screen.getByText('Reviewed items total: GH₵26.00')).toBeTruthy();expect(screen.queryByText(/Saved order /)).toBeNull();
  });
+ it.each(['stock_changed','variant_stock_changed','product_unavailable'])('allows a fresh review after a known rolled-back stock/listing rejection: %s',async(code)=>{
+  let reads=0;const refreshed={...cart(),canCheckout:false,totalMinor:null,quoteId:null,items:cart().items.map(i=>({...i,available:false,unitPriceMinor:null,reason:'Choose a different quantity'}))};
+  vi.stubGlobal('fetch',vi.fn(async(input:unknown)=>path(input).endsWith('/checkout')?Response.json({error:{code,message:'Listing changed; review your bag'}},{status:code==='product_unavailable'?404:409}):Response.json(++reads===1?cart():refreshed)));
+  render(<ServerCart {...props}/>);await screen.findByText('Canonical item');fireEvent.click(screen.getByRole('button',{name:'Place unpaid order'}));await screen.findByText('Listing changed; review your bag');
+  expect(screen.queryByRole('button',{name:'Retry same order request'})).toBeNull();expect(screen.getByRole('button',{name:'Remove Canonical item'}).hasAttribute('disabled')).toBe(false);expect(screen.getByRole('button',{name:'Place unpaid order'}).hasAttribute('disabled')).toBe(true);expect(screen.queryByText(/Saved order /)).toBeNull();
+ });
  it('rejects a response belonging to another account',async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>Response.json(cart(B))));render(<ServerCart {...props}/>);await screen.findByText('Your account bag could not be confirmed. Reopen it.');expect(screen.queryByText('Canonical item')).toBeNull();
  });
