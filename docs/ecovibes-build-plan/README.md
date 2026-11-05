@@ -1,3 +1,13 @@
+## Product classification and customer value — 5 November 2026
+
+LOCALLY BUILT on codex/marketplace-categories-20261105, based draft42/09a51539; no merge/deploy or hosted schema change. Shared six-parent/twelve-leaf taxonomy, category-specific attributes, pre-upload seller validation, atomic product/audit updates, buyer parent/leaf filtering and explicit seller-entered details are implemented. Existing free-text/legacy clients stay compatible and unclassified; this is not comprehensive moderation or independent product verification.
+
+Local full666/52, HTTP15, TypeScript/build1691 and audit0/security8 passed before the final compatibility tests; exact final checks/PostgreSQL/browser evidence remain separately tracked. Migration20261105120000 is UNAPPLIED; new structured work fails closed without it. All prior failures remain, including missing-module RED, pre-wiring UI30/31 and filesystem/glob/reference diagnostics; QA001 remains undiagnosed. No altered deadlines/assertions/workers/isolation. No fees/providers/payments/demand metrics/Request Market activated.
+
+Buyer/seller benefit is clearer condition/specification/unit comparison and preventing invalid submissions before photo upload. Synthetic fixtures are not commercial traction. Review all parent drafts40–42, migration/rollback, exact CI, explicit release approval and hosted/real merchant/device acceptance remain required. Next: durable native publication/approved storage and genuine seller-to-buyer acceptance before actionable Request Market integration.
+
+[Receipt](../releases/2026-11-05-product-classification.md); [customer-value directive](../directives/2026-11-05-marketplace-customer-value.md); evidence work/marketplace-categories-20261105.
+
 ## Marketplace 5.0 native catalog increment — 5 November 2026
 
 LOCALLY BUILT in draft PR42, stacked on unmerged PR41/555addb. Native listings are now the default; public discovery uses saved products, safe fields, literal filters and keyset pagination. Account-bag review resolves selected products beyond the first window. Device examples stay explicit. Reproduced seller account-switch privacy defects are repaired with immediate private-state clearing, captured-owner request guards and aborted photo reads. No migration, fee, paid service, external-store mutation or real payment.

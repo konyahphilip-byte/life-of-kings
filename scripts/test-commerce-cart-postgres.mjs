@@ -9,6 +9,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {createCartService} from '../server/commerce/cart.mjs';
 import {createOrderWriter} from '../server/commerce/orders.mjs';
 import {createCatalog} from '../server/commerce/catalog.mjs';
+import {saveClassification} from '../server/commerce/classification.mjs';
+import {readClassification} from '../shared/marketplace-taxonomy.mjs';
 const source=fileURLToPath(new URL('..',import.meta.url)),{Client}=createRequire(join(source,'package.json'))('pg');
 assert(process.env.PG_BINDIR,'Set PG_BINDIR to an installed PostgreSQL bin directory; no provider credentials are used.');
 const bin=await realpath(process.env.PG_BINDIR),tmp=await mkdtemp('/tmp/ev-cart-pg-');await chmod(tmp,0o700);
@@ -60,6 +62,7 @@ try{
  GRANT INSERT ON notifications,domain_events,audit_logs TO ecovibes_api_runtime;
  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon,authenticated,service_role;`);
  await admin.query(await readFile(join(source,'supabase/migrations/20261105084536_commerce_account_cart.sql'),'utf8'));check(true,'Exact additive migration applies');
+ await admin.query(await readFile(join(source,'supabase/migrations/20261105120000_product_classification.sql'),'utf8'));check(true,'Exact additive product classification migration applies without table replacement');
  for(const role of['anon','authenticated','service_role']){
   await admin.query('SET ROLE '+role);
   await assert.rejects(()=>admin.query('SELECT public.ecovibes_cart_session_authorized($1,$2,$3)',[token(A),A,'synthetic-'+A]),e=>e.code==='42501');
@@ -79,7 +82,7 @@ try{
  const one=await connect('ecovibes_api_runtime'),two=await connect('ecovibes_api_runtime'),s1=service(one),s2=service(two);
  await admin.query("INSERT INTO roles VALUES($1,'seller')",[S]);
  const listing=randomUUID();await admin.query("INSERT INTO products(id,seller_id,name,price_minor,stock,category) VALUES($1,$2,'100% cotton',1300,4,'Textiles')",[listing,S]);
- const cat=createCatalog({all:async(sql,...params)=>{let n=0;return(await one.query(sql.replace(/\?/g,()=>'$'+(++n)),params)).rows;},assert:fail,publicProduct:row=>({id:row.id,name:row.name,price:row.price_minor,source:row.source_type}),now:()=>new Date().toISOString()});
+ const cat=createCatalog({all:async(sql,...params)=>{let n=0;return(await one.query(sql.replace(/\?/g,()=>'$'+(++n)),params)).rows;},assert:fail,publicProduct:row=>({id:row.id,name:row.name,price:row.price_minor,source:row.source_type,classification:readClassification(row)}),now:()=>new Date().toISOString(),classificationAvailable:true});
  const browse=query=>cat(ctx(A),new URLSearchParams(query));
  let first=await browse('limit=1&sort=price_low');check(first.items[0].id===P&&Boolean(first.nextCursor),'PostgreSQL public catalog uses real low-price pagination');
  const second=await browse('limit=1&sort=price_low&cursor='+first.nextCursor);check(second.items[0].id===listing&&second.nextCursor===null,'PostgreSQL timestamp cursor returns the next canonical product');
@@ -88,6 +91,12 @@ try{
  check((await browse('source=direct&seller=synthetic-'+S.slice(0,8))).items.length===2,'PostgreSQL public source and seller filters use saved fields');
  await admin.query('DELETE FROM roles WHERE user_id=$1',[S]);check((await browse('')).items.length===0,'PostgreSQL catalog hides withdrawn seller membership');await admin.query("INSERT INTO roles VALUES($1,'seller')",[S]);
  await admin.query("UPDATE users SET status='suspended' WHERE id=$1",[S]);check((await browse('')).items.length===0,'PostgreSQL catalog hides inactive seller stock');await admin.query("UPDATE users SET status='active' WHERE id=$1",[S]);
+ check((await one.query('SELECT category_id,attributes_json FROM products WHERE id=$1',[listing])).rows[0].category_id===null,'Existing rows remain unclassified after additive migration');
+ await saveClassification(async(sql,...params)=>{let n=0;return one.query(sql.replace(/\?/g,()=>'$'+(++n)),params);},listing,{categoryId:'electronics.phones',categoryVersion:1,attributes:{condition:'used',storageGb:128}});
+ check((await browse('categoryId=electronics')).items[0]?.classification?.attributes.storageGb===128,'Runtime saves and reads structured details through real PostgreSQL category-parent query');
+ check((await browse('categoryId=electronics.phones')).items.length===1&&(await browse('categoryId=home')).items.length===0,'PostgreSQL exact and sibling categories do not infer legacy matches');
+ for(const sql of["UPDATE products SET attributes_json='[]' WHERE id=$1","UPDATE products SET category_version=NULL WHERE id=$1","UPDATE products SET attributes_json=repeat('x',4097) WHERE id=$1"]){await assert.rejects(()=>one.query(sql,[listing]),e=>['23514','22P02'].includes(e.code));check(true,'PostgreSQL rejects malformed classification shape without changing record');}
+ for(const role of['anon','authenticated','service_role']){await admin.query('SET ROLE '+role);await assert.rejects(()=>admin.query('SELECT attributes_json FROM products'),e=>e.code==='42501');await admin.query('RESET ROLE');check(true,role+' receives no new direct product access from classification migration');}
  await assert.rejects(()=>one.query('SELECT token_hash FROM sessions FOR SHARE'),e=>e.code==='42501');check(true,'Runtime session UPDATE/row-lock remains denied, matching existing grants');
  check(!(await one.query("SELECT has_table_privilege(current_user,'sessions','UPDATE') AS allowed")).rows[0].allowed,'Helper does not add session UPDATE privilege');
  for(const [hash,subject,csrf]of[[token(A),B,'synthetic-'+A],[token(A),A,'wrong-csrf'],[token(B),A,'synthetic-'+A]]){

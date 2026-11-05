@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { normalizeOrderItems } from "./commerce/order-input.mjs";
 import {createCatalog} from "./commerce/catalog.mjs";
+import {CLASSIFICATION_VERSION,CLASSIFICATION_COLUMNS,productClassification,updatedClassification,publicClassification,saveClassification} from './commerce/classification.mjs';
 import {createCartService,CART_SQLITE_SCHEMA,CART_VERSION} from "./commerce/cart.mjs";
 import {createOrderWriter} from "./commerce/orders.mjs";
 import { DatabaseSync } from "node:sqlite";
@@ -155,6 +156,7 @@ if (!postgresMode) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   };
   for (const [table, column, definition] of [
+    ...CLASSIFICATION_COLUMNS,
     ["provider_profiles", "service_json", "TEXT"],
     ["provider_profiles", "revision", "INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0)"],
     ["provider_profiles", "updated_at", "TEXT"],
@@ -715,6 +717,7 @@ async function restoreReservedProductStock(item) {
 function rowProduct(row, sellerEcoId) {
   return {
     ...row,
+    ...publicClassification(row),
     variants: productVariants(row),
     priceMinor: row.price_minor,
     costMinor: row.cost_minor,
@@ -766,6 +769,7 @@ function visibleJob(job, ctx) {
 }
 function publicProduct(row, ctx) {
   return {
+    ...publicClassification(row),
     id: row.id,
     name: row.name,
     description: row.description,
@@ -1115,7 +1119,8 @@ const chalePublicUpdates = createPublicUpdates();
 const publicTrends = createPublicTrends();
 
 const writeMarketplaceOrder=createOrderWriter({q,all,run,assert,now,id,productVariants,notify,event,getOrder,visibleOrder,postgresMode});
-const publicCatalog=createCatalog({all,assert,publicProduct,now,enabled:()=>process.env.ECOVIBES_NATIVE_CATALOG_DISABLED!=='true'});
+const classificationAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',CLASSIFICATION_VERSION));
+const publicCatalog=createCatalog({all,assert,publicProduct,now,classificationAvailable,enabled:()=>process.env.ECOVIBES_NATIVE_CATALOG_DISABLED!=='true'});
 const cartAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?",CART_VERSION));
 const accountCart=createCartService({q,all,run,transaction,assert,now,rateLimit,productVariants,writeOrder:writeMarketplaceOrder,getOrder,visibleOrder,postgresMode,available:cartAvailable,enabled:()=>process.env.ECOVIBES_CART_DISABLED!=='true'});
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
@@ -2283,13 +2288,14 @@ async function route(ctx, req, res, method, path, body, query) {
       : rows.map((row) => publicProduct(row, ctx));
   }
   if (method === "POST" && path === "/marketplace/products") {
+    return transaction(async()=>{
     await requireRole(ctx, "seller");
     const name = inputString(body.name, "Product name", { max: 100 });
     const description = inputString(body.description || "", "Description", {
       max: 3000,
       optional: true,
     });
-    const category = inputString(body.category, "Category", { max: 80 });
+    let category;
     const price = validMinor(body.priceMinor, "Price");
     const cost =
       body.costMinor === undefined || body.costMinor === null
@@ -2321,6 +2327,8 @@ async function route(ctx, req, res, method, path, body, query) {
       "invalid_product_type",
       "Choose a supported product type.",
     );
+    const classification=productClassification(body,type,assert,classificationAvailable);
+    category=classification?.category||inputString(body.category,'Category',{max:80});
     let imageUrl = null;
     if (body.imageUrl) {
       const imageMatch = String(body.imageUrl).match(/^\/social\/assets\/([a-f0-9-]+)$/);
@@ -2354,22 +2362,28 @@ async function route(ctx, req, res, method, path, body, query) {
       stamp,
       stamp,
     );
+    await saveClassification(run,productId,classification);
     await event(ctx.user.id, "product", productId, "PRODUCT_CREATED", {
       name,
       category,
       fulfillment,
     });
     return rowProduct(await q("SELECT * FROM products WHERE id=?", productId), ctx.user.eco_id);
+    });
   }
   match = path.match(/^\/marketplace\/products\/([a-f0-9-]+)$/);
   if (method === "PATCH" && match) {
-    const product = await q("SELECT * FROM products WHERE id=?", match[1]);
+    return transaction(async()=>{
+    const product = await q("SELECT * FROM products WHERE id=?"+(postgresMode?' FOR UPDATE':''), match[1]);
     assert(
       product && product.seller_id === ctx.user.id,
       404,
       "not_found",
       "Product not found.",
     );
+    await requireRole(ctx,'seller');
+    const classification=updatedClassification(body,product,assert,classificationAvailable);
+    if(body.status!==undefined)assert(['active','paused','removed'].includes(body.status),400,'invalid_status','Invalid product status.');
     if (body.stock !== undefined)
       validMinor(body.stock, "Stock", { allowZero: true });
     if (body.priceMinor !== undefined) validMinor(body.priceMinor, "Price");
@@ -2401,12 +2415,14 @@ async function route(ctx, req, res, method, path, body, query) {
         product.id,
       );
     }
+    if(classification){await saveClassification(run,product.id,classification);await run('UPDATE products SET category=?,updated_at=? WHERE id=?',classification.category,now(),product.id);}
     await event(ctx.user.id, "product", product.id, "PRODUCT_UPDATED", {
       stock: body.stock,
       priceMinor: body.priceMinor,
       status: body.status,
     });
     return rowProduct(await q("SELECT * FROM products WHERE id=?", product.id), ctx.user.eco_id);
+    });
   }
   if (method === "POST" && path === "/marketplace/products/import") {
     await requireRole(ctx, "seller");
@@ -2423,9 +2439,11 @@ async function route(ctx, req, res, method, path, body, query) {
         created = [];
       for (const item of body.items) {
         const name = inputString(item.name, "Product name", { max: 100 });
-        const category = inputString(item.category || "Other", "Category", {
+        let category = inputString(item.category || "Other", "Category", {
           max: 80,
         });
+        const classification=productClassification(item,'physical',assert,classificationAvailable);
+        if(classification)category=classification.category;
         const price = validMinor(item.priceMinor, "Price");
         const stock = validMinor(item.stock ?? 0, "Stock", { allowZero: true });
         const productId = id();
@@ -2457,6 +2475,7 @@ async function route(ctx, req, res, method, path, body, query) {
           stamp,
           stamp,
         );
+        await saveClassification(run,productId,classification);
         created.push(productId);
       }
       await event(ctx.user.id, "product_import", id(), "CSV_PRODUCTS_IMPORTED", {

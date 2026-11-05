@@ -1,13 +1,15 @@
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {apiUrl} from '../../lib/api';
 import './public-catalog.css';
+import {CATEGORIES} from '../../../shared/marketplace-taxonomy.mjs';
+import {ProductDetails} from './ProductClassification';
 
 type Variant={id:string;title:string;priceMinor:number|null;stock:number|null};
-type Listing={id:string;name:string;description:string;category:string;currency:string;priceMinor:number;stock:number;variants:Variant[];sellerEcoId:string;sellerName?:string;sellerIsCurrentUser:boolean;fulfillment_type:string;source_type:string;image_url:string|null;location:string};
+type Listing={categoryId?:string|null;categoryVersion?:number|null;attributes?:Record<string,string|number>;productType?:string;id:string;name:string;description:string;category:string;currency:string;priceMinor:number;stock:number;variants:Variant[];sellerEcoId:string;sellerName?:string;sellerIsCurrentUser:boolean;fulfillment_type:string;source_type:string;image_url:string|null;location:string};
 type Page={items:Listing[];nextCursor:string|null;checkedAt:string;currency:string};
-type Filters={q:string;category:string;seller:string;source:string;min:string;max:string;inStock:boolean;sort:string};
+type Filters={q:string;categoryId:string;category:string;seller:string;source:string;min:string;max:string;inStock:boolean;sort:string};
 type Props={account?:{id:string;ecoId:string}|null;online:boolean;saver:'standard'|'saver'|'extreme';onOpenWorkspace:()=>void;onStartSelling:()=>void};
-const empty:Filters={q:'',category:'',seller:'',source:'',min:'',max:'',inStock:false,sort:'newest'};
+const empty:Filters={q:'',categoryId:'',category:'',seller:'',source:'',min:'',max:'',inStock:false,sort:'newest'};
 const money=(n:number)=>'GH₵'+(n/100).toFixed(2);
 const sourceName=(source:string)=>(({direct:'Native EcoVibes listing',csv:'Seller-imported catalog',shopify:'Shopify-imported listing'} as Record<string,string>)[source]||'Seller listing');
 function validPage(value:unknown):value is Page{
@@ -31,7 +33,7 @@ export default function PublicCatalog({account,online,saver,onOpenWorkspace,onSt
   if(!online){setError('You’re offline. Reconnect to check current listings.');return;}
   setBusy(true);setError('');if(!cursor){setItems([]);setNext(null);setLoaded(false);setOptions({});}
   const query=new URLSearchParams({limit:'12',sort:f.sort,inStock:f.inStock?'1':'0'});
-  for(const key of ['q','category','seller','source'] as const)if(f[key].trim())query.set(key,f[key].trim());
+  for(const key of ['q','categoryId','category','seller','source'] as const)if(f[key].trim())query.set(key,f[key].trim());
   if(f.min!=='')query.set('minPrice',String(Math.round(Number(f.min)*100)));
   if(f.max!=='')query.set('maxPrice',String(Math.round(Number(f.max)*100)));
   if(cursor)query.set('cursor',cursor);
@@ -63,7 +65,7 @@ export default function PublicCatalog({account,online,saver,onOpenWorkspace,onSt
   <div className="native-catalog-head"><div><h2>Shop current seller listings</h2><p>Start selling directly on EcoVibes. No external store or subscription required.</p></div><button type="button" onClick={onStartSelling}>Start selling</button></div>
   <form className="native-search" onSubmit={search}><label>Search products<input value={filters.q} onChange={e=>setFilters({...filters,q:e.target.value})} maxLength={100} placeholder="Try tomatoes, books or a fridge"/></label>
    <details><summary>Category, price and seller filters</summary><div className="native-filters">
-    <label>Category<input maxLength={80} value={filters.category} onChange={e=>setFilters({...filters,category:e.target.value})} placeholder="Seller category"/></label>
+    <label>Category<select aria-label="Category" value={filters.categoryId} onChange={e=>setFilters({...filters,categoryId:e.target.value,category:''})}><option value="">All categories</option>{CATEGORIES.filter(c=>!c.parentId).map(root=><optgroup key={root.id} label={root.label}><option value={root.id}>{root.label} · all</option>{CATEGORIES.filter(c=>c.parentId===root.id).map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</optgroup>)}</select></label><label>Other seller category label (legacy)<input maxLength={80} value={filters.category} onChange={e=>setFilters({...filters,category:e.target.value,categoryId:''})} placeholder="Exact existing label"/></label>
     <label>Seller EcoVibes ID<input maxLength={41} value={filters.seller} onChange={e=>setFilters({...filters,seller:e.target.value})} placeholder="@their_store"/></label>
     <label>Minimum base price · GHS<input type="number" min="0" max="21474836.47" step=".01" value={filters.min} onChange={e=>setFilters({...filters,min:e.target.value})}/></label>
     <label>Maximum base price · GHS<input type="number" min="0" max="21474836.47" step=".01" value={filters.max} onChange={e=>setFilters({...filters,max:e.target.value})}/></label>
@@ -79,7 +81,7 @@ export default function PublicCatalog({account,online,saver,onOpenWorkspace,onSt
    const variant=item.variants.find(v=>v.id===options[item.id]),available=item.stock>0&&variant?.stock!==0;
    const price=variant?.priceMinor||item.priceMinor;
    return <article className="native-product" key={item.id}><Photo key={item.id+':'+saver} item={item} saver={saver}/><div><small>{sourceName(item.source_type)}</small><h3>{item.name}</h3><p>@{item.sellerEcoId} · {item.category}</p><p>{item.description}</p>{item.location&&<p>Seller location: {item.location}</p>}
-    <strong>{money(price)}{item.variants.length&&!variant?' base price':''}</strong><p>{available?(variant?.stock??item.stock)+' in stock at last check':'Out of stock'}</p>
+    <ProductDetails item={item}/><strong>{money(price)}{item.variants.length&&!variant?' base price':''}</strong><p>{available?(variant?.stock??item.stock)+' in stock at last check':'Out of stock'}</p>
     {item.variants.length>0&&<label>Choose an option<select aria-label={'Choose option for '+item.name} value={options[item.id]||''} onChange={e=>setOptions({...options,[item.id]:e.target.value})}><option value="">Choose option</option>{item.variants.map(v=><option key={v.id} value={v.id} disabled={v.stock===0}>{v.title}{v.priceMinor?' · '+money(v.priceMinor):''}{v.stock===0?' · unavailable':''}</option>)}</select></label>}
     <button type="button" disabled={!online||!available||item.sellerIsCurrentUser||Boolean(item.variants.length&&!variant)} onClick={()=>review(item)}>{item.sellerIsCurrentUser?'Your listing':account?'Review in account bag':'Sign in to review item'}</button>
    </div></article>;
