@@ -26,7 +26,7 @@ flowchart LR
 |---|---|---|
 | Native seller role/profile | PARTIAL — existing account roles/seller_profiles and forms | Progressive storefront/onboarding, independent review and real seller acceptance |
 | Native product create/edit | PARTIAL — existing POST/PATCH, owner checks; synthetic HTTP creates products | Consequential write idempotency/atomic audit coverage, category restrictions, real merchant acceptance |
-| Public catalog | LOCALLY BUILT/PARTIAL — new paged read from actual active records | Exact CI, review/release and real seller-to-buyer acceptance |
+| Public catalog | LOCALLY BUILT/PARTIAL — new paged read from actual active records | Initial exact646-test/PG/browser CI passed; final-head evidence, review/release and real seller-to-buyer acceptance |
 | Categories | PARTIAL — existing free-text category; exact category filtering | Stable hierarchical IDs, attribute schemas and category administration MISSING |
 | Dynamic attributes/tags | MISSING | Additive compatible schemas and publish validation; no fake inferred attributes |
 | Photos/media | PARTIAL/BLOCKED — owned asset references exist | Production bucket/access/retention approval and actual upload/restart/device acceptance; no new storage here |
@@ -56,6 +56,8 @@ Schema relationships and order/payment state machines remain those in [data mode
 ## Experience and privacy
 
 Native products, product-list import and optional existing-store connection are ordered clearly. Device examples are closed by default and cannot silently substitute for an API failure. Existing local drafts/bag persist separately. The catalog does not create an order or reserve stock; explicit review opens the account-owned bag. A selected item beyond the legacy100-product window is resolved by its canonical public ID.
+
+Existing native seller actions now capture owner/epoch, clear old private state immediately, validate returned ownership, abort photo reads on account change and ignore stale CSV/results. Three reproduced isolation defects have regression tests. This does not make existing publishing globally idempotent, certify storage, cancel already-committed writes or prove real Auth acceptance.
 
 Search/filter/paging requests have10-second fetch/body deadlines, cancellation/generation/account guards, offline indicators and no private browser persistence. Same-origin owned photo paths use lazy loading; Saver/Extreme require explicit per-photo load. Remote source images are omitted in this slice, not silently fetched. No camera, contacts, microphone, GPS, file-library or AI access is introduced. Existing upload/privacy drafts retain separate gates.
 

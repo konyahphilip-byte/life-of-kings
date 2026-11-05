@@ -39,7 +39,18 @@ try{
   await page.getByRole('heading',{name:'Your account bag'}).waitFor();await page.getByLabel('Current listing').waitFor();assert.equal(await page.getByLabel('Current listing').inputValue(),Q);assert.equal(lookups,1);
   await page.getByRole('button',{name:'Save item to account bag'}).click();await page.getByText('Account bag saved.',{exact:true}).waitFor();assert.equal(writes,1);assert.equal(cart.items[0].productId,Q);await page.getByRole('button',{name:'Close bag',exact:true}).click();
   checks.push({width,check:'Second-page canonical item opens in the account bag and is saved only after server acknowledgment; no checkout/payment request'});
-  await page.locator('.native-catalog').screenshot({path:output+'/native-catalog-'+width+'.png'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  // A tall element screenshot repositions a sticky header inside its stitched image.
+  // Keep that diagnostic, then capture real viewports without hiding app controls.
+  await page.locator('.native-catalog').screenshot({path:output+'/native-catalog-'+width+'.png'});
+  for(const [target,name] of [['.native-catalog-head','top'],['.native-product','product']]){
+   const box=page.locator(target).first();
+   await box.evaluate(el=>{const header=document.querySelector('.topbar');window.scrollTo({top:scrollY+el.getBoundingClientRect().top-(header?.getBoundingClientRect().height||0)-16,behavior:'instant'});});
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+   const heading=box.getByRole('heading').first();
+   assert(await heading.evaluate(el=>{const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!hit&&(el.contains(hit)||hit.contains(el));}),'Visible catalog heading must not be covered by app controls');
+   await page.screenshot({path:output+'/native-catalog-'+name+'-'+width+'.png'});
+  }
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.locator('.market-design-examples summary').click();assert(await page.locator('.market-design-examples .product-card').first().isVisible());await page.locator('.market-design-examples summary').click();
   checks.push({width,check:'Explicit examples remain accessible and catalog controls fit without horizontal overflow'});
   outage=true;await page.getByRole('button',{name:'Refresh listings',exact:true}).click();await page.getByText(/Synthetic catalog outage/).waitFor();assert.equal(await page.locator('.native-product').count(),0);assert.equal(await page.locator('.market-design-examples .product-card').first().isVisible(),false);
