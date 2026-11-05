@@ -17,6 +17,10 @@ jobs:
           cache: npm
       - run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
       - run: npm run build
+      # The runner's Azure HTTP mirror stalled on font downloads in PR44.
+      # Keep all signed Ubuntu packages and browser dependencies; change only transport/mirror.
+      - name: Use official HTTPS Ubuntu package mirror
+        run: sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
       - run: npx --no-install playwright install --with-deps chromium
       - run: node scripts/test-navigation-browser.mjs
       - run: node scripts/test-cart-browser.mjs

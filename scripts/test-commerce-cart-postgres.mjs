@@ -1,3 +1,5 @@
+import {createPublicationService,productReviewHash} from '../server/commerce/publication.mjs';
+import {createCommerceAuthorizer} from '../server/commerce/actor.mjs';
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {mkdtemp,chmod,readFile,writeFile,rm,realpath} from 'node:fs/promises';
@@ -143,6 +145,41 @@ try{
  check((await admin.query('SELECT stock FROM products WHERE id=$1',[scarce])).rows[0].stock===0,'No oversold or negative stock');
  await admin.query('BEGIN');await admin.query('DROP TABLE commerce_order_commands');await admin.query('ROLLBACK');
  check((await admin.query('SELECT count(*)::int n FROM commerce_order_commands')).rows[0].n===2,'Disposable schema rollback retains commands; production rollback must retain them');
+
+ // Reviewed Shopify publication reuses the canonical product and actor/session boundary.
+ await admin.query("ALTER TABLE products ADD COLUMN image_url text, ADD COLUMN shipping_info text, ADD COLUMN location text, ADD COLUMN source_external_id text");
+ await admin.query(await readFile(join(source,'supabase/migrations/20261105170000_product_publications.sql'),'utf8'));
+ check((await admin.query("SELECT relrowsecurity FROM pg_class WHERE oid='commerce_product_publications'::regclass")).rows[0].relrowsecurity,'Publication receipt RLS enabled');
+ for(const role of['anon','authenticated','service_role']){
+  await admin.query('SET ROLE '+role);
+  await assert.rejects(()=>admin.query('SELECT * FROM commerce_product_publications'),e=>e.code==='42501');await admin.query('RESET ROLE');check(true,role+' has no receipt access');
+ }
+ await assert.rejects(()=>one.query('DELETE FROM commerce_product_publications'),e=>e.code==='42501');check(true,'Runtime cannot delete publication history');
+ await assert.rejects(()=>one.query("UPDATE commerce_product_publications SET published_at=now()"),e=>e.code==='42501');check(true,'Runtime cannot rewrite publication history');
+ const pubProduct=randomUUID(),pubVariant='gid://shopify/ProductVariant/123';
+ await admin.query("INSERT INTO products(id,seller_id,name,description,price_minor,stock,variants_json,status,source_type,source_external_id) VALUES($1,$2,'Synthetic reviewed source','Owned description',22000,4,$3,'paused','shopify','gid://shopify/Product/123')",[pubProduct,S,JSON.stringify([{id:pubVariant,title:'M',priceMinor:22000,stock:4}])]);
+ function publisher(client){
+  const query=(sql,params=[])=>{let n=0;return client.query(sql.replace(/\?/g,()=>'$'+(++n)),params);};
+  const q=async(sql,...params)=>(await query(sql,params)).rows[0],run=async(sql,...params)=>({changes:(await query(sql,params)).rowCount});
+  const transaction=async work=>{await client.query('BEGIN');try{const value=await work();await client.query('COMMIT');return value;}catch(e){await client.query('ROLLBACK');throw e;}};
+  const authorize=createCommerceAuthorizer({q,assert:fail,now:()=>new Date().toISOString(),postgresMode:true}).authorize;
+  return createPublicationService({q,run,transaction,authorize,assert:fail,now:()=>new Date().toISOString(),postgresMode:true,rowProduct:r=>r,event:async(actor,type,id,name)=>{await run('INSERT INTO domain_events(actor_id,aggregate_id,event_type) VALUES(?,?,?)',actor,id,name);await run('INSERT INTO audit_logs(actor_id,target_id,action) VALUES(?,?,?)',actor,id,name);},preparePhoto:async()=>{throw Error('No provider enabled');},discardPhoto:async()=>{}});
+ }
+ const publishOne=publisher(one),publishTwo=publisher(two),snapshotProduct=(await admin.query('SELECT * FROM products WHERE id=$1',[pubProduct])).rows[0];
+ const publication={ownerId:S,clientId:randomUUID(),reviewHash:productReviewHash(snapshotProduct),categoryId:'fashion.clothing',categoryVersion:1,attributes:{condition:'new'},variantStock:[{id:pubVariant,stock:2}],fulfillmentType:'own_inventory',location:'Accra',shippingInfo:'Free pickup',confirmedSupply:true,copyPhoto:false,mediaConsent:false};
+ await assert.rejects(()=>publishOne(ctx(A),pubProduct,{...publication,ownerId:A}),e=>e.status===403);check(true,'Publication rechecks actor seller membership inside transaction');
+ const published=await Promise.all([publishOne(ctx(S),pubProduct,publication),publishTwo(ctx(S),pubProduct,publication)]);
+ check(published.filter(p=>p.replayed).length===1&&published.every(p=>p.currentStatus==='active'),'Concurrent identical publication returns one new and one replayed receipt');
+ check((await admin.query('SELECT count(*)::int n FROM commerce_product_publications')).rows[0].n===1,'Concurrent publication persists one immutable receipt');
+ check((await admin.query("SELECT count(*)::int n FROM domain_events WHERE event_type='SHOPIFY_PRODUCT_PUBLISHED'")).rows[0].n===1,'Concurrent publication persists one authoritative event');
+ check((await admin.query('SELECT stock FROM products WHERE id=$1',[pubProduct])).rows[0].stock===2,'Published product uses merchant allocated stock');
+ await assert.rejects(()=>publishOne(ctx(S),pubProduct,{...publication,location:'Tema'}),e=>e.status===409);check(true,'Published request cannot change when retried');
+ const retryProduct=randomUUID();await admin.query("INSERT INTO products(id,seller_id,name,price_minor,stock,variants_json,status,source_type) VALUES($1,$2,'Audit rollback',22000,4,$3,'paused','shopify')",[retryProduct,S,JSON.stringify([{id:pubVariant,title:'M',priceMinor:22000,stock:4}])]);
+ const retryBody={...publication,clientId:randomUUID(),reviewHash:productReviewHash((await admin.query('SELECT * FROM products WHERE id=$1',[retryProduct])).rows[0])};
+ await admin.query("ALTER TABLE audit_logs ADD CONSTRAINT pub_audit_failure CHECK(action<>'SHOPIFY_PRODUCT_PUBLISHED') NOT VALID");
+ await assert.rejects(()=>publishOne(ctx(S),retryProduct,retryBody));await admin.query('ALTER TABLE audit_logs DROP CONSTRAINT pub_audit_failure');
+ check((await admin.query('SELECT status FROM products WHERE id=$1',[retryProduct])).rows[0].status==='paused'&&(await admin.query('SELECT count(*)::int n FROM commerce_product_publications')).rows[0].n===1,'Audit failure rolls back publication, allocation and receipt');
+ await admin.query('DELETE FROM sessions WHERE user_id=$1',[S]);await assert.rejects(()=>publishOne(ctx(S),pubProduct,publication),e=>e.status===401);check(true,'Revoked session cannot replay a publication receipt');
 }catch(e){failure=e.stack||String(e);process.exitCode=1;}
 finally{
  for(const c of clients)await c.end().catch(()=>{});

@@ -1,5 +1,9 @@
 import { createServer } from "node:http";
 import { normalizeOrderItems } from "./commerce/order-input.mjs";
+import {createMediaStorage,boundedBytes,imageSignature} from './media-store.mjs';
+import {createCommerceAuthorizer} from './commerce/actor.mjs';
+import {SHOPIFY_PRODUCTS_QUERY,SHOPIFY_SELECTED_QUERY,selectedShopifyIds,shopifyImageUrl,saveShopifyDrafts} from './commerce/shopify-import.mjs';
+import {createPublicationService,productReviewHash,PUBLICATION_VERSION,PUBLICATION_SQLITE_SCHEMA} from './commerce/publication.mjs';
 import {createCatalog} from "./commerce/catalog.mjs";
 import {CLASSIFICATION_VERSION,CLASSIFICATION_COLUMNS,productClassification,updatedClassification,publicClassification,saveClassification} from './commerce/classification.mjs';
 import {createCartService,CART_SQLITE_SCHEMA,CART_VERSION} from "./commerce/cart.mjs";
@@ -195,6 +199,7 @@ if (!postgresMode) {
   db.exec(FRIENDS_SQLITE_SCHEMA);
   db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
   db.exec(CART_SQLITE_SCHEMA);
+  db.exec(PUBLICATION_SQLITE_SCHEMA);
 }
 
 const now = () => new Date().toISOString();
@@ -305,49 +310,29 @@ function mediaStorageConfig() {
     bucket: process.env.STORAGE_BUCKET || "ecovibes-media",
   };
 }
-function mediaObjectUrl(config, assetId) {
-  return `${config.root}/object/${encodeURIComponent(config.bucket)}/${encodeURIComponent(assetId)}`;
+const mediaStorage=createMediaStorage({config:mediaStorageConfig,isProduction,localRoot:resolve(root,'server/data/social-media')});
+const storeMediaAsset=(id,bytes,mime)=>mediaStorage.put(id,bytes,mime);
+const loadMediaAsset=id=>mediaStorage.read(id);
+const removeMediaAsset=id=>mediaStorage.remove(id);
+async function prepareShopifyPhoto(ctx,product,key){
+ const source=shopifyImageUrl(product.image_url);assert(source,400,'product_photo_missing','Choose a product with an approved Shopify photo or publish without a photo.');
+ const h=key.slice(0,32).split('');h[12]='4';h[16]='8';const hex=h.join(''),assetId=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-'),url='/social/assets/'+assetId;
+ const existing=await q('SELECT id,owner_id FROM media_assets WHERE id=?',assetId);
+ if(existing){assert(existing.owner_id===ctx.user.id,409,'media_conflict','Reopen the product review.');await loadMediaAsset(assetId);return {id:assetId,url,created:false};}
+ let response,bytes,mime;
+ try{response=await fetch(source,{redirect:'error',signal:AbortSignal.timeout(8000)});assert(response.ok,502,'source_photo_unavailable','The Shopify photo could not be retrieved.');mime=(response.headers.get('content-type')||'').split(';')[0].toLowerCase();bytes=await boundedBytes(response,8*1024*1024);}catch{fault(502,'source_photo_unavailable','The Shopify photo could not be retrieved within the permitted limits.');}
+ assert(imageSignature(bytes,mime),400,'invalid_product_image','The Shopify photo is not a supported JPG, PNG or WebP image.');
+ await storeMediaAsset(assetId,bytes,mime);
+ await run('INSERT INTO media_assets(id,owner_id,mime_type,byte_size,created_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING',assetId,ctx.user.id,mime,bytes.length,now());
+ const saved=await q('SELECT owner_id FROM media_assets WHERE id=?',assetId);assert(saved?.owner_id===ctx.user.id,409,'media_conflict','The saved photo could not be confirmed.');
+ return {id:assetId,url,created:true};
 }
-async function storeMediaAsset(assetId, bytes, mime) {
-  const config = mediaStorageConfig();
-  if (!config) {
-    assert(!isProduction, 503, "media_storage_unavailable", "Configure Supabase Storage before accepting uploads.");
-    const dir = resolve(root, "server/data/social-media");
-    mkdirSync(dir, { recursive: true });
-    await writeFile(resolve(dir, assetId), bytes, { flag: "wx", mode: 0o600 });
-    return;
-  }
-  const response = await fetch(mediaObjectUrl(config, assetId), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.key}`,
-      apikey: config.key,
-      "Content-Type": mime,
-      "x-upsert": "false",
-    },
-    body: bytes,
-  });
-  assert(response.ok, 502, "media_storage_failed", "The media provider could not save this upload.");
-}
-async function removeMediaAsset(assetId) {
-  const config = mediaStorageConfig();
-  if (!config) {
-    await unlink(resolve(root, "server/data/social-media", assetId)).catch(() => undefined);
-    return;
-  }
-  await fetch(mediaObjectUrl(config, assetId), {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${config.key}`, apikey: config.key },
-  }).catch(() => undefined);
-}
-async function loadMediaAsset(assetId) {
-  const config = mediaStorageConfig();
-  if (!config) return await readFile(resolve(root, "server/data/social-media", assetId));
-  const response = await fetch(mediaObjectUrl(config, assetId), {
-    headers: { Authorization: `Bearer ${config.key}`, apikey: config.key },
-  });
-  assert(response.ok, 404, "asset_not_found", "Media is no longer available.");
-  return Buffer.from(await response.arrayBuffer());
+async function discardPublicationPhoto(ctx,photo){
+ await transaction(async()=>{
+  if(postgresMode)await q('SELECT id FROM users WHERE id=? FOR UPDATE',ctx.user.id);
+  const used=await q("SELECT (EXISTS(SELECT 1 FROM products WHERE image_url=? AND status!='removed') OR EXISTS(SELECT 1 FROM stories WHERE asset_id=?) OR EXISTS(SELECT 1 FROM reels WHERE asset_id=?)) AS used",photo.url,photo.id,photo.id);if(used?.used)return;
+  await removeMediaAsset(photo.id);await run('DELETE FROM media_assets WHERE id=? AND owner_id=?',photo.id,ctx.user.id);
+ });
 }
 const id = () => randomUUID();
 const liveKitConfigured = Boolean(process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET);
@@ -717,6 +702,7 @@ async function restoreReservedProductStock(item) {
 function rowProduct(row, sellerEcoId) {
   return {
     ...row,
+    reviewHash:productReviewHash(row),
     ...publicClassification(row),
     variants: productVariants(row),
     priceMinor: row.price_minor,
@@ -1123,6 +1109,9 @@ const classificationAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM p
 const publicCatalog=createCatalog({all,assert,publicProduct,now,classificationAvailable,enabled:()=>process.env.ECOVIBES_NATIVE_CATALOG_DISABLED!=='true'});
 const cartAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?",CART_VERSION));
 const accountCart=createCartService({q,all,run,transaction,assert,now,rateLimit,productVariants,writeOrder:writeMarketplaceOrder,getOrder,visibleOrder,postgresMode,available:cartAvailable,enabled:()=>process.env.ECOVIBES_CART_DISABLED!=='true'});
+const commerceAuthorization=createCommerceAuthorizer({q,assert,now,postgresMode});
+const publicationAvailable=classificationAvailable&&cartAvailable&&(!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',PUBLICATION_VERSION)));
+const publishReviewedProduct=createPublicationService({q,run,transaction,authorize:commerceAuthorization.authorize,assert,now,event,postgresMode,rowProduct,preparePhoto:prepareShopifyPhoto,discardPhoto:discardPublicationPhoto,available:publicationAvailable,enabled:()=>process.env.ECOVIBES_PUBLISHING_DISABLED!=='true'});
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
 async function route(ctx, req, res, method, path, body, query) {
@@ -1130,6 +1119,8 @@ async function route(ctx, req, res, method, path, body, query) {
     await rateLimit('catalog:'+(ctx.user?.id||hash(req.socket.remoteAddress||'unknown')),120,60000);
     return publicCatalog(ctx,query);
   }
+  const publicationMatch=path.match(/^\/marketplace\/products\/([a-f0-9-]+)\/publish$/);
+  if(method==='POST'&&publicationMatch){await rateLimit('publish:'+(ctx.user?.id||'anonymous'),20,60000);return publishReviewedProduct(ctx,publicationMatch[1],body);}
   if(path==='/marketplace/cart'||path.startsWith('/marketplace/cart/'))return accountCart.route(ctx,method,path,body,query);
   if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {
@@ -1475,6 +1466,12 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "POST" && path === "/connectors/shopify/sync") {
     await requireRole(ctx, "seller");
+    await rateLimit('shopify-import:'+ctx.user.id,10,60000);
+    assert(publicationAvailable,503,'publication_unavailable','Store draft review is not available yet. No products were imported.');
+    assert(body.ownerId===undefined||body.ownerId===ctx.user.id,409,'account_changed','Your account changed. Reopen the store importer.');
+    assert(Object.keys(body).every(k=>['ownerId','connectionId','productIds'].includes(k)),400,'invalid_import','Use the current store import form.');
+    let selected;try{selected=selectedShopifyIds(body.productIds);}catch{fault(400,'invalid_import','Choose one to 25 distinct Shopify product IDs.');}
+    await transaction(()=>commerceAuthorization.authorize(ctx,'seller'));
     const connection = await q("SELECT * FROM store_connections WHERE id=? AND seller_id=? AND platform='shopify' AND status='active'", String(body.connectionId || ""), ctx.user.id);
     assert(connection, 404, "store_not_found", "Connected store not found.");
     let accessToken = decryptSecret(connection.encrypted_access_token), refreshToken = decryptSecret(connection.encrypted_refresh_token);
@@ -1486,30 +1483,17 @@ async function route(ctx, req, res, method, path, body, query) {
       accessToken = credentials.access_token; refreshToken = credentials.refresh_token;
       await run("UPDATE store_connections SET encrypted_access_token=?,encrypted_refresh_token=?,access_token_expires_at=?,refresh_token_expires_at=?,updated_at=? WHERE id=?", encryptSecret(accessToken), encryptSecret(refreshToken), new Date(Date.now() + Number(credentials.expires_in || 0) * 1000).toISOString(), new Date(Date.now() + Number(credentials.refresh_token_expires_in || 0) * 1000).toISOString(), now(), connection.id);
     }
-    const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-    let cursor = null, imported = 0, pages = 0;
-    do {
-      const response = await fetch(`https://${connection.shop_domain}/admin/api/${apiVersion}/graphql.json`, { method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken }, body: JSON.stringify({ query: "query Products($after:String){shop{currencyCode} products(first:50,after:$after){edges{cursor node{id title descriptionHtml productType featuredImage{url} variants(first:100){edges{node{id title price inventoryQuantity selectedOptions{name value}}}}} } pageInfo{hasNextPage endCursor}}}", variables: { after: cursor } }) });
-      const result = await response.json();
-      assert(response.ok && !result.errors, 502, "shopify_sync_failed", "Shopify product import failed.");
-      assert(result.data.shop.currencyCode === "GHS", 422, "shop_currency_unsupported", "Set the Shopify store currency to GHS before importing prices into EcoVibes.");
-      const connectionData = result.data.products;
-      for (const edge of connectionData.edges) {
-        const item = edge.node, variant = item.variants.edges[0]?.node;
-        const price = Number(variant?.price || 0), stock = Number(variant?.inventoryQuantity || 0);
-        if (!item.title || !Number.isFinite(price) || price <= 0) continue;
-        const productId = id(), stamp = now(), sourceId = item.id;
-        const importedVariants = normalizeVariants(item.variants.edges.map(({node})=>({id:node.id,title:node.title,price:node.price,stock:node.inventoryQuantity,options:node.selectedOptions})));
-        const productStock = importedVariants.length && importedVariants.every((item) => item.stock !== null)
-          ? importedVariants.reduce((sum, item) => sum + item.stock, 0)
-          : Math.max(0, stock);
-        await run("INSERT INTO products(id,seller_id,name,description,category,price_minor,cost_minor,stock,variants_json,fulfillment_type,supplier_name,shipping_info,location,image_url,source_type,source_url,source_external_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,NULL,? ,?,'own_inventory',NULL,NULL,NULL,?,'shopify',?,?, 'paused',?,?) ON CONFLICT(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL DO UPDATE SET name=excluded.name,description=excluded.description,category=excluded.category,price_minor=excluded.price_minor,stock=excluded.stock,variants_json=excluded.variants_json,image_url=excluded.image_url,source_url=excluded.source_url,updated_at=excluded.updated_at", productId, ctx.user.id, item.title.slice(0, 100), String(item.descriptionHtml || "").replace(/<[^>]*>/g, " ").slice(0, 3000), String(item.productType || "Imported").slice(0, 80), Math.round(price * 100), productStock, JSON.stringify(importedVariants), item.featuredImage?.url || null, `https://${connection.shop_domain}/admin/products/${sourceId.split("/").pop()}`, sourceId, stamp, stamp);
-        imported++;
-      }
-      cursor = connectionData.pageInfo.endCursor; pages++;
-    } while (connectionData.pageInfo.hasNextPage && pages < 4);
-    await run("UPDATE store_connections SET last_synced_at=?,updated_at=? WHERE id=?", now(), now(), connection.id);
-    return { imported, status: "review_required", message: "Imported products are paused until you review and publish them." };
+    const apiVersion=process.env.SHOPIFY_API_VERSION||'2026-07',items=[],cursors=new Set();let cursor=null,hasMore=false,pages=0;
+    do{
+      let result;
+      try{const response=await fetch('https://'+connection.shop_domain+'/admin/api/'+apiVersion+'/graphql.json',{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),headers:{'Content-Type':'application/json','X-Shopify-Access-Token':accessToken},body:JSON.stringify({query:selected?SHOPIFY_SELECTED_QUERY:SHOPIFY_PRODUCTS_QUERY,variables:selected?{ids:selected}:{after:cursor}})});const bytes=await boundedBytes(response,2*1024*1024);result=JSON.parse(bytes.toString('utf8'));assert(response.ok&&!result.errors,502,'shopify_sync_failed','Shopify product import failed.');}catch{fault(502,'shopify_sync_failed','The Shopify source read could not be confirmed. No draft changes were saved.');}
+      assert(result.data?.shop?.currencyCode==='GHS',422,'shop_currency_unsupported','This pilot requires GHS source prices. No currency conversion has been applied.');
+      if(selected){assert(Array.isArray(result.data.nodes)&&result.data.nodes.length===selected.length&&result.data.nodes.every((node,index)=>node===null||node.id===selected[index]),502,'shopify_sync_failed','Selected Shopify products could not be confirmed.');items.push(...result.data.nodes);hasMore=false;}
+      else{const page=result.data?.products;assert(Array.isArray(page?.edges)&&page.edges.length<=50&&typeof page.pageInfo?.hasNextPage==='boolean',502,'shopify_sync_failed','Shopify returned an incomplete product page.');items.push(...page.edges.map(e=>e.node));hasMore=page.pageInfo.hasNextPage;cursor=page.pageInfo.endCursor;assert(!hasMore||typeof cursor==='string'&&cursor.length<=1000&&!cursors.has(cursor),502,'shopify_sync_failed','Shopify pagination could not be confirmed.');if(cursor)cursors.add(cursor);}
+      pages++;
+    }while(hasMore&&pages<4);
+    const result=await saveShopifyDrafts({items,connection,ctx,q,run,transaction,authorize:commerceAuthorization.authorize,assert,now,id,event,postgresMode});
+    return {...result,hasMore,nextCursor:hasMore?cursor:null,message:'Saved paused drafts. Review the product, availability, fulfillment and photo choice before publishing.'};
   }
   if (method === "POST" && /^\/marketplace\/orders\/[a-f0-9-]+\/pay$/.test(path)) {
     assert((process.env.PAYSTACK_SECRET_KEY || "").startsWith("sk_test_"), 503, "test_provider_unavailable", "Paystack test mode is not configured on the API host.");
@@ -1769,6 +1753,14 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "GET" && path === "/media/status")
     return { configured: liveKitConfigured, privateCallsConfigured: false, serverUrl: liveKitConfigured ? liveKitClientUrl : null };
+  // Public catalog photos follow the same current seller eligibility as discovery.
+  // Unpublished and unrelated private assets remain behind their existing gates.
+  const publicProductAsset=path.match(/^\/social\/assets\/([a-f0-9-]+)$/);
+  if(method==='GET'&&publicProductAsset){
+    const asset=await q("SELECT a.* FROM media_assets a WHERE a.id=? AND EXISTS(SELECT 1 FROM products p JOIN users u ON u.id=p.seller_id WHERE p.image_url=? AND p.status='active' AND u.status='active' AND EXISTS(SELECT 1 FROM roles r WHERE r.user_id=u.id AND r.role='seller'))",publicProductAsset[1],path);
+    if(asset){const file=await loadMediaAsset(asset.id);res.statusCode=200;res.setHeader('Content-Type',asset.mime_type);res.setHeader('Content-Length',file.length);res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');res.end(file);return {__sent:true};}
+    assert(ctx.user,404,'asset_not_found','Media is no longer available.');
+  }
   assert(
     ctx.user,
     401,
@@ -1937,20 +1929,23 @@ async function route(ctx, req, res, method, path, body, query) {
   if (method === "GET" && assetMatch) {
     const imagePath = `/social/assets/${assetMatch[1]}`;
     const viewerId = ctx.user?.id || "";
-    const asset = await q("SELECT a.* FROM media_assets a WHERE a.id=? AND (EXISTS (SELECT 1 FROM stories s WHERE s.asset_id=a.id AND s.expires_at>? AND (s.visibility='public' OR s.author_id=? OR EXISTS (SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id))) OR EXISTS (SELECT 1 FROM reels r WHERE r.asset_id=a.id AND r.status='active') OR EXISTS (SELECT 1 FROM products p WHERE p.image_url=? AND p.status='active'))", assetMatch[1], now(), viewerId, viewerId, imagePath);
+    const asset = await q("SELECT a.* FROM media_assets a WHERE a.id=? AND (EXISTS (SELECT 1 FROM stories s WHERE s.asset_id=a.id AND s.expires_at>? AND (s.visibility='public' OR s.author_id=? OR EXISTS (SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id))) OR EXISTS (SELECT 1 FROM reels r WHERE r.asset_id=a.id AND r.status='active') OR EXISTS (SELECT 1 FROM products p JOIN users u ON u.id=p.seller_id WHERE p.image_url=? AND p.status='active' AND u.status='active' AND EXISTS(SELECT 1 FROM roles rr WHERE rr.user_id=u.id AND rr.role='seller')))", assetMatch[1], now(), viewerId, viewerId, imagePath);
     assert(asset, 404, "asset_not_found", "Media is no longer available.");
     const file = await loadMediaAsset(asset.id);
     res.statusCode = 200; res.setHeader("Content-Type", asset.mime_type); res.setHeader("Content-Length", file.length); res.setHeader("Cache-Control", "private, no-store"); res.end(file);
     return { __sent: true };
   }
   if (method === "DELETE" && assetMatch) {
+   return transaction(async()=>{
+    if(postgresMode)await q('SELECT id FROM users WHERE id=? FOR UPDATE',ctx.user.id);
     const asset = await q("SELECT * FROM media_assets WHERE id=? AND owner_id=?", assetMatch[1], ctx.user.id);
     assert(asset, 404, "asset_not_found", "Media asset not found.");
     const references = await q("SELECT (EXISTS(SELECT 1 FROM stories WHERE asset_id=?) OR EXISTS(SELECT 1 FROM reels WHERE asset_id=?) OR EXISTS(SELECT 1 FROM products WHERE image_url=? AND status!='removed')) AS used", asset.id, asset.id, `/social/assets/${asset.id}`);
     assert(!references?.used, 409, "media_in_use", "Remove the media from its listing or post before deleting it.");
-    await run("DELETE FROM media_assets WHERE id=? AND owner_id=?", asset.id, ctx.user.id);
     await removeMediaAsset(asset.id);
+    await run("DELETE FROM media_assets WHERE id=? AND owner_id=?", asset.id, ctx.user.id);
     return { deleted: true };
+   });
   }
   if (method === "POST" && path === "/social/assets") {
     const mime = body.mimeType;
@@ -2382,6 +2377,7 @@ async function route(ctx, req, res, method, path, body, query) {
       "Product not found.",
     );
     await requireRole(ctx,'seller');
+    assert(!(product.source_type==='shopify'&&body.status==='active'&&product.status!=='active'),409,'review_required','Use Review and publish for an imported product.');
     const classification=updatedClassification(body,product,assert,classificationAvailable);
     if(body.status!==undefined)assert(['active','paused','removed'].includes(body.status),400,'invalid_status','Invalid product status.');
     if (body.stock !== undefined)

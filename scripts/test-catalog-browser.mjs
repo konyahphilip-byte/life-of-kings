@@ -15,6 +15,7 @@ try{
  for(const width of[1280,390]){
   const context=await browser.newContext({viewport:{width,height:900},serviceWorkers:'block',reducedMotion:'reduce'});await context.routeWebSocket('**/*',s=>s.close());
   const sellerId='55555555-5555-4555-8555-555555555555';
+  let reviewingImport=false,reviewedImport=null;const imported={...listing("77777777-7777-4777-8777-777777777777","Synthetic Shopify tee",22000),seller_id:sellerId,status:"paused",reviewHash:"a".repeat(64),source_type:"shopify",variants:[{id:"gid://shopify/ProductVariant/1",title:"M",priceMinor:22000,stock:4}]};
   let sellerMode=false,published=null,outage=false,writes=0,lookups=0,cart={ownerId,revision:0,items:[],totalMinor:0,quoteId:null,currency:'GHS',canCheckout:false,lastOrderId:null};
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());if(url.origin!==origin)return route.abort();
@@ -26,7 +27,8 @@ try{
     if(published){items=[{...published,sellerIsCurrentUser:sellerMode}];nextCursor=null;if(url.searchParams.has('categoryId'))assert.equal(url.searchParams.get('categoryId'),'electronics.phones');}
     return reply({items,nextCursor,checkedAt:'2026-11-05T10:00:00.000Z',currency:'GHS'});
    }
-   if(url.pathname==='/api/v1/marketplace/products'){
+   if(url.pathname==='/api/v1/marketplace/products/'+imported.id+'/publish'){reviewedImport=request.postDataJSON();assert.equal(reviewedImport.ownerId,sellerId);return reply({ownerId:sellerId,productId:imported.id,publicationId:reviewedImport.clientId,publishedAt:'2026-11-05T18:00:00Z',currentStatus:'active'});}
+   if(url.pathname==='/api/v1/marketplace/products'){if(reviewingImport&&request.method()==='GET')return reply([imported]);
     if(request.method()==='POST'){const body=request.postDataJSON();assert(sellerMode);assert.equal(body.categoryId,'electronics.phones');assert.equal(body.categoryVersion,1);assert.deepEqual(body.attributes,{condition:'used',storageGb:128});published={...listing('66666666-6666-4666-8666-666666666666',body.name,body.priceMinor),...body,category:'Phones',seller_id:sellerId};return reply(published);}
     return reply(url.searchParams.has('mine')?(published?[published]:[]):[one]);
    }
@@ -69,6 +71,13 @@ try{
   await page.getByText('Seller-entered details',{exact:true}).waitFor();assert.equal(await page.getByText('128',{exact:true}).count(),1);assert.equal(await page.getByText('used',{exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'Review in account bag',exact:true}).count(),1);
   await page.locator('.native-product').first().evaluate(el=>window.scrollTo({top:scrollY+el.getBoundingClientRect().top-84,behavior:'instant'}));await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await page.screenshot({path:output+'/category-buyer-'+width+'.png'});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);checks.push({width,check:'Switched buyer filters saved category details without a verification or payment claim'});
+
+  sellerMode=true;reviewingImport=true;await page.reload();await page.getByRole('tab',{name:/My listings/}).click();await page.getByRole('button',{name:'Review and publish Synthetic Shopify tee',exact:true}).click();
+  const review=page.getByRole('region',{name:'Review Shopify product'});await review.getByLabel('Category',{exact:true}).selectOption('fashion.clothing');await review.getByLabel('Condition',{exact:true}).selectOption('new');
+  assert.equal(await review.getByLabel('EcoVibes quantity M').inputValue(),'0');await review.getByLabel('EcoVibes quantity M').fill('2');await review.getByLabel('Pickup or dispatch area').fill('Accra');await review.getByLabel('Pickup/delivery terms and costs').fill('Free pickup; delivery agreed separately');await review.getByLabel(/I have confirmed supply/).check();
+  await review.getByRole('heading').evaluate(el=>window.scrollTo({top:scrollY+el.getBoundingClientRect().top-100,behavior:'instant'}));await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  await page.screenshot({path:output+'/shopify-review-'+width+'.png'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));checks.push({width,check:'Imported draft review fits viewport with zero initial allocation and separate supply/photo choices'});
+  await review.getByRole('button',{name:'Publish reviewed listing',exact:true}).click();await page.getByText('Listing published to EcoVibes. No payment has been taken.',{exact:true}).waitFor();assert.equal(reviewedImport.variantStock[0].stock,2);assert.equal(reviewedImport.copyPhoto,false);assert.equal(reviewedImport.mediaConsent,false);assert.equal(Object.keys(reviewedImport).length,13);assert.deepEqual(errors,[]);checks.push({width,check:'Reviewed publication submits captured owner, immutable key and explicit allocation; acknowledgment alone closes review'});
   await context.close();
  }
 }catch(e){failure={name:e.name,message:e.message};process.exitCode=1;}

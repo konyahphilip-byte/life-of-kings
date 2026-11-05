@@ -1,0 +1,8 @@
+import {describe,it,expect} from 'vitest';
+import {shopifyMinor,normalizeShopifyProduct} from './shopify-import.mjs';
+const product={id:'gid://shopify/Product/1',title:'Synthetic tee',descriptionHtml:'<p>Seller text</p>',productType:'T-Shirt',status:'ACTIVE',variants:{edges:[{node:{id:'gid://shopify/ProductVariant/2',title:'M',price:'220.00',inventoryQuantity:3,selectedOptions:[{name:'Size',value:'M'}]}}],pageInfo:{hasNextPage:false}},featuredImage:{url:'https://cdn.shopify.com/s/files/1/test.jpg'}};
+describe('Shopify source boundaries',()=>{
+ it('converts decimal GHS without floating-point rounding or unsupported precision',()=>{expect(shopifyMinor('220.00')).toBe(22000);expect(shopifyMinor('1.01')).toBe(101);for(const v of['0','-1','1.001','1e3','Infinity','21474836.48'])expect(()=>shopifyMinor(v)).toThrow();});
+ it('preserves canonical source variants and does not infer inventory for null quantities',()=>{const p=normalizeShopifyProduct(product);expect(p).toMatchObject({priceMinor:22000,stock:3,sourceId:product.id});expect(p.variants[0]).toMatchObject({id:'gid://shopify/ProductVariant/2',stock:3,priceMinor:22000});expect(normalizeShopifyProduct({...product,variants:{...product.variants,edges:[{node:{...product.variants.edges[0].node,inventoryQuantity:null}}]}}).stock).toBe(0);});
+ it('rejects incomplete, inactive and malformed source records before persistence',()=>{for(const p of[{...product,status:'DRAFT'},{...product,variants:{...product.variants,pageInfo:{hasNextPage:true}}},{...product,id:'not-a-gid'},{...product,featuredImage:{url:'https://private.example/image.jpg'}}])expect(()=>normalizeShopifyProduct(p)).toThrow();});
+});
