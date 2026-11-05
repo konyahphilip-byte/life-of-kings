@@ -62,6 +62,12 @@ try{
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${hash}: horizontal overflow at ${width}`);
    if(hash!=='settings')await verifyChaleHeader(page);
    if(hash==='home'){
+    const storyHeading=await page.locator('.social-strip-heading>div').evaluate(element=>{
+     const eyebrow=element.querySelector('.eyebrow').getBoundingClientRect(),title=element.querySelector('h2').getBoundingClientRect();
+     return {eyebrowBottom:eyebrow.bottom,titleTop:title.top};
+    });
+    assert(storyHeading.titleTop>=storyHeading.eyebrowBottom+3,'Stories heading collides with its eyebrow');
+    checks.push({width,check:'Stories heading has a separate line and clear spacing below Your people'});
     const posts=await page.locator('.post-card').evaluateAll(elements=>elements.filter(e=>e.querySelector('.post-art')).map(e=>{
      const text=e.querySelector('.post-text').getBoundingClientRect(),art=e.querySelector('.post-art').getBoundingClientRect(),actions=e.querySelector('.post-actions').getBoundingClientRect();
      return {textBottom:text.bottom,artTop:art.top,artBottom:art.bottom,actionsTop:actions.top,position:getComputedStyle(e.querySelector('.post-art')).position};

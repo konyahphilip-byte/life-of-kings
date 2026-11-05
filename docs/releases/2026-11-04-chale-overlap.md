@@ -12,7 +12,7 @@ Reused compact/hidden preferences, chat left/right placement, Settings restore r
 
 App.tsx/App.identity.test.tsx; assistant/Sidekick.tsx,Sidekick.test.tsx,sidekick.css; reused ChalePersonalization.tsx,Sidekick.display.test.tsx,chale-ui.ts,chale-ui.test.ts; scripts/test-navigation-browser.mjs. Also src/styles.css,2scoped selectors only. Current screen recovery, optional signup purposes, public feed and server behavior remain unchanged.
 
-The5November screenshot review also found an existing global .art-leaf rule intended for Explore matching a feed image. Its absolute positioning and right offset escaped into the post text. Only those2placement selectors in src/styles.css are now scoped to .feature-art>.art-leaf; the feed retains its relative, full-width media block. Browser assertions require post text→artwork→actions without overlap at1280/390.
+The5November screenshot review also found an existing global .art-leaf rule intended for Explore matching a feed image. Its absolute positioning and right offset escaped into the post text. Only those2placement selectors in src/styles.css are now scoped to .feature-art>.art-leaf; the feed retains its relative, full-width media block. Browser assertions require post text→artwork→actions without overlap at1280/390. Final screenshot inspection also exposed adjacent Your people/Stories headings with no separation: social.css now gives that title block separate rows with4px spacing and wraps the outer status row. Two additional browser checks require that spacing. No Story data/API behavior changes.
 
 ## Tests and preserved failures
 
