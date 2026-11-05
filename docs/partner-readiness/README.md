@@ -4,6 +4,16 @@ Authoritative current report — 5 November 2026. The [master architecture direc
 
 Deployment and acceptance are separate. The [architecture implementation matrix](../architecture/implementation-matrix.md) uses the founder's WORKING/PARTIAL/BROKEN/MISSING/BLOCKED/NOT VERIFIED vocabulary with explicit evidence scope. No whole-platform completion or launch certification is implied.
 
+## Marketplace 5.0 native catalog increment — 5 November 2026
+
+LOCALLY BUILT in draft PR42, stacked on unmerged PR41/555addb. Native listings are now the default; public discovery uses saved products, safe fields, literal filters and keyset pagination. Account-bag review resolves selected products beyond the first window. Device examples stay explicit. Reproduced seller account-switch privacy defects are repaired with immediate private-state clearing, captured-owner request guards and aborted photo reads. No migration, fee, paid service, external-store mutation or real payment.
+
+Exact candidate81b2fea/treea5af6d34 CI42016659092/42016659095 passed646/50, build1689, audit0/security8, all HTTP workflows including catalog15/cart21/order23, PostgreSQL18.6 cart/catalog71/message84, and55 built-browser checks at1280/390. Actual logs and checksum-verified artifact were read. Tall locator screenshots put the sticky header inside their stitched capture; browser evidence now also captures actual top/product viewports and checks heading visibility. Latest-head checks remain required in PR42/evidence. No hosted/physical merchant acceptance is inferred.
+
+Earlier full642/49 and focused38 passed; later focused34/39 had5 failures, including existing5s App/ServerCart timeouts and subsequent duplicate DOM. Seller account privacy RED0/3 then3/3 passed. All failures remain recorded; QA001 cause is undiagnosed and no deadlines/assertions/workers/isolation were weakened. Milestone1 is PARTIAL: taxonomy/attributes, publication/media/storefront, real merchant and parent migration/review/release gates remain. Independent review and explicit merge/deployment approval are required.145 protected primary source/assets preserved.
+
+[Marketplace audit](../marketplace-5/README.md); [receipt](../releases/2026-11-05-marketplace-native-catalog.md); evidence work/marketplace-native-20261105.
+
 ## Current production
 
 Last approved source is PR39 main `56e0c2ebf83dfc2c89fccd0bc552691e4ae42b9b`, tree `e957b8480f63014d611ac620d24eeb85066fb99a`. Existing Render deployment `dep-dbm05nm1egvs73atcvh0` was live at 5 November 04:16:40 UTC. Free / Frankfurt / one instance / autodeploy off unchanged.

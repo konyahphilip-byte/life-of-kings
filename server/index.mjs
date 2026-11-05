@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { normalizeOrderItems } from "./commerce/order-input.mjs";
+import {createCatalog} from "./commerce/catalog.mjs";
 import {createCartService,CART_SQLITE_SCHEMA,CART_VERSION} from "./commerce/cart.mjs";
 import {createOrderWriter} from "./commerce/orders.mjs";
 import { DatabaseSync } from "node:sqlite";
@@ -1114,11 +1115,16 @@ const chalePublicUpdates = createPublicUpdates();
 const publicTrends = createPublicTrends();
 
 const writeMarketplaceOrder=createOrderWriter({q,all,run,assert,now,id,productVariants,notify,event,getOrder,visibleOrder,postgresMode});
+const publicCatalog=createCatalog({all,assert,publicProduct,now,enabled:()=>process.env.ECOVIBES_NATIVE_CATALOG_DISABLED!=='true'});
 const cartAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?",CART_VERSION));
 const accountCart=createCartService({q,all,run,transaction,assert,now,rateLimit,productVariants,writeOrder:writeMarketplaceOrder,getOrder,visibleOrder,postgresMode,available:cartAvailable,enabled:()=>process.env.ECOVIBES_CART_DISABLED!=='true'});
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
 async function route(ctx, req, res, method, path, body, query) {
+  if(path==='/marketplace/catalog'&&method==='GET'){
+    await rateLimit('catalog:'+(ctx.user?.id||hash(req.socket.remoteAddress||'unknown')),120,60000);
+    return publicCatalog(ctx,query);
+  }
   if(path==='/marketplace/cart'||path.startsWith('/marketplace/cart/'))return accountCart.route(ctx,method,path,body,query);
   if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {
@@ -3126,6 +3132,7 @@ const server = createServer(async (req, res) => {
       (method === "POST" && url.pathname === "/api/v1/ai/chat") ||
       (method === "GET" && url.pathname === "/api/v1/media/status") ||
       (method === "GET" && url.pathname === "/api/v1/marketplace/products") ||
+      (method === "GET" && url.pathname === "/api/v1/marketplace/catalog") ||
       (method === "GET" && url.pathname === "/api/v1/search");
     const providerWebhook = url.pathname === "/api/v1/webhooks/paystack";
     if (ctx.user && !authOpen && !providerWebhook && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {

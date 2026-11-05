@@ -1,3 +1,13 @@
+## Marketplace 5.0 native catalog increment — 5 November 2026
+
+LOCALLY BUILT in draft PR42, stacked on unmerged PR41/555addb. Native listings are now the default; public discovery uses saved products, safe fields, literal filters and keyset pagination. Account-bag review resolves selected products beyond the first window. Device examples stay explicit. Reproduced seller account-switch privacy defects are repaired with immediate private-state clearing, captured-owner request guards and aborted photo reads. No migration, fee, paid service, external-store mutation or real payment.
+
+Exact candidate81b2fea/treea5af6d34 CI42016659092/42016659095 passed646/50, build1689, audit0/security8, all HTTP workflows including catalog15/cart21/order23, PostgreSQL18.6 cart/catalog71/message84, and55 built-browser checks at1280/390. Actual logs and checksum-verified artifact were read. Tall locator screenshots put the sticky header inside their stitched capture; browser evidence now also captures actual top/product viewports and checks heading visibility. Latest-head checks remain required in PR42/evidence. No hosted/physical merchant acceptance is inferred.
+
+Earlier full642/49 and focused38 passed; later focused34/39 had5 failures, including existing5s App/ServerCart timeouts and subsequent duplicate DOM. Seller account privacy RED0/3 then3/3 passed. All failures remain recorded; QA001 cause is undiagnosed and no deadlines/assertions/workers/isolation were weakened. Milestone1 is PARTIAL: taxonomy/attributes, publication/media/storefront, real merchant and parent migration/review/release gates remain. Independent review and explicit merge/deployment approval are required.145 protected primary source/assets preserved.
+
+[Marketplace audit](../marketplace-5/README.md); [receipt](../releases/2026-11-05-marketplace-native-catalog.md); evidence work/marketplace-native-20261105.
+
 ## 5 November - account cart increment locally built
 
 LOCALLY BUILT on codex/commerce-cart-20261105, stacked on draft PR40/e6a0e689; not merged/deployed. Canonical account cart, absolute revisioned updates, immutable checkout requests and per-revision duplicate guard reuse the extracted existing order writer. Current app session/CSRF/actor/seller checks are transaction-bound. Signed-in Bag/catalog review flow preserves separate device previews. Three API-only additive tables are proposed in generated20261105084536 migration, UNAPPLIED; no provider/money activation.

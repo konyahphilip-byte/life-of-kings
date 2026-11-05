@@ -24,6 +24,7 @@ jobs:
       - run: npm run test:payments
       - run: node scripts/test-commerce-orders.mjs
       - run: node scripts/test-commerce-cart.mjs
+      - run: node scripts/test-commerce-catalog.mjs
       - run: npm run test:identity-roles
       - run: npm run test:jobs
       - run: npm run test:support
