@@ -8,6 +8,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createCartService} from '../server/commerce/cart.mjs';
 import {createOrderWriter} from '../server/commerce/orders.mjs';
+import {createCatalog} from '../server/commerce/catalog.mjs';
 const source=fileURLToPath(new URL('..',import.meta.url)),{Client}=createRequire(join(source,'package.json'))('pg');
 assert(process.env.PG_BINDIR,'Set PG_BINDIR to an installed PostgreSQL bin directory; no provider credentials are used.');
 const bin=await realpath(process.env.PG_BINDIR),tmp=await mkdtemp('/tmp/ev-cart-pg-');await chmod(tmp,0o700);
@@ -39,7 +40,8 @@ try{
  await admin.query(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role BYPASSRLS;CREATE ROLE ecovibes_api_runtime LOGIN;
  CREATE TABLE users(id uuid PRIMARY KEY,eco_id text,display_name text,status text);
  CREATE TABLE sessions(token_hash text PRIMARY KEY,user_id uuid REFERENCES users(id),csrf_token text,expires_at timestamptz);
- CREATE TABLE products(id uuid PRIMARY KEY,seller_id uuid REFERENCES users(id),name text,currency text DEFAULT 'GHS',price_minor integer,stock integer,variants_json text DEFAULT '[]',fulfillment_type text DEFAULT 'own_inventory',status text DEFAULT 'active',updated_at timestamptz DEFAULT now());
+ CREATE TABLE products(id uuid PRIMARY KEY,seller_id uuid REFERENCES users(id),name text,description text DEFAULT '',category text DEFAULT 'Testing',source_type text DEFAULT 'direct',currency text DEFAULT 'GHS',price_minor integer,stock integer,variants_json text DEFAULT '[]',fulfillment_type text DEFAULT 'own_inventory',status text DEFAULT 'active',created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
+ CREATE TABLE roles(user_id uuid REFERENCES users(id),role text);
  CREATE TABLE orders(id uuid PRIMARY KEY,buyer_id uuid REFERENCES users(id),total_minor integer,currency text DEFAULT 'GHS',status text DEFAULT 'pending',payment_status text DEFAULT 'unpaid',created_at timestamptz,updated_at timestamptz);
  CREATE TABLE fulfillment_groups(id uuid PRIMARY KEY,order_id uuid REFERENCES orders(id),seller_id uuid REFERENCES users(id),created_at timestamptz,updated_at timestamptz);
  CREATE TABLE order_items(id uuid PRIMARY KEY,order_id uuid REFERENCES orders(id),group_id uuid REFERENCES fulfillment_groups(id),product_id uuid REFERENCES products(id),product_name text,variant_id text,variant_title text,quantity integer,unit_price_minor integer,seller_id uuid REFERENCES users(id));
@@ -48,6 +50,7 @@ try{
  CREATE TABLE notifications(user_id uuid,type text,title text,body text,target_type text,target_id uuid);
  CREATE TABLE ecovibes_schema_version(version text PRIMARY KEY);
  GRANT SELECT,UPDATE ON users,products TO ecovibes_api_runtime;
+ GRANT SELECT ON roles TO ecovibes_api_runtime;
  GRANT SELECT,INSERT,DELETE ON sessions TO ecovibes_api_runtime;
  ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
  CREATE POLICY runtime_session_select ON sessions FOR SELECT TO ecovibes_api_runtime USING(true);
@@ -74,6 +77,17 @@ try{
  for(const id of[A,B,S]){await admin.query("INSERT INTO users VALUES($1,$2,$2,'active')",[id,'synthetic-'+id.slice(0,8)]);await admin.query("INSERT INTO sessions VALUES($1,$2,$3,now()+interval '1 hour')",[token(id),id,'synthetic-'+id]);}
  await admin.query("INSERT INTO products(id,seller_id,name,price_minor,stock) VALUES($1,$2,'Synthetic PG product',1200,20)",[P,S]);
  const one=await connect('ecovibes_api_runtime'),two=await connect('ecovibes_api_runtime'),s1=service(one),s2=service(two);
+ await admin.query("INSERT INTO roles VALUES($1,'seller')",[S]);
+ const listing=randomUUID();await admin.query("INSERT INTO products(id,seller_id,name,price_minor,stock,category) VALUES($1,$2,'100% cotton',1300,4,'Textiles')",[listing,S]);
+ const cat=createCatalog({all:async(sql,...params)=>{let n=0;return(await one.query(sql.replace(/\?/g,()=>'$'+(++n)),params)).rows;},assert:fail,publicProduct:row=>({id:row.id,name:row.name,price:row.price_minor,source:row.source_type}),now:()=>new Date().toISOString()});
+ const browse=query=>cat(ctx(A),new URLSearchParams(query));
+ let first=await browse('limit=1&sort=price_low');check(first.items[0].id===P&&Boolean(first.nextCursor),'PostgreSQL public catalog uses real low-price pagination');
+ const second=await browse('limit=1&sort=price_low&cursor='+first.nextCursor);check(second.items[0].id===listing&&second.nextCursor===null,'PostgreSQL timestamp cursor returns the next canonical product');
+ check((await browse('q=100%25')).items[0].id===listing,'PostgreSQL literal wildcard search is escaped');
+ check((await browse('category=Textiles&minPrice=1250&maxPrice=1350&inStock=1')).items.length===1,'PostgreSQL category, price and stock filters compose');
+ check((await browse('source=direct&seller=synthetic-'+S.slice(0,8))).items.length===2,'PostgreSQL public source and seller filters use saved fields');
+ await admin.query('DELETE FROM roles WHERE user_id=$1',[S]);check((await browse('')).items.length===0,'PostgreSQL catalog hides withdrawn seller membership');await admin.query("INSERT INTO roles VALUES($1,'seller')",[S]);
+ await admin.query("UPDATE users SET status='suspended' WHERE id=$1",[S]);check((await browse('')).items.length===0,'PostgreSQL catalog hides inactive seller stock');await admin.query("UPDATE users SET status='active' WHERE id=$1",[S]);
  await assert.rejects(()=>one.query('SELECT token_hash FROM sessions FOR SHARE'),e=>e.code==='42501');check(true,'Runtime session UPDATE/row-lock remains denied, matching existing grants');
  check(!(await one.query("SELECT has_table_privilege(current_user,'sessions','UPDATE') AS allowed")).rows[0].allowed,'Helper does not add session UPDATE privilege');
  for(const [hash,subject,csrf]of[[token(A),B,'synthetic-'+A],[token(A),A,'wrong-csrf'],[token(B),A,'synthetic-'+A]]){

@@ -50,6 +50,10 @@ describe('server account bag',()=>{
  it('never requests an order while offline',()=>{
   const fetch=vi.fn();vi.stubGlobal('fetch',fetch);render(<ServerCart {...props} online={false}/>);expect(screen.getByText(/Offline — ordering is paused/)).toBeTruthy();expect(fetch).not.toHaveBeenCalled();
  });
+ it('opens a selected canonical listing beyond the initial catalog window',async()=>{
+  const reads:string[]=[];vi.stubGlobal('fetch',vi.fn(async(input:unknown)=>{const url=String(input);reads.push(url);if(url.includes('/marketplace/catalog?'))return Response.json({items:[{id:product,name:'Distant catalog item',priceMinor:1200,stock:10,fulfillment_type:'own_inventory',variants:[]}]});if(path(input).endsWith('/products'))return Response.json([]);return Response.json(cart(A,false));}));
+  render(<ServerCart {...props} selection={{ownerId:A,productId:product}}/>);await screen.findByLabelText('Current listing');expect(reads.some(url=>url.endsWith('/marketplace/catalog?productId='+product))).toBe(true);expect((screen.getByLabelText('Current listing') as HTMLSelectElement).value).toBe(product);
+ });
  it('only chooses current catalog IDs and waits for a saved-cart response',async()=>{
   const writes:unknown[]=[];vi.stubGlobal('fetch',vi.fn(async(input:unknown,init?:RequestInit)=>{
    if(path(input).endsWith('/products'))return Response.json([{id:product,name:'Canonical item',priceMinor:1200,stock:10,fulfillment_type:'own_inventory',variants:[]}]);

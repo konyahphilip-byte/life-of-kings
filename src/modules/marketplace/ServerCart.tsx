@@ -34,7 +34,7 @@ export default function ServerCart({ownerId,csrfToken,online,selection,onOpenOrd
  useEffect(()=>{
   setViewOwner(ownerId);setCart(null);setNotice('');setError('');setUncertain(false);setBusy(false);setCatalog([]);
   live.current=true;lifecycle.current=new AbortController();
-  if(online)void refresh().catch(e=>{if(active())setError(e.message);});
+  if(online)void refresh().then(()=>{if(active()&&selection?.ownerId===ownerId)void browse();}).catch(e=>{if(active())setError(e.message);});
   else setError('You’re offline. Reconnect to check your saved account bag.');
   return()=>{live.current=false;lifecycle.current?.abort();pending.current=null;};
  },[ownerId]);
@@ -44,7 +44,15 @@ export default function ServerCart({ownerId,csrfToken,online,selection,onOpenOrd
   finally{if(active())setBusy(false);}
  }
  async function browse(){
-  await run(async()=>{const value=await request('/marketplace/products');if(!Array.isArray(value)||!value.every(p=>p&&typeof p.id==='string'&&typeof p.name==='string'&&Array.isArray(p.variants)))throw Error('Current listings could not be confirmed.');const current=value.filter(p=>!p.sellerIsCurrentUser&&p.fulfillment_type!=='external_checkout'&&p.stock>0);setCatalog(current);if(!current.length)setNotice('No available listings from other sellers right now. Your saved bag is retained.');});
+  await run(async()=>{let value=await request('/marketplace/products');
+   if(!Array.isArray(value))throw Error('Current listings could not be confirmed.');
+   if(selection?.ownerId===ownerId&&!value.some(p=>p.id===selection.productId)){
+    const selected=await request('/marketplace/catalog?productId='+encodeURIComponent(selection.productId));
+    if(!Array.isArray(selected?.items))throw Error('The selected listing could not be confirmed.');
+    value=[...value,...selected.items];
+   }
+   if(!value.every((p:Product)=>p&&typeof p.id==='string'&&typeof p.name==='string'&&Array.isArray(p.variants)))throw Error('Current listings could not be confirmed.');
+   const current=value.filter((p:Product)=>!p.sellerIsCurrentUser&&p.fulfillment_type!=='external_checkout'&&p.stock>0);setCatalog(current);if(!current.length)setNotice('No available listings from other sellers right now. Your saved bag is retained.');});
  }
  const lines=(value:Cart)=>value.items.map(i=>({productId:i.productId,variantId:i.variantId,quantity:i.quantity}));
  async function save(items:ReturnType<typeof lines>){

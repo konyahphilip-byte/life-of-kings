@@ -4,6 +4,14 @@ Authoritative current report — 5 November 2026. The [master architecture direc
 
 Deployment and acceptance are separate. The [architecture implementation matrix](../architecture/implementation-matrix.md) uses the founder's WORKING/PARTIAL/BROKEN/MISSING/BLOCKED/NOT VERIFIED vocabulary with explicit evidence scope. No whole-platform completion or launch certification is implied.
 
+## Marketplace 5.0 native catalog increment — 5 November 2026
+
+Founder focus is now independent native Marketplace selling. LOCALLY BUILT on codex/marketplace-native-catalog-20261105, stacked on draft41/555addb, not merged/deployed. New bounded public catalog uses existing products/roles/users, canonical source/price/stock and safe projection; main Shop separates real listings from explicit device examples. Product review reuses PR41 cart including selected IDs beyond the initial window. Native Add My Products is primary; optional import/store tools remain separate. No migration, paid service, external-store mutation or real payment.
+
+Local full642/49 and focused38 passed before final deny-switch test/minor refinement; catalogHTTP15, TypeScript/build1689/security8 pass. Missing-module RED, HTTP14 then expected403/actual404 fixture contract, two test-only type failures, preexecution wrapper and premature report-read failures retained. Final focused and exact CI/PostgreSQL/browser evidence are tracked separately; QA001 cause undiagnosed. Milestone1 remains PARTIAL: hierarchy/attributes/category restrictions, safe photo/publication/storefront and real merchant acceptance are open. Parent40/41 review/migration/release and explicit new release approval remain.145 protected primary source/assets unchanged.
+
+[Marketplace audit](marketplace-5/README.md); [receipt](releases/2026-11-05-marketplace-native-catalog.md); evidence work/marketplace-native-20261105.
+
 ## Current production
 
 Last approved source is PR39 main `56e0c2ebf83dfc2c89fccd0bc552691e4ae42b9b`, tree `e957b8480f63014d611ac620d24eeb85066fb99a`. Existing Render deployment `dep-dbm05nm1egvs73atcvh0` was live at 5 November 04:16:40 UTC. Free / Frankfurt / one instance / autodeploy off unchanged.
