@@ -23,6 +23,7 @@ jobs:
       - run: npm run test:providers
       - run: npm run test:payments
       - run: node scripts/test-commerce-orders.mjs
+      - run: node scripts/test-commerce-cart.mjs
       - run: npm run test:identity-roles
       - run: npm run test:jobs
       - run: npm run test:support
@@ -30,7 +31,7 @@ jobs:
       - run: npm run test:chale-work-status
       - run: node scripts/test-direct-messages.mjs
       - run: node scripts/test-public-trends-http.mjs
-      - name: Verify disposable PostgreSQL message receipts
+      - name: Verify disposable PostgreSQL receipts and cart transactions
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends postgresql
@@ -46,3 +47,4 @@ jobs:
           test -x "$PG_BINDIR/postgres"
           "$PG_BINDIR/postgres" --version
           node scripts/test-message-receipts-postgres.mjs
+          node scripts/test-commerce-cart-postgres.mjs

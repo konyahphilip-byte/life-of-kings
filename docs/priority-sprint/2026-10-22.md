@@ -1,3 +1,9 @@
+## 5 November - account cart increment locally built
+
+LOCALLY BUILT on codex/commerce-cart-20261105, stacked on draft PR40/e6a0e689; not merged/deployed. Canonical account cart, absolute revisioned updates, immutable checkout requests and per-revision duplicate guard reuse the extracted existing order writer. Current app session/CSRF/actor/seller checks are transaction-bound. Signed-in Bag/catalog review flow preserves separate device previews. Three API-only additive tables are proposed in generated20261105084536 migration, UNAPPLIED; no provider/money activation.
+
+Draft PR41 is stacked on PR40. Candidatea713522/tree30ed7aa0 exact CI42006534414/42006534388 passed616/47/build1687/audit0/security8/all HTTP including cart21/order23, disposable PostgreSQL18.6 cart64/message84 and47 built-browser checks including6 cart at1280/390. Actual logs read. Narrow session-lock helper respects actual runtime grants. Final stock-rejection UI recovery reproduced3 REDs then passed focused25/25; current source/checks are tracked on PR41. Earlier UI6/8, Home/Depth timeout/worker termination and child-runtime failures retained; QA001 cause undiagnosed. Migration UNAPPLIED, independent review and explicit migration/merge/deploy approval plus real buyer/seller/phone acceptance remain. Production PR39/main56e0c2eb and145 protected source/assets unchanged. Receipt docs/releases/2026-11-05-account-cart.md; evidence work/commerce-cart-20261105.
+
 ## 5 November — master architecture and commerce input repair
 
 LOCALLY BUILT in codex/architecture-commerce-20261105, based released56e0c2eb. Reused PR26's Bag guard/four tests without rebuilding its behavior: no false order acknowledgment or cart clearing. Extracted the current order input boundary with strict bounded validation/overflow protection and consistent product ordering; existing transaction/stock/actor/price rules remain. Added23 real isolated HTTP checks and29 unit checks; no migration.

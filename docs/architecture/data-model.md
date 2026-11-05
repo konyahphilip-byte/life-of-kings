@@ -65,6 +65,14 @@ Current anonymous/authenticated database roles have0 direct readable/writable ta
 
 The first aggregate-grant query guessed an absent ecovibes_api role and failed42704; inspection identified ecovibes_api_runtime and the corrected metadata query succeeded. Nothing was mutated. An initial information-schema FK join yielded a cross product for composite columns; corrected pg_constraint ordinality metadata established the friendship pair. Do not model those false cross pairs.
 
+## Proposed account-cart schema: locally built, not hosted
+
+Generated migration20261105084536 adds commerce_carts(user_id primary/FK,revision,updated_at), commerce_cart_items(user_id/product_id/variant_key composite primary key,quantity), and commerce_order_commands(user_id/client_id primary key, unique user_id/cart_revision,request_hash,order_id,created_at). These reference existing users/products/orders rather than replace them. The44-table hosted inventory above is unchanged.
+
+Cart updates and order creation share one transaction; current actor/session/sellers and cart/product locks protect admission, revisions and reservations. Commands are immutable to the runtime role(SELECT/INSERT only). Anonymous/authenticated/service_role access is explicitly revoked, RLS enabled and runtime operations scoped by explicit policies. The API performs account isolation. This is not a general ledger/outbox or complete retention/privacy implementation.
+
+Migration/compatibility tests must use disposable PostgreSQL; real-account and production approval remain separate. Rollback disables the new actions and retains command/order/cart history; no destructive down migration is proposed.
+
 ## Evolution and retention
 
 Preserve existing IDs, relational constraints and migration history. Introduce new optional columns/additive tables only when a real command needs them. Compatibility review must cover current application, proposed code, runtime grants/policies, migration startup marker, rollback and retained security barriers.
