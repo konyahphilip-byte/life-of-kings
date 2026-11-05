@@ -1,5 +1,15 @@
 # EcoVibes capability and readiness dashboard
 
+## Product classification and customer value — 5 November 2026
+
+LOCALLY BUILT on codex/marketplace-categories-20261105, based draft42/09a51539; no merge/deploy or hosted schema change. Shared six-parent/twelve-leaf taxonomy, category-specific attributes, pre-upload seller validation, atomic product/audit updates, buyer parent/leaf filtering and explicit seller-entered details are implemented. Existing free-text/legacy clients stay compatible and unclassified; this is not comprehensive moderation or independent product verification.
+
+Local full666/52, HTTP15, TypeScript/build1691 and audit0/security8 passed before the final compatibility tests; exact final checks/PostgreSQL/browser evidence remain separately tracked. Migration20261105120000 is UNAPPLIED; new structured work fails closed without it. All prior failures remain, including missing-module RED, pre-wiring UI30/31 and filesystem/glob/reference diagnostics; QA001 remains undiagnosed. No altered deadlines/assertions/workers/isolation. No fees/providers/payments/demand metrics/Request Market activated.
+
+Buyer/seller benefit is clearer condition/specification/unit comparison and preventing invalid submissions before photo upload. Synthetic fixtures are not commercial traction. Review all parent drafts40–42, migration/rollback, exact CI, explicit release approval and hosted/real merchant/device acceptance remain required. Next: durable native publication/approved storage and genuine seller-to-buyer acceptance before actionable Request Market integration.
+
+[Receipt](../releases/2026-11-05-product-classification.md); [customer-value directive](../directives/2026-11-05-marketplace-customer-value.md); evidence work/marketplace-categories-20261105.
+
 Authoritative current report — 5 November 2026. The [master architecture directive](../directives/2026-11-05-master-system-architecture.md) now governs development: stabilize real journeys, reuse the modular monolith and existing domain records, then Request Market, Repair & Reuse and Industrial Exchange. Games and unrelated expansion remain paused. [Earlier readiness snapshot](2026-11-05-before-architecture.md) is historical evidence.
 
 Deployment and acceptance are separate. The [architecture implementation matrix](../architecture/implementation-matrix.md) uses the founder's WORKING/PARTIAL/BROKEN/MISSING/BLOCKED/NOT VERIFIED vocabulary with explicit evidence scope. No whole-platform completion or launch certification is implied.

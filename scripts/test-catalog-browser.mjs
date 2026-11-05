@@ -14,17 +14,23 @@ try{
  browser=await chromium.launch();
  for(const width of[1280,390]){
   const context=await browser.newContext({viewport:{width,height:900},serviceWorkers:'block',reducedMotion:'reduce'});await context.routeWebSocket('**/*',s=>s.close());
-  let outage=false,writes=0,lookups=0,cart={ownerId,revision:0,items:[],totalMinor:0,quoteId:null,currency:'GHS',canCheckout:false,lastOrderId:null};
+  const sellerId='55555555-5555-4555-8555-555555555555';
+  let sellerMode=false,published=null,outage=false,writes=0,lookups=0,cart={ownerId,revision:0,items:[],totalMinor:0,quoteId:null,currency:'GHS',canCheckout:false,lastOrderId:null};
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());if(url.origin!==origin)return route.abort();
    const reply=value=>route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
-   if(url.pathname==='/api/v1/auth/me')return reply({user:{id:ownerId,eco_id:'synthetic.buyer',display_name:'Synthetic Buyer',roles:['customer']},csrfToken:'synthetic-csrf'});
+   if(url.pathname==='/api/v1/auth/me')return reply({user:{id:sellerMode?sellerId:ownerId,eco_id:sellerMode?'synthetic.seller':'synthetic.buyer',display_name:'Synthetic Account',roles:sellerMode?['seller']:['customer']},csrfToken:'synthetic-csrf'});
    if(url.pathname==='/api/v1/marketplace/catalog'){
     if(outage)return route.fulfill({status:503,contentType:'application/json',body:'{"error":{"message":"Synthetic catalog outage"}}'});
     let items=[one],nextCursor='fixture-next';if(url.searchParams.get('cursor')){items=[two];nextCursor=null;}if(url.searchParams.get('productId')){assert.equal(url.searchParams.get('productId'),Q);items=[two];nextCursor=null;lookups++;}
+    if(published){items=[{...published,sellerIsCurrentUser:sellerMode}];nextCursor=null;if(url.searchParams.has('categoryId'))assert.equal(url.searchParams.get('categoryId'),'electronics.phones');}
     return reply({items,nextCursor,checkedAt:'2026-11-05T10:00:00.000Z',currency:'GHS'});
    }
-   if(url.pathname==='/api/v1/marketplace/products')return reply([one]);
+   if(url.pathname==='/api/v1/marketplace/products'){
+    if(request.method()==='POST'){const body=request.postDataJSON();assert(sellerMode);assert.equal(body.categoryId,'electronics.phones');assert.equal(body.categoryVersion,1);assert.deepEqual(body.attributes,{condition:'used',storageGb:128});published={...listing('66666666-6666-4666-8666-666666666666',body.name,body.priceMinor),...body,category:'Phones',seller_id:sellerId};return reply(published);}
+    return reply(url.searchParams.has('mine')?(published?[published]:[]):[one]);
+   }
+   if(url.pathname==='/api/v1/connectors/shopify')return reply([]);
    if(url.pathname==='/api/v1/marketplace/cart'){
     if(request.method()==='PUT'){writes++;const body=request.postDataJSON();assert.equal(body.ownerId,ownerId);assert.equal(body.items[0].productId,Q);cart={...cart,revision:cart.revision+1,items:body.items.map(i=>({...i,name:two.name,variantTitle:null,unitPriceMinor:1800,available:true,reason:null})),totalMinor:1800,quoteId:'b'.repeat(64),canCheckout:true};}return reply(cart);
    }
@@ -55,6 +61,14 @@ try{
   checks.push({width,check:'Explicit examples remain accessible and catalog controls fit without horizontal overflow'});
   outage=true;await page.getByRole('button',{name:'Refresh listings',exact:true}).click();await page.getByText(/Synthetic catalog outage/).waitFor();assert.equal(await page.locator('.native-product').count(),0);assert.equal(await page.locator('.market-design-examples .product-card').first().isVisible(),false);
   assert.deepEqual(errors,[]);checks.push({width,check:'Catalog failure is reported honestly without substituting sample inventory or causing page errors'});
+  outage=false;sellerMode=true;await page.reload();await page.getByRole('button',{name:'Start selling',exact:true}).click();await page.getByRole('button',{name:'Add product',exact:true}).click();
+  await page.getByLabel('Product name',{exact:true}).fill('Classified phone');await page.getByLabel('Selling price · GHS',{exact:true}).fill('125');await page.getByLabel('Stock quantity',{exact:true}).fill('2');
+  await page.getByLabel('Category',{exact:true}).selectOption('electronics.phones');await page.getByLabel('Condition',{exact:true}).selectOption('used');await page.getByLabel('Storage · GB (optional)',{exact:true}).fill('128');
+  await page.getByRole('button',{name:'Save listing',exact:true}).click();await page.getByText('Product published to the EcoVibes catalog.',{exact:true}).waitFor();assert(published);checks.push({width,check:'Seller form submits category-specific declarations and waits for product acknowledgment'});
+  sellerMode=false;await page.reload();await page.getByRole('heading',{name:'Classified phone',exact:true}).waitFor();await page.getByText('Category, price and seller filters',{exact:true}).click();await page.getByLabel('Category',{exact:true}).selectOption('electronics.phones');await page.getByRole('button',{name:'Search current catalog',exact:true}).click();
+  await page.getByText('Seller-entered details',{exact:true}).waitFor();assert.equal(await page.getByText('128',{exact:true}).count(),1);assert.equal(await page.getByText('used',{exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'Review in account bag',exact:true}).count(),1);
+  await page.locator('.native-product').first().evaluate(el=>window.scrollTo({top:scrollY+el.getBoundingClientRect().top-84,behavior:'instant'}));await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await page.screenshot({path:output+'/category-buyer-'+width+'.png'});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);checks.push({width,check:'Switched buyer filters saved category details without a verification or payment claim'});
   await context.close();
  }
 }catch(e){failure={name:e.name,message:e.message};process.exitCode=1;}

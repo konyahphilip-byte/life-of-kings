@@ -1,5 +1,9 @@
 # Marketplace 5.0 implementation audit
 
+## Customer-value classification increment — 5 November
+
+LOCALLY BUILT on draft42/09a51539: versioned category parents/leaves, category-specific seller declarations, server validation/atomic writes, additive metadata and buyer category filtering. See [customer-value directive](../directives/2026-11-05-marketplace-customer-value.md) and [evidence/rollout receipt](../releases/2026-11-05-product-classification.md). No release or hosted migration. Merchant benefit is clearer comparison and fewer incomplete submissions; real commercial outcomes remain unverified. Legacy free-text records stay unstructured. No customer-acquisition, earnings or retention metric is invented.
+
 5 November 2026; current brief recorded in [directive](../directives/2026-11-05-marketplace-5.md). This source audit builds on the verified architecture baseline and draft PR40/41; neither parent is merged/deployed. No private customer/product/Auth rows were read for this audit. Existing44-table hosted metadata is historical, not a fresh deployment claim.
 
 ## Current and target
@@ -27,8 +31,8 @@ flowchart LR
 | Native seller role/profile | PARTIAL — existing account roles/seller_profiles and forms | Progressive storefront/onboarding, independent review and real seller acceptance |
 | Native product create/edit | PARTIAL — existing POST/PATCH, owner checks; synthetic HTTP creates products | Consequential write idempotency/atomic audit coverage, category restrictions, real merchant acceptance |
 | Public catalog | LOCALLY BUILT/PARTIAL — new paged read from actual active records | Initial exact646-test/PG/browser CI passed; final-head evidence, review/release and real seller-to-buyer acceptance |
-| Categories | PARTIAL — existing free-text category; exact category filtering | Stable hierarchical IDs, attribute schemas and category administration MISSING |
-| Dynamic attributes/tags | MISSING | Additive compatible schemas and publish validation; no fake inferred attributes |
+| Categories | LOCALLY BUILT/PARTIAL — stable six-parent/twelve-leaf contract plus legacy labels | Migration/review/release, real merchants, administration/moderation and broader category policy |
+| Dynamic attributes/tags | LOCALLY BUILT/PARTIAL — explicit bounded seller attributes; no inferred/private keys | Hosted metadata and genuine acceptance; free tags/advanced attribute search remain missing |
 | Photos/media | PARTIAL/BLOCKED — owned asset references exist | Production bucket/access/retention approval and actual upload/restart/device acceptance; no new storage here |
 | Product sources | PARTIAL — direct/csv/shopify fields already exist; new UI labels actual source | Imported source authority/sync/reconciliation and merchant acceptance |
 | Inventory/cart/orders | PARTIAL — existing canonical stock/order transaction and PR41 cart | Parent migration/release, real buyer/seller, fulfillment/provider acceptance |

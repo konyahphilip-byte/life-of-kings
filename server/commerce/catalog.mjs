@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
+import {categoryIds} from '../../shared/marketplace-taxonomy.mjs';
 
-const fields=new Set(['q','category','seller','source','minPrice','maxPrice','inStock','sort','limit','cursor','productId']);
+const fields=new Set(['q','category','categoryId','seller','source','minPrice','maxPrice','inStock','sort','limit','cursor','productId']);
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stamp=value=>new Date(value).toISOString();
@@ -17,7 +18,9 @@ export function catalogInput(query,assert){
   assert(/^\d{1,10}$/.test(raw)&&Number.isSafeInteger(Number(raw))&&Number(raw)<=max,400,'invalid_catalog_query','Use valid whole-number catalog limits and prices.');
   return Number(raw);
  };
- const input={q:text('q',100),category:text('category',80),seller:text('seller',41).replace(/^@/,'').toLowerCase(),source:text('source',20),productId:text('productId',36),minPrice:integer('minPrice',null,2147483647),maxPrice:integer('maxPrice',null,2147483647),inStock:query.get('inStock')==='1',sort:text('sort',12)||'newest',limit:integer('limit',12,24)};
+ const input={q:text('q',100),category:text('category',80),categoryId:text('categoryId',80),seller:text('seller',41).replace(/^@/,'').toLowerCase(),source:text('source',20),productId:text('productId',36),minPrice:integer('minPrice',null,2147483647),maxPrice:integer('maxPrice',null,2147483647),inStock:query.get('inStock')==='1',sort:text('sort',12)||'newest',limit:integer('limit',12,24)};
+ assert(!input.categoryId||categoryIds(input.categoryId).length>0,400,'invalid_product_category','Choose a current product category.');
+ assert(!input.categoryId||!input.category,400,'invalid_catalog_query','Choose a category or a legacy category label, not both.');
  assert(input.limit>0&&['newest','price_low','price_high'].includes(input.sort)&&['','direct','csv','shopify'].includes(input.source),400,'invalid_catalog_query','Choose a supported catalog filter.');
  assert(!query.has('inStock')||['0','1'].includes(query.get('inStock')),400,'invalid_catalog_query','Choose available stock or all stock.');
  assert(!input.seller||/^[a-z0-9._-]{3,40}$/.test(input.seller),400,'invalid_catalog_query','Use the seller’s public EcoVibes ID.');
@@ -38,10 +41,11 @@ export function catalogInput(query,assert){
 export function catalogCursor(row,input){
  return Buffer.from(JSON.stringify({v:1,filter:input.fingerprint,id:row.id,stamp:stamp(row.created_at),price:Number(row.price_minor)})).toString('base64url');
 }
-export function createCatalog({all,assert,publicProduct,now,enabled=()=>true}){
+export function createCatalog({all,assert,publicProduct,now,classificationAvailable=false,enabled=()=>true}){
  return async function catalog(ctx,query){
   assert(enabled(),503,'catalog_unavailable','Current Marketplace listings are temporarily unavailable. Please try again later.');
   const input=catalogInput(query,assert),where=["p.status='active'","u.status='active'","p.fulfillment_type<>'external_checkout'","p.currency='GHS'","EXISTS(SELECT 1 FROM roles r WHERE r.user_id=p.seller_id AND r.role='seller')"],params=[];
+  if(input.categoryId){assert(classificationAvailable,503,'classification_unavailable','Structured category search is temporarily unavailable.');const ids=categoryIds(input.categoryId);where.push('p.category_id IN ('+ids.map(()=>'?').join(',')+') AND p.category_version=1');params.push(...ids);}
   if(input.q){
    const like='%'+input.q.toLowerCase().replace(/[!%_]/g,'!$&')+'%';
    where.push("(LOWER(p.name) LIKE ? ESCAPE '!' OR LOWER(p.description) LIKE ? ESCAPE '!' OR LOWER(p.category) LIKE ? ESCAPE '!')");
