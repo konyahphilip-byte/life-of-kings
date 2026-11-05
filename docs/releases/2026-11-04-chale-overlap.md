@@ -10,7 +10,9 @@ Reused compact/hidden preferences, chat left/right placement, Settings restore r
 
 ## Files
 
-App.tsx/App.identity.test.tsx; assistant/Sidekick.tsx,Sidekick.test.tsx,sidekick.css; reused ChalePersonalization.tsx,Sidekick.display.test.tsx,chale-ui.ts,chale-ui.test.ts; scripts/test-navigation-browser.mjs. Current screen recovery, optional signup purposes, public feed and server behavior remain unchanged.
+App.tsx/App.identity.test.tsx; assistant/Sidekick.tsx,Sidekick.test.tsx,sidekick.css; reused ChalePersonalization.tsx,Sidekick.display.test.tsx,chale-ui.ts,chale-ui.test.ts; scripts/test-navigation-browser.mjs. Also src/styles.css,2scoped selectors only. Current screen recovery, optional signup purposes, public feed and server behavior remain unchanged.
+
+The5November screenshot review also found an existing global .art-leaf rule intended for Explore matching a feed image. Its absolute positioning and right offset escaped into the post text. Only those2placement selectors in src/styles.css are now scoped to .feature-art>.art-leaf; the feed retains its relative, full-width media block. Browser assertions require post text→artwork→actions without overlap at1280/390.
 
 ## Tests and preserved failures
 
@@ -28,3 +30,5 @@ App.tsx/App.identity.test.tsx; assistant/Sidekick.tsx,Sidekick.test.tsx,sidekick
 Prepare a reviewable commit/draft PR, require exact-source CI including browser tests and scoped review, then obtain explicit bounded merge/deployment approval. Existing PR33–38 approval does not include this new change. No schema migration; current1ee894d5 is a compatible application rollback, not drilled. Actual hosted phone/keyboard/accessibility acceptance still required. No new resources, paid services, uploads, private records, provider inference or real money.
 
 Primary work/chale-overlap-20261104 retains RED/focused/full reports and extraction previews. This document will be updated with actual CI evidence before release approval is requested.
+
+Checkpoint e09aa1b/treeafdb8eaa passed exactCI41937657684/41937657710:565/43/build1685/audit0/security/allHTTP/PG84/35browser, actual logs/tree/screenshots inspected. It fixed the short-screen RED. The subsequent2selector artwork correction and2browser assertions require their own final exact CI; do not infer it from this superseded green. Artifact13374712898 digest2dd2dd50c2734b32bfb11dc57672d753f684d598d79faaa37c37fb17235391c3. Initial success-report parser expected a missing optional failure field; corrected to optional read after extraction, not a test change.

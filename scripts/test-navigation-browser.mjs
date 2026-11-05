@@ -61,6 +61,14 @@ try{
    assert.equal(await page.locator('.screen-recovery[role="alert"]').count(),0);
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${hash}: horizontal overflow at ${width}`);
    if(hash!=='settings')await verifyChaleHeader(page);
+   if(hash==='home'){
+    const posts=await page.locator('.post-card').evaluateAll(elements=>elements.filter(e=>e.querySelector('.post-art')).map(e=>{
+     const text=e.querySelector('.post-text').getBoundingClientRect(),art=e.querySelector('.post-art').getBoundingClientRect(),actions=e.querySelector('.post-actions').getBoundingClientRect();
+     return {textBottom:text.bottom,artTop:art.top,artBottom:art.bottom,actionsTop:actions.top,position:getComputedStyle(e.querySelector('.post-art')).position};
+    }));
+    assert(posts.length>=2&&posts.every(p=>p.position==='relative'&&p.textBottom<=p.artTop&&p.artBottom<=p.actionsTop),`Post artwork overlaps its text or actions: ${JSON.stringify(posts)}`);
+    checks.push({width,check:'Post artwork stays between its own text and actions; Explore decoration cannot escape into the feed'});
+   }
    if(hash==='home'||hash==='waste'){
     await page.locator('[data-depth="3d"]').waitFor();
     await settleCapture(page);
