@@ -22,6 +22,7 @@ jobs:
       - run: npm run build
       - run: npm run test:providers
       - run: npm run test:payments
+      - run: node scripts/test-commerce-orders.mjs
       - run: npm run test:identity-roles
       - run: npm run test:jobs
       - run: npm run test:support

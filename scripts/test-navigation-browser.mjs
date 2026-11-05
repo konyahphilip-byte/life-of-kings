@@ -42,11 +42,12 @@ try{
   const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'no-preference',serviceWorkers:'block'});
   await context.addInitScript(()=>{if(!localStorage.getItem('ecovibes:v1'))localStorage.setItem('ecovibes:v1',JSON.stringify({saver:'standard'}));});
   await context.routeWebSocket('**/*',socket=>socket.close());
-  const page=await context.newPage(),errors=[];let happeningRequests=0;
+  const page=await context.newPage(),errors=[];let happeningRequests=0,commerceWrites=0;
   page.on('pageerror',()=>errors.push('page_error'));
   await context.route('**/*',route=>{
    const url=new URL(route.request().url());
    if(url.origin!==origin)return route.abort();
+   if(!['GET','HEAD'].includes(route.request().method())&&/orders|checkout|payments|refund|transfers/.test(url.pathname))commerceWrites++;
    if(url.pathname==='/api/v1/discover/happening'){
     happeningRequests++;
     const date=new Date().toISOString(),expiresAt=new Date(Date.now()+599000).toISOString();
@@ -176,6 +177,21 @@ try{
   await page.goBack();
   await page.getByRole('heading',{name:'Create',exact:true}).waitFor();
   checks.push({width,check:'Create options remain, composer retains draft, browser Back restores Create'});
+  await page.evaluate(()=>{const state=JSON.parse(localStorage.getItem('ecovibes:v1')||'{}');localStorage.setItem('ecovibes:v1',JSON.stringify({...state,cart:{x1:2}}));});
+  await page.goto(`${origin}/#money-trust`);await page.reload();
+  await page.getByRole('button',{name:/^Bag/}).click();
+  await page.getByText(/Qty 2/).waitFor();
+  await page.getByRole('button',{name:'Open EcoVibes ID',exact:true}).click();
+  await page.getByRole('heading',{name:'One account. Shared services.',exact:true}).waitFor();
+  assert.equal(await page.getByText(/Sandbox order created/).count(),0);
+  await page.getByRole('button',{name:/^Bag/}).click();
+  await page.getByText(/Qty 2/).waitFor();
+  await page.getByText(/Checkout is not connected to this bag/).waitFor();
+  assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('ecovibes:v1')).cart),{x1:2});
+  assert.equal(commerceWrites,0,'Preview Bag must not attempt an order or payment');
+  await page.locator('.cart-drawer').screenshot({path:`${output}/bag-safe-${width}.png`});
+  await page.getByRole('button',{name:'Close bag',exact:true}).click();
+  checks.push({width,check:'Preview Bag preserves items across navigation/reload, explains ordering boundary and never reports or sends an order/payment'});
   await page.goto(`${origin}/#unsupported-destination`);
   await page.getByRole('heading',{name:'This destination is not available'}).waitFor();
   await page.getByRole('button',{name:'Back to Home'}).click();

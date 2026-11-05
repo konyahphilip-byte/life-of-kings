@@ -1,3 +1,13 @@
+## 5 November — master architecture and commerce input repair
+
+LOCALLY BUILT in codex/architecture-commerce-20261105, based released56e0c2eb. Reused PR26's Bag guard/four tests without rebuilding its behavior: no false order acknowledgment or cart clearing. Extracted the current order input boundary with strict bounded validation/overflow protection and consistent product ordering; existing transaction/stock/actor/price rules remain. Added23 real isolated HTTP checks and29 unit checks; no migration.
+
+33 focused/598 full tests45files, TypeScript/build1685, audit0/security8 and orderHTTP23 pass. Baseline Bag0/4 and null-input500 RED retained. Local browser collected0 because Chromium is absent; new CI browser assertions pending. Prior QA001 cause undiagnosed. No hosted/device/provider pass inferred.
+
+Read-only metadata:44 RLS tables/12 migrations, browser0 grants, runtime broad; no private rows/credentials or hosted mutation. Architecture/domain/ERD/API/events/Chale/security/operations/ADR/cost/debt documented; target components and new innovation pilots clearly unimplemented. Current PR39 production unchanged. Explicit review/merge/deploy approvals and exact-source CI remain; protected primary source/assets preserved.
+
+[Receipt](../releases/2026-11-05-architecture-commerce.md); [architecture](../architecture/README.md); primary work/architecture-commerce-20261105. Next: canonical durable cart and actor-bound idempotent order command, then Request Market through existing services. No fees, paid resources, new infrastructure or speculative tables.
+
 # EcoVibes master build plan
 
 **Product:** EcoVibes Africa ecosystem

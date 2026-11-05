@@ -1,0 +1,446 @@
+{
+  "baseCommit": "56e0c2ebf83dfc2c89fccd0bc552691e4ae42b9b",
+  "scope": "Source route-branch locator, not OpenAPI or acceptance proof",
+  "branches": [
+    {
+      "file": "server/direct-messages.mjs",
+      "line": 84,
+      "routeBranch": "if(path!=='/connect/messages'&&!path.startsWith('/connect/messages/'))return;"
+    },
+    {
+      "file": "server/direct-messages.mjs",
+      "line": 88,
+      "routeBranch": "if(path==='/connect/messages'&&method==='GET'){"
+    },
+    {
+      "file": "server/direct-messages.mjs",
+      "line": 94,
+      "routeBranch": "const receipt=path.match(/^\\/connect\\/messages\\/([0-9a-f-]{36})\\/receipts$/i);"
+    },
+    {
+      "file": "server/direct-messages.mjs",
+      "line": 99,
+      "routeBranch": "const target=path.match(/^\\/connect\\/messages\\/([0-9a-f-]{36})$/i)?.[1]?.toLowerCase();"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1116,
+      "routeBranch": "if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1117,
+      "routeBranch": "if (method === 'GET' && path === '/money/overview') {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1121,
+      "routeBranch": "if (path === '/providers' || path.startsWith('/providers/')) {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1126,
+      "routeBranch": "if (method === \"GET\" && path === \"/language/preferences\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1135,
+      "routeBranch": "if (method === \"PATCH\" && path === \"/language/preferences\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1145,
+      "routeBranch": "if (method === \"GET\" && path === \"/recommendations\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1151,
+      "routeBranch": "if (method === \"POST\" && path === \"/recommendations/interests\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1171,
+      "routeBranch": "if (method === \"POST\" && path === \"/recommendations/settings\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1181,
+      "routeBranch": "if (method === \"DELETE\" && path === \"/recommendations/profile\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1189,
+      "routeBranch": "if (method === \"POST\" && path === \"/recommendations/signals\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1215,
+      "routeBranch": "if (method === \"GET\" && path === \"/discover/happening\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1220,
+      "routeBranch": "if (method === \"GET\" && path === \"/ai/status\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1228,
+      "routeBranch": "if (method === \"GET\" && path === \"/ai/work-status\") return chaleWorkStatus(ctx, query);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1229,
+      "routeBranch": "if (method === \"GET\" && path === \"/ai/updates\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1235,
+      "routeBranch": "if (method === \"POST\" && path === \"/ai/chat\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1305,
+      "routeBranch": "if (method === \"POST\" && path === \"/webhooks/paystack\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1385,
+      "routeBranch": "if (method === \"GET\" && path === \"/connectors/shopify/callback\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1417,
+      "routeBranch": "if (method === \"POST\" && path === \"/media/webhook\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1432,
+      "routeBranch": "if (method === \"GET\" && path === \"/health\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1441,
+      "routeBranch": "if (method === \"GET\" && path === \"/connectors/shopify\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1445,
+      "routeBranch": "if (method === \"POST\" && path === \"/connectors/shopify/start\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1458,
+      "routeBranch": "if (method === \"POST\" && path === \"/connectors/shopify/sync\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1524,
+      "routeBranch": "if (method === \"POST\" && path === \"/auth/register\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1580,
+      "routeBranch": "if (method === \"POST\" && path === \"/auth/login\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1610,
+      "routeBranch": "if (method === \"GET\" && path === \"/auth/me\")"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1617,
+      "routeBranch": "if (method === \"GET\" && path === \"/auth/supabase/me\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1637,
+      "routeBranch": "if (method === \"POST\" && path === \"/auth/supabase/session\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1752,
+      "routeBranch": "if (method === \"GET\" && path === \"/media/status\")"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1760,
+      "routeBranch": "if (method === \"POST\" && path === \"/auth/logout\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1769,
+      "routeBranch": "if (method === \"POST\" && path === \"/identity/roles\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1803,
+      "routeBranch": "if (method === \"PATCH\" && path === \"/identity/profiles\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1855,
+      "routeBranch": "if (method === \"POST\" && path === \"/trust/verifications\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1868,
+      "routeBranch": "if (method === \"GET\" && path === \"/trust/verifications\")"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1873,
+      "routeBranch": "if (method === \"POST\" && path === \"/support/reports\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1918,
+      "routeBranch": "const assetMatch = path.match(/^\\/social\\/assets\\/([a-f0-9-]+)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1937,
+      "routeBranch": "if (method === \"POST\" && path === \"/social/assets\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1952,
+      "routeBranch": "if (method === \"POST\" && path === \"/people/presence\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1956,
+      "routeBranch": "if (method === \"GET\" && path === \"/people/lookup\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1964,
+      "routeBranch": "if (path === '/people/friends' || path.startsWith('/people/friends/')) {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1968,
+      "routeBranch": "if(method==='GET'&&path==='/people/friends')return peopleFriends.list(ctx.user.id);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1969,
+      "routeBranch": "const peer=path.match(/^\\/people\\/friends\\/([0-9a-f-]{36})$/i)?.[1]?.toLowerCase();"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1973,
+      "routeBranch": "if (method === \"GET\" && path === \"/people/discover\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1989,
+      "routeBranch": "let followMatch=path.match(/^\\/people\\/([a-f0-9-]+)\\/follow$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1993,
+      "routeBranch": "if (method === \"GET\" && path === \"/stories\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 1997,
+      "routeBranch": "if (method === \"POST\" && path === \"/stories\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2000,
+      "routeBranch": "let storyMatch=path.match(/^\\/stories\\/([a-f0-9-]+)\\/view$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2002,
+      "routeBranch": "if (method === \"GET\" && path === \"/reels\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2008,
+      "routeBranch": "if (method === \"POST\" && path === \"/reels\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2011,
+      "routeBranch": "let reelMatch=path.match(/^\\/reels\\/([a-f0-9-]+)\\/(view|like)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2013,
+      "routeBranch": "if (path.startsWith(\"/media/\") && path !== \"/media/webhook\" && path !== \"/media/status\")"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2015,
+      "routeBranch": "if (method === \"GET\" && path === \"/media/sessions\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2019,
+      "routeBranch": "let mediaMatch = path.match(/^\\/media\\/sessions\\/([a-f0-9-]+)\\/(join|end|ingress)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2020,
+      "routeBranch": "if (method === \"POST\" && path === \"/media/sessions\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2082,
+      "routeBranch": "if (method === \"GET\" && path === \"/notifications/summary\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2089,
+      "routeBranch": "if (method === \"GET\" && path === \"/notifications\")"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2094,
+      "routeBranch": "let match = path.match(/^\\/notifications\\/([a-f0-9-]+)\\/read$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2105,
+      "routeBranch": "if (method === \"GET\" && path === \"/staff/review/verifications\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2111,
+      "routeBranch": "if (method === \"GET\" && path === \"/staff/review/reports\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2117,
+      "routeBranch": "if (method === \"GET\" && path === \"/staff/review/refunds\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2121,
+      "routeBranch": "match = path.match(/^\\/staff\\/review\\/verifications\\/([a-f0-9-]+)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2149,
+      "routeBranch": "match = path.match(/^\\/staff\\/review\\/reports\\/([a-f0-9-]+)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2177,
+      "routeBranch": "match = path.match(/^\\/staff\\/review\\/refunds\\/([a-f0-9-]+)\\/reconcile$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2191,
+      "routeBranch": "match = path.match(/^\\/staff\\/review\\/refunds\\/([a-f0-9-]+)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2242,
+      "routeBranch": "if (method === \"GET\" && path === \"/marketplace/products\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2272,
+      "routeBranch": "if (method === \"POST\" && path === \"/marketplace/products\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2351,
+      "routeBranch": "match = path.match(/^\\/marketplace\\/products\\/([a-f0-9-]+)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2398,
+      "routeBranch": "if (method === \"POST\" && path === \"/marketplace/products/import\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2456,
+      "routeBranch": "if (method === \"GET\" && path === \"/marketplace/orders\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2464,
+      "routeBranch": "if (method === \"POST\" && path === \"/marketplace/orders\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2592,
+      "routeBranch": "match = path.match(/^\\/marketplace\\/orders\\/([a-f0-9-]+)\\/cancel$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2649,
+      "routeBranch": "match = path.match("
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2766,
+      "routeBranch": "match = path.match(/^\\/marketplace\\/orders\\/([a-f0-9-]+)\\/refund$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2786,
+      "routeBranch": "if (method === \"GET\" && path === \"/jobs\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2794,
+      "routeBranch": "if (method === \"POST\" && path === \"/jobs\") {"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2829,
+      "routeBranch": "match = path.match(/^\\/jobs\\/([a-f0-9-]+)$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2835,
+      "routeBranch": "match = path.match(/^\\/jobs\\/([a-f0-9-]+)\\/offers$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2892,
+      "routeBranch": "match = path.match(/^\\/jobs\\/([a-f0-9-]+)\\/offers\\/([a-f0-9-]+)\\/select$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 2939,
+      "routeBranch": "match = path.match("
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 3071,
+      "routeBranch": "match = path.match(/^\\/jobs\\/([a-f0-9-]+)\\/messages$/);"
+    },
+    {
+      "file": "server/index.mjs",
+      "line": 3124,
+      "routeBranch": "if (method === \"GET\" && path === \"/search\") {"
+    },
+    {
+      "file": "server/providers.mjs",
+      "line": 80,
+      "routeBranch": "if (method === 'GET' && path === '/providers') {"
+    },
+    {
+      "file": "server/providers.mjs",
+      "line": 86,
+      "routeBranch": "if (method === 'GET' && path === '/providers/me') return ownerProfile(ctx.user.id);"
+    },
+    {
+      "file": "server/providers.mjs",
+      "line": 87,
+      "routeBranch": "if (method === 'PUT' && path === '/providers/me') {"
+    },
+    {
+      "file": "server/providers.mjs",
+      "line": 105,
+      "routeBranch": "if (method === 'POST' && path === '/providers/me/submit') {"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { normalizeOrderItems } from "./commerce/order-input.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { Pool } from "pg";
 import { AccessToken, IngressClient, IngressInput, LiveKitAPI, WebhookReceiver } from "livekit-server-sdk";
@@ -2462,32 +2463,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   if (method === "POST" && path === "/marketplace/orders") {
     await expireUnpaidOrders();
-    assert(
-      Array.isArray(body.items) &&
-        body.items.length > 0 &&
-        body.items.length <= 30,
-      400,
-      "invalid_items",
-      "Add between one and 30 items.",
-    );
-    const requestedByProduct = new Map();
-    for (const item of body.items) {
-      assert(
-        typeof item.productId === "string",
-        400,
-        "invalid_items",
-        "Product ID is required.",
-      );
-      const qty = validMinor(item.quantity, "Quantity");
-      const variantId = item.variantId === undefined || item.variantId === null || item.variantId === ""
-        ? null
-        : inputString(item.variantId, "Variant ID", { max: 180 });
-      const lines = requestedByProduct.get(item.productId) || [];
-      const existing = lines.find((line) => line.variantId === variantId);
-      if (existing) existing.qty += qty;
-      else lines.push({ variantId, qty });
-      requestedByProduct.set(item.productId, lines);
-    }
+    const requestedByProduct = normalizeOrderItems(body);
     return await transaction(async () => {
       let total = 0;
       const lines = [];
