@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {normalizeOrderItems} from './order-input.mjs';
 import {orderQuote} from './orders.mjs';
+import {createCommerceAuthorizer} from './actor.mjs';
 
 export const CART_VERSION='20261105084536_commerce_account_cart';
 export const CART_SQLITE_SCHEMA=`
@@ -26,17 +27,7 @@ export function cartItems(value,assert){
 
 export function createCartService({q,all,run,transaction,assert,now,rateLimit,productVariants,writeOrder,getOrder,visibleOrder,postgresMode,available=true,enabled=()=>true}){
  const lock=postgresMode?' FOR UPDATE':'';
- async function actor(id){
-  assert(await q("SELECT id FROM users WHERE id=? AND status='active'"+(postgresMode?' FOR SHARE':''),id),403,'account_unavailable','This account is unavailable.');
- }
- async function authorize(ctx){
-  await actor(ctx.user.id);
-  assert(typeof ctx.sessionHash==='string',401,'session_expired','Sign in again before using your account bag.');
-  const session=postgresMode
-   ? await q('SELECT public.ecovibes_cart_session_authorized(?,?,?) AS allowed',ctx.sessionHash,ctx.user.id,ctx.csrfToken)
-   : await q("SELECT 1 AS allowed FROM sessions WHERE token_hash=? AND user_id=? AND csrf_token=? AND expires_at>?",ctx.sessionHash,ctx.user.id,ctx.csrfToken,now());
-  assert(session?.allowed,401,'session_expired','Sign in again before using your account bag.');
- }
+ const {actor,authorize}=createCommerceAuthorizer({q,assert,now,postgresMode});
  async function lockedCart(id){
   await run('INSERT INTO commerce_carts(user_id,revision,updated_at) VALUES(?,0,?) ON CONFLICT(user_id) DO NOTHING',id,now());
   return q('SELECT * FROM commerce_carts WHERE user_id=?'+lock,id);

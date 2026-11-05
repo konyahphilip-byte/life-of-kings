@@ -1,3 +1,9 @@
+## Shopify-first publication — 5 November 2026
+
+LOCALLY BUILT on codex/marketplace-shopify-journey-20261105, based draft43/7f6edfed; not merged/deployed. Selected paused imports preserve exact GHS variants, require explicit allocation/supply/category/fulfillment/photo review and use one canonical product plus immutable publication receipt. Published resync stock is retained. Source/store and photo requests are bounded; a reproduced guest-photo401 is fixed for current active catalog sellers.13 focused and15 actual local HTTP seller-to-buyer/unpaid-order/restart checks pass; TypeScript/build/audit0/security8 pass. Full local659/678 has19 retained failures, predominantly existing5s timeouts, duplicate DOM and heading reports; QA001 cause undiagnosed. Exact CI/PostgreSQL/browser and independent review remain gates.
+
+Proposed publication migration20261105170000 is UNAPPLIED; parent cart/classification migrations remain unapplied. Current productionPR39/56e0c2eb unchanged. Earlier real read-only Shopify inspection confirms chosen GR8NESS #8 Black Tee/GHS220/five sizes, not supplier confirmation or an EcoVibes listing. No store write, production seed, payment, paid service or fee. Approved storage/credential/OAuth/release plus genuine seller/buyer/phone acceptance remain blocked/unverified; no chat token handoff. Request Market waits. [Receipt](../releases/2026-11-05-shopify-publication-local.md); evidence work/marketplace-shopify-20261105.
+
 # EcoVibes capability and readiness dashboard
 
 ## Product classification and customer value — 5 November 2026

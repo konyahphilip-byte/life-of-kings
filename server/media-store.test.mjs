@@ -1,0 +1,9 @@
+import {describe,it,expect} from 'vitest';
+import {createMediaStorage,boundedBytes,imageSignature} from './media-store.mjs';
+const bytes=Buffer.from([255,216,255,1,2]),config=()=>({root:'https://storage.synthetic.invalid/storage/v1',bucket:'synthetic',key:'synthetic-test-only'});
+describe('bounded durable media adapter',()=>{
+ it('fails closed in production without storage and never uses local fallback',async()=>{const m=createMediaStorage({config:()=>null,isProduction:true,localRoot:'/unavailable'});await expect(m.put('x',bytes,'image/jpeg')).rejects.toMatchObject({status:503});await expect(m.read('x')).rejects.toMatchObject({status:503});});
+ it('confirms a lost upload response using the same object bytes without another upload',async()=>{let writes=0;const m=createMediaStorage({config,isProduction:true,fetchImpl:async(_url,init)=>{expect(init.redirect).toBe('error');if(init.method==='POST'){writes++;throw Error('synthetic lost response');}return new Response(bytes);}});await m.put('fixed-key',bytes,'image/jpeg');expect(writes).toBe(1);});
+ it('does not claim success for different bytes or failed deletion',async()=>{const m=createMediaStorage({config,isProduction:true,fetchImpl:async(_url,init)=>init.method==='DELETE'?new Response('',{status:503}):init.method==='POST'?new Response('',{status:409}):new Response('different')});await expect(m.put('x',bytes,'image/jpeg')).rejects.toMatchObject({code:'media_save_unconfirmed'});await expect(m.remove('x')).rejects.toMatchObject({code:'media_delete_unconfirmed'});});
+ it('bounds actual streamed bytes even without a length header and checks image signatures',async()=>{await expect(boundedBytes(new Response('12345'),4)).rejects.toMatchObject({status:413});expect(imageSignature(bytes,'image/jpeg')).toBe(true);expect(imageSignature(bytes,'image/png')).toBe(false);});
+});
