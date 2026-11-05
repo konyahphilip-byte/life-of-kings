@@ -15,6 +15,7 @@ Local evidence:
 - New PostgreSQL search/price/cursor/source/eligibility checks and1280/390 built-browser flow are in CI, not yet claimed accepted.
 - Historical QA001 cause remains undiagnosed.
 - Later final-focused39 run passed34/failed5: first existing App guest-online and ServerCart acknowledgment cases timed out at5s, with later App cases reporting duplicate Bag controls after the first timeout. The underlying cause is unestablished; earlier full642/focused38 do not diagnose it. No timeout/assertion/worker/isolation weakening. Exact CI and browser release gate remains required.
+- Subsequent source review reproduced3/3 seller-account privacy failures: old owned listings remained after a switch, late responses repopulated old private rows, and a photo read could dispatch an upload under a later account. Added captured-owner epochs, immediate private-state clearing/view gating, abort/body deadlines, owned-row validation and pre-dispatch/post-response guards across existing seller actions. Photo reads abort on account change; late CSV reads are ignored. Fixed3/3 tests pass. This is bounded client isolation, not full native-publishing idempotency or complete privacy/storage certification. One unsupported test-only ByRole exact option was corrected before the final build.
 
 No new migration. Existing44-table metadata is historical; PR41 migration remains UNAPPLIED. Local/CI fixtures use disposable data with external provider access disabled. No hosted/real Auth/physical merchant/photo-storage/connector/provider-sandbox/payment acceptance is implied.
 
