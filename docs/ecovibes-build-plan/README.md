@@ -1,3 +1,9 @@
+## 5 November - account cart increment locally built
+
+LOCALLY BUILT on codex/commerce-cart-20261105, stacked on draft PR40/e6a0e689; not merged/deployed. Canonical account cart, absolute revisioned updates, immutable checkout requests and per-revision duplicate guard reuse the extracted existing order writer. Current app session/CSRF/actor/seller checks are transaction-bound. Signed-in Bag/catalog review flow preserves separate device previews. Three API-only additive tables are proposed in generated20261105084536 migration, UNAPPLIED; no provider/money activation.
+
+Final HTTP21/legacy23/focused22 pass; full616/616 passed before the final PostgreSQL-only session-helper correction. Narrow API-only helper fixes actual runtime locking privileges without granting session writes; exact PostgreSQL CI pending. Pinned Node26.12.1 TypeScript/build1687/security8 and audit0 pass. Retain UI6/8 RED, prior full600 worker termination, focused54/1 unchanged Home/Depth5s timeout, wrong child-runtime rejection and earlier failures; QA001 cause undiagnosed. Migration UNAPPLIED. Exact CI/PostgreSQL/browser, independent review, explicit release/migration approval and real buyer/seller/device acceptance remain. Production stays PR39/main56e0c2eb; root source/assets unchanged. Receipt docs/releases/2026-11-05-account-cart.md; evidence work/commerce-cart-20261105.
+
 ## 5 November — master architecture and commerce input repair
 
 LOCALLY BUILT in codex/architecture-commerce-20261105, based released56e0c2eb. Reused PR26's Bag guard/four tests without rebuilding its behavior: no false order acknowledgment or cart clearing. Extracted the current order input boundary with strict bounded validation/overflow protection and consistent product ordering; existing transaction/stock/actor/price rules remain. Added23 real isolated HTTP checks and29 unit checks; no migration.

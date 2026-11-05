@@ -6,7 +6,8 @@ Snapshot5November2026. Status vocabulary follows the founder's architecture dire
 |---|---|---|
 | Current web/API/PostgreSQL baseline | WORKING | Released PR39 main56e0c2eb, previous exact CI/33 anonymous hosted guards; this is bounded application readiness |
 | Main Bag acknowledgment | BROKEN in production; locally repaired | Reused PR26 tests reproduced4/4 false-success failures; local fix preserves cart and does not create/order/charge |
-| Existing API order transaction | PARTIAL |23 new isolated HTTP checks prove durable unpaid record, canonical total, ownership, rollback and cancellation; production/two-account/PG contention and idempotent retries still needed |
+| Existing API order transaction | PARTIAL |23 isolated HTTP checks prove durable unpaid record, canonical total, ownership, rollback and cancellation; extracted shared writer retains legacy API compatibility. Wider production/provider acceptance remains |
+| Canonical account cart and order commands | PARTIAL | Locally built, not deployed: saved revisioned items, reviewed item-price fingerprint, immutable retry command and atomic order/stock/cart write.21 HTTP and22 focused checks pass; exact CI/PostgreSQL/browser, migration, independent review and release/real-account gates remain |
 | Pure commerce input boundary | PARTIAL | New tested module used by current order route; candidate only, not deployed |
 | Identity/role-specific verification | PARTIAL | Existing providers/role/revision checks and tests; actual Auth/recovery and all role journeys incomplete |
 | Email/recovery delivery | BLOCKED | Missing approved sender/domain/SMTP and real inbox/device acceptance; draft24 not rebuilt |

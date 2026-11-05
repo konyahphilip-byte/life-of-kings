@@ -30,6 +30,14 @@ No caller price,total,buyerId,platform fee or paid state is trusted. Existing pr
 
 Error contract: HTTP400 with existing structured error code/message/requestId for invalid input;401 unauthenticated;403 CSRF;404 unavailable product;409 stock/state conflict;500 actual server failure with redacted message. No product mutation/order/event/notice should survive a rolled-back transaction.
 
+## Account cart command: locally built, unapplied migration
+
+GET/marketplace/cart returns only the signed-in account's saved cart, current canonical item availability/prices, revision, totalMinor, quoteId, canCheckout and lastOrderId. No account selector is accepted. PUT/marketplace/cart accepts exactly ownerId, revision and items:[{productId,variantId?,quantity}]. ownerId is an anti-retargeting assertion, never the authority. Quantities are absolute; a repeated identical save is a no-op. A stale changed save receives409.
+
+POST/marketplace/cart/checkout accepts exactly ownerId, revision, totalMinor, quoteId and clientId(UUIDv4). The server binds an immutable request hash to the account/key and permits only one command per cart revision. It rechecks current app session/CSRF, active actor/sellers and canonical stock/price under transaction locks, creates the existing unpaid order/items/groups/events/notices, records the command and clears only that cart revision atomically. quoteId is the server fingerprint of item IDs/options/quantities/prices, so price changes cannot hide behind an unchanged aggregate total.
+
+The same owner/key/payload replays the original order; later cart edits remain. Changed payload, stale revision, unavailable quantity or changed quote fail without a new order. Missing migration/deny switch returns503. No payment is taken, no device preview is converted, no fee activated. The legacy orders route remains compatible but has no new command guarantee. See ADR0002 and the account-cart release receipt for exact tests, failures, rollout and acceptance limits.
+
 ## Domain event contract
 
 **Existing:** event() inserts domain_events and audit_logs; callers must place consequential state/event/notice writes within the same transaction. Event names are existing uppercase types such as ORDER_CREATED, ORDER_CANCELLED, JOB_POSTED, JOB_OFFERED, JOB_ASSIGNED. No durable outbox consumer/delivery registry or general correlation/schema-version field is implemented.
