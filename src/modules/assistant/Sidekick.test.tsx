@@ -42,6 +42,17 @@ describe('Chale AI app integration', () => {
   beforeEach(() => { props.onNavigate.mockReset(); mockFetch(); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+  it('keeps the shortcut inside reserved header space and the opened panel outside that header', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    try {
+      render(<Sidekick {...props} online={false} launcherHost={host}/>);
+      expect(host.contains(screen.getByRole('button', {name: /Ask Chale AI/}))).toBe(true);
+      openPanel();
+      expect(host.contains(screen.getByRole('dialog', {name: 'Chale AI'}))).toBe(false);
+    } finally { host.remove(); }
+  });
+
   it('shows app records and news as separate linked source groups, not a model answer',async()=>{
     const date=new Date().toISOString();
     mockFetch(path=>path.endsWith('/ai/chat')?response({source:'public_updates',text:'Indexed headlines, not a popularity ranking.',entries:[...appReleaseUpdates,{kind:'ghana',source:'Ghana News Agency',title:'Publisher headline for Ghana',url:'https://gna.org.gh/example/',date},{kind:'world',source:'Reuters',title:'World publisher headline',url:'https://www.reuters.com/world/example/',date}]}):response({configured:true}));
@@ -351,6 +362,7 @@ describe('Chale AI app integration', () => {
     await screen.findByText(product.title);
     expect(screen.queryByRole('button', { name: 'Save Recycled plant pot' })).toBeNull();
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/recommendations/signals'))).toHaveLength(0);
+    fireEvent.click(screen.getByText('About replies & learning'));
     fireEvent.click(screen.getByRole('button', { name: 'Tune learning on Home' }));
     expect(props.onNavigate).toHaveBeenCalledWith('Home');
   });
