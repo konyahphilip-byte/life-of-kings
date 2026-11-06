@@ -4,6 +4,8 @@ import { fmt, initialPosts, opportunities, products, type FeedPost } from '../da
 import { loadState, saveState, type SavedState } from '../lib/storage';
 import { apiUrl } from '../lib/api';
 import NotificationCenter from "./connect/NotificationCenter";
+import { accountCallback } from '../lib/supabase';
+import { isAccountCallback } from '../lib/auth-callback';
 import ConnectInbox from './connect/ConnectInbox';
 import PeopleLookup from './connect/PeopleLookup';
 import Sidekick from './assistant/Sidekick';
@@ -32,8 +34,8 @@ const initials=(s:string)=>s.split(' ').map(x=>x[0]).join('').slice(0,2).toUpper
 function Avatar({label,size='md',className=''}:{label:string;size?:'sm'|'md'|'lg';className?:string}){return <span className={`avatar avatar-${size} ${className}`}>{label}</span>}
 function Button({children,onClick,kind='secondary',className='',disabled=false}:{children:ReactNode;onClick?:()=>void;kind?:'primary'|'secondary'|'quiet';className?:string;disabled?:boolean}){return <button disabled={disabled} onClick={onClick} className={`button button-${kind} ${className}`}>{children}</button>}
 function App(){
- const [page,setPage]=useState<Page>(()=>readNavigation().page);
- const [navigationUnavailable,setNavigationUnavailable]=useState(()=>readNavigation().unavailable);
+ const [page,setPage]=useState<Page>(()=>(accountCallback.openAccount||isAccountCallback(window.location.href))?'EcoVibes ID':readNavigation().page);
+ const [navigationUnavailable,setNavigationUnavailable]=useState(()=>!accountCallback.openAccount&&!isAccountCallback(window.location.href)&&readNavigation().unavailable);
  const [state,setState]=useState<SavedState>(()=>loadState());
  type EcoVibesIdentity={id:string;eco_id:string;display_name:string;roles:string[]};
  const [identity,setIdentity]=useState<EcoVibesIdentity|null>(null);
