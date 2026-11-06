@@ -64,7 +64,7 @@ export async function createWebHandler(directory) {
     res.setHeader('Content-Length', content.byteLength);
     res.setHeader('Content-Security-Policy', webCsp);
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'geolocation=(), camera=(self), microphone=(self), payment=(self)');
+    res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(self), microphone=(self), payment=(self)');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Cache-Control', pathname.startsWith('/assets/') ? 'public, max-age=3600' : 'no-cache');
