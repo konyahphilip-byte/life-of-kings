@@ -1,3 +1,7 @@
+## October 28 - separate Bag false-success repair locally tested
+
+LOCALLY BUILT on codex/bag-checkout-safety-20261028 from main26c1b555; Chale PR25/Auth PR24 excluded. App action no longer reports an unsaved sandbox order or erases the bag; Open EcoVibes ID matches its destination, with honest checkout-unavailable/quote copy. Final13focused/430full/32files, TypeScript/build1669 and independent source review pass. RED0/4 and first focused9/4 (3timeouts/duplicate query) retained; final fixtures preserve deadlines/assertions/isolation, historical QA001 cause unresolved. No server/schema/provider/money/deployment or hosted/device pass. Two source hashes/145 protected root files stable. Execution report: docs/releases/2026-10-28-bag-checkout-safety.md; work/bag-checkout-safety-20261028/checks.json.
+
 # EcoVibes continuation — backend release checkpoint
 
 ## October 15 — atomic role activation verified locally
