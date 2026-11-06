@@ -1,0 +1,17 @@
+Subject: Confirm your EcoVibes email address
+
+Hello,
+
+Confirm that this email belongs to you to finish setting up your EcoVibes account.
+
+Confirm Email Address:
+{{ .ConfirmationURL }}
+
+This one-use link expires 1 hour after it was issued. Open it in the same browser where you created your account.
+
+Expired or used link? Open EcoVibes ID, choose Sign in, then Resend confirmation email. Use only the newest email.
+
+If you did not request this account, ignore this email. Do not confirm the address or share this link.
+
+EcoVibes account help: {{ .SiteURL }}
+Open EcoVibes ID for account options. Never share your password or confirmation link.
