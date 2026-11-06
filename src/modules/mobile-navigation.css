@@ -1,0 +1,2 @@
+/* Equal columns keep Create geometrically centred, independent of label width. */
+@media(max-width:780px){.app .mobile-nav{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));justify-content:normal}.app .mobile-nav button{min-width:0;width:100%}}

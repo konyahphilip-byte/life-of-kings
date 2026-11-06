@@ -1,6 +1,7 @@
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VERSION='20261027070000_connect_direct_messages';
 export const DIRECT_MESSAGES_VERSION=VERSION;
+export const DIRECT_MESSAGE_RECEIPTS_VERSION='20261028220000_connect_message_receipts';
 export const DIRECT_MESSAGES_SQLITE_SCHEMA=`CREATE TABLE IF NOT EXISTS connect_direct_messages(
  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
  id TEXT NOT NULL UNIQUE,
@@ -11,13 +12,15 @@ export const DIRECT_MESSAGES_SQLITE_SCHEMA=`CREATE TABLE IF NOT EXISTS connect_d
  created_at TEXT NOT NULL,UNIQUE(sender_id,client_id),
  FOREIGN KEY(low_user_id,high_user_id) REFERENCES people_friendships(low_user_id,high_user_id),
  CHECK(low_user_id<high_user_id),CHECK(sender_id IN (low_user_id,high_user_id)));
- CREATE INDEX IF NOT EXISTS connect_direct_messages_pair ON connect_direct_messages(low_user_id,high_user_id,friendship_revision,sequence DESC);`;
+ CREATE INDEX IF NOT EXISTS connect_direct_messages_pair ON connect_direct_messages(low_user_id,high_user_id,friendship_revision,sequence DESC);
+ CREATE TABLE IF NOT EXISTS connect_direct_message_receipts(message_id TEXT PRIMARY KEY REFERENCES connect_direct_messages(id),recipient_id TEXT NOT NULL REFERENCES users(id),delivered_at TEXT NOT NULL);`;
 
 // Messages remain in the API database, outside AI context and public discovery.
 // Every read/retry/write rechecks current consent. Re-adding a removed friend
 // starts a new revision: it never exposes messages from a previous relationship.
-export function createDirectMessages({q,all,run,transaction,assert,now,id,event,rateLimit,postgresMode,available=true}){
- const message=row=>({id:row.id,sequence:String(row.sequence),senderId:row.sender_id,body:row.body,createdAt:row.created_at});
+export function createDirectMessages({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available=true,receiptsAvailable=true}){
+ const message=row=>({id:row.id,sequence:String(row.sequence),senderId:row.sender_id,body:row.body,createdAt:row.created_at,deliveredAt:row.delivered_at||null});
+ const storedMessage=async row=>message({...row,...(receiptsAvailable?await q('SELECT delivered_at FROM connect_direct_message_receipts WHERE message_id=?',row.id):{})});
  async function authorize(actor,target){
   assert(UUID.test(actor)&&UUID.test(target)&&actor!==target,404,'conversation_unavailable','This conversation is unavailable.');
   const [low,high]=[actor,target].sort();
@@ -36,9 +39,9 @@ export function createDirectMessages({q,all,run,transaction,assert,now,id,event,
   assert(query.size===(before===null?0:1)&&[...query.keys()].every(key=>key==='before')&&(before===null||/^[1-9][0-9]{0,15}$/.test(before)&&Number.isSafeInteger(Number(before))),400,'invalid_message_query','Use the conversation controls to load messages.');
   return transaction(async()=>{
    const {low,high,revision}=await authorize(actor,target);
-   const rows=await all(`SELECT id,sequence,sender_id,body,created_at FROM connect_direct_messages WHERE low_user_id=? AND high_user_id=? AND friendship_revision=?${before?' AND sequence<?':''} ORDER BY sequence DESC LIMIT 51`,low,high,revision,...(before?[Number(before)]:[]));
+   const rows=await all(`SELECT m.id,m.sequence,m.sender_id,m.body,m.created_at${receiptsAvailable?',r.delivered_at':''} FROM connect_direct_messages m ${receiptsAvailable?'LEFT JOIN connect_direct_message_receipts r ON r.message_id=m.id':''} WHERE m.low_user_id=? AND m.high_user_id=? AND m.friendship_revision=?${before?' AND m.sequence<?':''} ORDER BY m.sequence DESC LIMIT 51`,low,high,revision,...(before?[Number(before)]:[]));
    const messages=rows.slice(0,50).reverse().map(message);
-   return {ownerId:actor,revision,messages,hasOlder:rows.length>50,beforeCursor:messages[0]?.sequence||null};
+   return {ownerId:actor,revision,messages,receiptsEnabled:receiptsAvailable,hasOlder:rows.length>50,beforeCursor:messages[0]?.sequence||null};
   });
  }
  async function send(actor,target,body){
@@ -52,13 +55,29 @@ export function createDirectMessages({q,all,run,transaction,assert,now,id,event,
    const existing=await q('SELECT * FROM connect_direct_messages WHERE sender_id=? AND client_id=?',actor,body.clientId);
    if(existing){
     assert(existing.low_user_id===low&&existing.high_user_id===high&&Number(existing.friendship_revision)===revision&&existing.body===text,409,'message_retry_changed','This retry belongs to a different message.');
-    return {ownerId:actor,message:message(existing),revision};
+    return {ownerId:actor,message:await storedMessage(existing),revision};
    }
    const messageId=id();
    await run('INSERT INTO connect_direct_messages(id,low_user_id,high_user_id,friendship_revision,sender_id,client_id,body,created_at) VALUES(?,?,?,?,?,?,?,?)',messageId,low,high,revision,actor,body.clientId,text,now());
    // Audit metadata only: no text, phone, private job data or AI input.
    await event(actor,'direct_message',messageId,'DIRECT_MESSAGE_SENT',{recipientId:target});
-   return {ownerId:actor,message:message(await q('SELECT * FROM connect_direct_messages WHERE id=?',messageId)),revision};
+   await notify(target,'direct_message','New message','You have a new private message.','direct_message',actor);
+   return {ownerId:actor,message:await storedMessage(await q('SELECT * FROM connect_direct_messages WHERE id=?',messageId)),revision};
+  });
+ }
+ async function acknowledge(actor,target,body){
+  assert(receiptsAvailable,503,'receipts_unavailable','Delivery acknowledgements are unavailable.');
+  assert(body&&typeof body==='object'&&!Array.isArray(body)&&Object.keys(body).length===2&&Object.keys(body).every(k=>['revision','messageIds'].includes(k))&&Number.isSafeInteger(body.revision)&&Array.isArray(body.messageIds)&&body.messageIds.length>0&&body.messageIds.length<=50&&new Set(body.messageIds).size===body.messageIds.length&&body.messageIds.every(v=>typeof v==='string'&&UUID.test(v)),400,'invalid_receipt','Refresh the conversation to acknowledge delivery.');
+  return transaction(async()=>{
+   const {low,high,revision}=await authorize(actor,target);
+   assert(body.revision===revision,409,'conversation_changed','This friendship changed. Reopen the conversation.');
+   // Validate every ID before writing any receipt. A sender cannot acknowledge itself.
+   for(const messageId of body.messageIds){
+    const row=await q('SELECT id FROM connect_direct_messages WHERE id=? AND low_user_id=? AND high_user_id=? AND friendship_revision=? AND sender_id=?',messageId,low,high,revision,target);
+    assert(row,404,'message_unavailable','This message is unavailable.');
+   }
+   for(const messageId of body.messageIds)await run('INSERT INTO connect_direct_message_receipts(message_id,recipient_id,delivered_at) VALUES(?,?,?) ON CONFLICT(message_id) DO NOTHING',messageId,actor,now());
+   return {ownerId:actor,revision,acknowledged:body.messageIds};
   });
  }
  async function route(ctx,method,path,body,query){
@@ -71,6 +90,11 @@ export function createDirectMessages({q,all,run,transaction,assert,now,id,event,
    const ecoId=query.has('ecoId')?query.get('ecoId').trim().replace(/^@/,'').toLowerCase():null;
    assert(ecoId===null||/^[a-z0-9._]{3,24}$/.test(ecoId),400,'invalid_message_query','Use the exact EcoVibes ID, with 3–24 letters, numbers, dots or underscores.');
    return list(ctx.user.id,ecoId);
+  }
+  const receipt=path.match(/^\/connect\/messages\/([0-9a-f-]{36})\/receipts$/i);
+  if(receipt&&method==='POST'){
+   assert(query.size===0,400,'invalid_message_query','This view does not accept account selectors.');
+   return acknowledge(ctx.user.id,receipt[1].toLowerCase(),body);
   }
   const target=path.match(/^\/connect\/messages\/([0-9a-f-]{36})$/i)?.[1]?.toLowerCase();
   if(target&&method==='GET')return read(ctx.user.id,target,query);

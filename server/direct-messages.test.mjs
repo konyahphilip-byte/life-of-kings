@@ -6,17 +6,45 @@ import { createDirectMessages,DIRECT_MESSAGES_SQLITE_SCHEMA } from './direct-mes
 import { FRIENDS_SQLITE_SCHEMA } from './people-friends.mjs';
 const A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002',C='00000000-0000-4000-8000-000000000003';
 const databases=[];afterEach(()=>databases.splice(0).forEach(db=>db.close()));
-function fixture({available=true}={}){
+function fixture({available=true,receiptsAvailable=true}={}){
  const db=new DatabaseSync(':memory:');databases.push(db);db.exec(`PRAGMA foreign_keys=ON;CREATE TABLE users(id TEXT PRIMARY KEY,eco_id TEXT,display_name TEXT,status TEXT);${FRIENDS_SQLITE_SCHEMA}${DIRECT_MESSAGES_SQLITE_SCHEMA}`);
  for(const [id,name]of[[A,'Alpha'],[B,'Beta'],[C,'Gamma']])db.prepare('INSERT INTO users VALUES(?,?,?,?)').run(id,name.toLowerCase(),name,'active');
  db.prepare("INSERT INTO people_friendships(low_user_id,high_user_id,requester_id,status,revision,requested_at,updated_at)VALUES(?,?,?,'accepted',2,?,?)").run(A,B,A,'2026-10-27T07:00:00Z','2026-10-27T07:00:00Z');
- const audits=[],limits=new Map();let failedAudit=false;
- const service=createDirectMessages({q:async(s,...p)=>db.prepare(s).get(...p),all:async(s,...p)=>db.prepare(s).all(...p),run:async(s,...p)=>db.prepare(s).run(...p),transaction:async work=>{db.exec('BEGIN');try{const r=await work();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}},assert:(ok,status,code,message)=>{if(!ok)throw Object.assign(Error(message),{status,code});},now:()=>new Date().toISOString(),id:randomUUID,event:async(...args)=>{if(failedAudit)throw Error('audit failed');audits.push(args);},rateLimit:async(key,max)=>{const n=(limits.get(key)||0)+1;limits.set(key,n);if(n>max)throw Object.assign(Error('Limited'),{status:429});},postgresMode:false,available});
+ const audits=[],limits=new Map(),notices=[];let failedAudit=false;
+ const service=createDirectMessages({q:async(s,...p)=>db.prepare(s).get(...p),all:async(s,...p)=>db.prepare(s).all(...p),run:async(s,...p)=>db.prepare(s).run(...p),transaction:async work=>{db.exec('BEGIN');try{const r=await work();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}},assert:(ok,status,code,message)=>{if(!ok)throw Object.assign(Error(message),{status,code});},now:()=>new Date().toISOString(),id:randomUUID,event:async(...args)=>{if(failedAudit)throw Error('audit failed');audits.push(args);},rateLimit:async(key,max)=>{const n=(limits.get(key)||0)+1;limits.set(key,n);if(n>max)throw Object.assign(Error('Limited'),{status:429});},notify:async(...args)=>{notices.push(args);},postgresMode:false,available,receiptsAvailable});
  const route=(actor,method='GET',target=B,body={},query='')=>service.route({user:actor?{id:actor,status:'active'}:null},method,`/connect/messages${target?`/${target}`:''}`,body,new URLSearchParams(query));
  const send=(body='Hello',options={})=>route(A,'POST',B,{body,revision:2,clientId:randomUUID(),...options});
- return{db,route,send,audits,failAudit:()=>{failedAudit=true;}};
+ return{db,route,send,audits,notices,failAudit:()=>{failedAudit=true;}};
 }
 describe('private friend messages',()=>{
+ it('emits one content-free saved alert per immutable send and does not notify on retries',async()=>{
+  const f=fixture(),clientId=randomUUID();await f.send('PRIVATE TEXT',{clientId});await f.send('PRIVATE TEXT',{clientId});
+  expect(f.notices).toHaveLength(1);expect(f.notices[0]).toEqual([B,'direct_message','New message','You have a new private message.','direct_message',A]);
+  expect(JSON.stringify(f.notices)).not.toContain('PRIVATE TEXT');
+ });
+ it('fails receipt admission closed before migration while preserving text access',async()=>{
+  const f=fixture({receiptsAvailable:false});const sent=await f.send();expect((await f.route(A)).receiptsEnabled).toBe(false);
+  await expect(f.route(B,'POST',`${A}/receipts`,{revision:2,messageIds:[sent.message.id]})).rejects.toMatchObject({status:503});
+ });
+ it('requires a recipient acknowledgement before showing delivery and keeps it immutable',async()=>{
+  const f=fixture();const sent=await f.send();
+  expect((await f.route(A)).messages[0].deliveredAt).toBeNull();
+  await f.route(B,'GET',A); // Fetching alone is not a device acknowledgement.
+  expect((await f.route(A)).messages[0].deliveredAt).toBeNull();
+  const ack=()=>f.route(B,'POST',`${A}/receipts`,{revision:2,messageIds:[sent.message.id]});
+  await ack();const first=(await f.route(A)).messages[0].deliveredAt;
+  expect(typeof first).toBe('string');await ack();expect((await f.route(A)).messages[0].deliveredAt).toBe(first);
+ });
+ it('rejects sender, third-party, forged-batch and stale-revision delivery claims',async()=>{
+  const f=fixture();const sent=await f.send();const receipt={revision:2,messageIds:[sent.message.id]};
+  await expect(f.route(A,'POST',`${B}/receipts`,receipt)).rejects.toMatchObject({status:404});
+  await expect(f.route(C,'POST',`${A}/receipts`,receipt)).rejects.toMatchObject({status:404});
+  await expect(f.route(B,'POST',`${A}/receipts`,{...receipt,messageIds:[sent.message.id,randomUUID()]})).rejects.toMatchObject({status:404});
+  expect((await f.route(A)).messages[0].deliveredAt).toBeNull();
+  await expect(f.route(B,'POST',`${A}/receipts`,{...receipt,revision:1})).rejects.toMatchObject({status:409});
+  f.db.exec('UPDATE people_friendships SET high_blocked=1');
+  await expect(f.route(B,'POST',`${A}/receipts`,receipt)).rejects.toMatchObject({status:404});
+ });
  it('stores text in the current accepted relationship and hides it from a third account',async()=>{const f=fixture();const r=await f.send();expect(r.message.senderId).toBe(A);expect((await f.route(B,'GET',A)).messages[0].body).toBe('Hello');await expect(f.route(C)).rejects.toMatchObject({status:404});expect(await f.route(C,'GET',null)).toEqual({ownerId:C,friends:[],truncated:false});});
  it('refuses old consent revisions, blocked and inactive accounts',async()=>{const f=fixture();await expect(f.send('stale',{revision:1})).rejects.toMatchObject({status:409});f.db.exec('UPDATE people_friendships SET high_blocked=1');await expect(f.send()).rejects.toMatchObject({status:404});f.db.exec('UPDATE people_friendships SET high_blocked=0');f.db.prepare("UPDATE users SET status='suspended' WHERE id=?").run(A);await expect(f.route(A)).rejects.toMatchObject({status:404});});
  it('does not restore old messages when the relationship is reaccepted',async()=>{const f=fixture();await f.send('Old consent');f.db.exec('UPDATE people_friendships SET revision=6');expect((await f.route(A)).messages).toEqual([]);await expect(f.send('retry',{revision:2})).rejects.toMatchObject({status:409});await f.send('New consent',{revision:6});expect((await f.route(A)).messages.map(m=>m.body)).toEqual(['New consent']);});

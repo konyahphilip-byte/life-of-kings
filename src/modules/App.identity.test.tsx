@@ -1,7 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
+vi.mock('./money/MoneyTrust', () => ({ default: () => null }));
+vi.mock('./EcoLanguageSettings', () => ({ default: () => null }));
 vi.mock('./HomeDepth', () => ({ default: () => null }));
 vi.mock('./Communications', () => ({ default: () => null }));
 vi.mock('./assistant/Sidekick', () => ({ default: () => null }));
@@ -23,6 +25,7 @@ describe('EcoVibes ID app-shell integration', () => {
   let signedIn = true;
 
   beforeEach(() => {
+    window.history.replaceState(null,'','/');
     signedIn = true;
     localStorage.clear();
     sessionStorage.clear();
@@ -46,7 +49,19 @@ describe('EcoVibes ID app-shell integration', () => {
 
   afterEach(() => {
     cleanup();
-    vi.unstubAllGlobals();
+    vi.unstubAllGlobals();window.history.replaceState(null,'','/');
+  });
+
+  it('exposes a mobile-friendly route to restore Chale from Profile settings', async () => {
+    window.history.replaceState(null,'','/#money-trust');
+    render(<App/>);await screen.findByText('@ama.serwaa');
+    act(()=>window.dispatchEvent(new CustomEvent('ecovibes:navigate',{detail:'Profile'})));
+    fireEvent.click(within(document.querySelector('.profile-tabs') as HTMLElement).getByRole('button',{name:'Settings'}));
+    const personalization=within(document.querySelector('.chale-personalization') as HTMLElement);
+    expect(await personalization.findByRole('heading',{name:'Personalization'})).toBeTruthy();
+    expect(personalization.getByRole('button',{name:'Open Chale AI'})).toBeTruthy();
+    fireEvent.change(personalization.getByLabelText('Chale shortcut'),{target:{value:'hidden'}});
+    expect(JSON.parse(localStorage.getItem('ecovibes:chale-ui:v1')!).launcher).toBe('hidden');
   });
 
   it('shows the authenticated EcoVibes ID in the greeting, sidebar and profile', async () => {
@@ -56,7 +71,7 @@ describe('EcoVibes ID app-shell integration', () => {
     expect(screen.getByText('@ama.serwaa')).toBeTruthy();
     act(() => window.dispatchEvent(new CustomEvent('ecovibes:navigate', { detail: 'Profile' })));
 
-    expect(await screen.findByRole('heading', { name: 'Ama Serwaa' })).toBeTruthy();
+    expect(await within(document.querySelector('.profile-identity') as HTMLElement).findByRole('heading', { name: 'Ama Serwaa' })).toBeTruthy();
     expect(screen.getByText('@ama.serwaa · EcoVibes ID connected')).toBeTruthy();
     expect(screen.queryByText('Philip Konyah')).toBeNull();
   });

@@ -39,4 +39,3 @@ Each explicit request is consumed once across StrictMode, close/remount and reco
 **Next implementation task:** Publish the scoped draft and read exact-source CI, then continue the next bounded Chale acceptance or mandatory false-success/security repair where genuine hosted access remains blocked. Do not activate a fictional 3D asset, paid inference, private financial action or unsupported news source.
 
 Evidence is in primary work/chale-private-work-20261028: source-before-full.json, checks.json, root-preservation.json, focused-affirmative.json, full.json, typecheck-final.log, build-final.log, security-final.log, http-work-status.log and preserved RED reports. The single current capability table remains docs/partner-readiness/README.md.
-
