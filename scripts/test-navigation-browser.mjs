@@ -192,6 +192,33 @@ try{
   await page.locator('.cart-drawer').screenshot({path:`${output}/bag-safe-${width}.png`});
   await page.getByRole('button',{name:'Close bag',exact:true}).click();
   checks.push({width,check:'Preview Bag preserves items across navigation/reload, explains ordering boundary and never reports or sends an order/payment'});
+
+  for (const [hash,heading] of [['opportunities','Opportunities'],['rewards','Rewards'],['communities','Communities'],['gaming','Gaming']]) {
+   await page.goto(`${origin}/#${hash}`);
+   await page.getByRole('heading',{name:heading,exact:true}).waitFor();
+   if(hash==='opportunities'){
+    await page.getByRole('button',{name:'About alerts',exact:true}).click();
+    await page.locator('.toast').filter({hasText:'No alert subscription was created'}).waitFor();
+    assert.equal(await page.getByText(/Each listing is reviewed/).count(),0);
+    assert.equal(await page.locator('.toast .lucide-check').count(),0);
+    await page.getByText('Example opportunities',{exact:true}).waitFor();
+   } else if(hash==='rewards'){
+    await page.getByRole('heading',{name:'No earned balance available',exact:true}).waitFor();
+    assert.equal(await page.locator('.badge-card.earned,.reward-progress').count(),0);
+    assert(!/240|60 pts|Milestones you’ve earned/.test(await page.locator('main').innerText()));
+    await page.getByRole('heading',{name:'Badge examples',exact:true}).waitFor();
+   } else if(hash==='communities'){
+    assert(!/1\.2k members|840 members|2\.1k members|690 members/.test(await page.locator('main').innerText()));
+    await page.getByRole('button',{name:'Start a community',exact:true}).click();
+    await page.locator('.toast').filter({hasText:'No community was created'}).waitFor();
+   } else {
+    await page.getByRole('button',{name:'Notify me',exact:true}).click();
+    await page.locator('.toast').filter({hasText:'No subscription was created'}).waitFor();
+   }
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),hash+' honesty page overflow');
+   await page.screenshot({path:`${output}/honesty-${hash}-${width}.png`,fullPage:false});
+   checks.push({width,check:hash+': unavailable operations and illustrative records make no unbacked completion, review, membership or reward claim'});
+  }
   await page.goto(`${origin}/#unsupported-destination`);
   await page.getByRole('heading',{name:'This destination is not available'}).waitFor();
   await page.getByRole('button',{name:'Back to Home'}).click();
