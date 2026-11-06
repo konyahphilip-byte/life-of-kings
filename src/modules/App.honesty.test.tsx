@@ -34,6 +34,7 @@ describe('evidence-backed shell states',()=>{
   expect(main.querySelectorAll('.badge-card.earned')).toHaveLength(0);
   expect(main.querySelector('.reward-progress')).toBeNull();
   expect(main.textContent).not.toMatch(/240|60 pts|Milestones you’ve earned/);
+  expect(main.textContent).not.toContain('IN PROGRESS');
   expect(within(main).getByRole('heading',{name:'Badge examples'})).toBeTruthy();
   expect(writes()).toEqual([]);
  });

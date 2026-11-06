@@ -215,6 +215,11 @@ try{
     await page.getByRole('button',{name:'Notify me',exact:true}).click();
     await page.locator('.toast').filter({hasText:'No subscription was created'}).waitFor();
    }
+   const notice=page.locator('.toast');
+   if(await notice.isVisible()){
+    const bounds=await notice.evaluate(element=>{const r=element.getBoundingClientRect();return {left:r.left,right:r.right,viewport:innerWidth,scroll:element.scrollWidth,client:element.clientWidth};});
+    assert(bounds.left>=11&&bounds.right<=bounds.viewport-11&&bounds.scroll<=bounds.client+1,hash+' notice text clips outside the viewport');
+   }
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),hash+' honesty page overflow');
    await page.screenshot({path:`${output}/honesty-${hash}-${width}.png`,fullPage:false});
    checks.push({width,check:hash+': unavailable operations and illustrative records make no unbacked completion, review, membership or reward claim'});

@@ -8,9 +8,9 @@ Unavailable alerts must not look subscribed, an error must not look successful, 
 
 ## Actual changes
 
-- `src/modules/App.tsx`: opportunity alerts explain that no subscription was created; opportunities are explicitly examples rather than reviewed live offers. Game-launch notices no longer promise future delivery. Communities display example labels instead of fixed membership counts, and creation reports its unavailable state. Rewards show no earned balance or badges instead of the fixed 240-point balance and fabricated progress. Generic notices use a neutral information icon instead of a success check.
+- `src/modules/App.tsx`: opportunity alerts explain that no subscription was created; opportunities are explicitly examples rather than reviewed live offers. Game-launch notices no longer promise future delivery. Communities display example labels instead of fixed membership counts, and creation reports its unavailable state. Rewards show no earned balance or badges instead of the fixed 240-point balance and fabricated progress. Generic notices use a neutral information icon instead of a success check. Screenshot review caught narrow-screen notice clipping; messages now wrap inside the viewport with a fixed icon and bounded text. Badge examples say EXAMPLE GOAL rather than implying tracked progress.
 - `src/modules/App.honesty.test.tsx`: four behavioral regressions verify truthful states, retained example/navigation content and no attempted writes for unsupported actions.
-- `scripts/test-navigation-browser.mjs`: retains existing desktop/narrow checks and adds four rendered-page scenarios at each width, no-overflow checks and eight screenshot artifacts. No test deadline, worker or assertion is weakened.
+- `scripts/test-navigation-browser.mjs`: retains existing desktop/narrow checks and adds four rendered-page scenarios at each width, no-overflow checks and eight screenshot artifacts. Toast bounds and text overflow are checked at both widths. No test deadline, worker or assertion is weakened.
 
 ## Local verification at this checkpoint
 
@@ -20,7 +20,7 @@ Unavailable alerts must not look subscribed, an error must not look successful, 
 - TypeScript and Vite production build passed. The existing large Communications bundle warning remains.
 - Dependency audit: zero vulnerabilities. Eight existing HTTP dependency-security assertions passed on pinned Node26.12.1/Vite8.3.5/Undici8.12.2 built-in and8.12.3 development dependency.
 - Existing isolated HTTP order/cart/catalog/classification/publication scripts all passed with synthetic accounts and storage. No production records, provider credentials or payments were used.
-- Local browser launch failed before assertions because the required Chromium executable is absent. Exact candidate CI must supply the browser and disposable PostgreSQL evidence; parent results are not relabelled as this candidate's results.
+- Local browser launch failed before assertions because the required Chromium executable is absent. Initial exact code fa203bfb CI42249706836/42249707258 subsequently passed682/57/build1693/audit0/security8, PostgreSQL18.6 commerce95/message84 and71 browser checks. Actual logs were read and the artifact checksum verified. Four inspected screenshots exposed the notice clipping and misleading example-badge status repaired in this follow-up. Those initial passes do not certify the follow-up source; its own focused/full/build/security/CI and screenshot evidence is required.
 - Initial test cache/loopback permission errors, an automatic approval-review usage-limit rejection and restricted GitHub connection failure are retained. The later approved build/security/GitHub checks completed. These environment failures are distinct from application acceptance.
 
 ## Current release gates
