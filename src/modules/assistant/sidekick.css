@@ -1,4 +1,4 @@
-.sidekick-panel.chale-panel{height:min(700px,calc(100dvh - 115px));max-height:calc(100dvh - 115px);display:flex;flex-direction:column;width:min(420px,calc(100vw - 24px))}
+.sidekick-panel.chale-panel{display:flex;flex-direction:column;width:min(440px,calc(100vw - 24px));overflow:hidden}
 .chale-panel .sidekick-thread{flex:1;min-height:100px;max-height:none;overflow-y:auto;overscroll-behavior:contain}
 .chale-panel .sidekick-head,.chale-panel .sidekick-context,.chale-panel .sidekick-input,.chale-panel .sidekick-disclosure,.chale-learning{flex-shrink:0}
 .chale-panel .sidekick-head button,.chale-panel .sidekick-input button{min-width:36px;min-height:36px}
@@ -71,11 +71,11 @@
 .sidekick-launch[data-edge]{bottom:calc(80px + env(safe-area-inset-bottom,0px));right:12px}
 .sidekick-launch[data-edge="left"]{left:12px;right:auto}
 .sidekick-launch:focus-visible{outline:3px solid #8bbd66;outline-offset:3px}
-.sidekick-panel.chale-panel{right:12px;bottom:calc(80px + env(safe-area-inset-bottom,0px));height:min(700px,calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px)));max-height:calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px));overflow-y:auto}
+.sidekick-panel.chale-panel{right:12px;bottom:calc(80px + env(safe-area-inset-bottom,0px));height:min(720px,calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px)));max-height:calc(var(--chale-viewport-height,100dvh) - 96px - env(safe-area-inset-bottom,0px));overflow:hidden}
 .sidekick-panel.chale-panel[data-edge="left"]{left:12px;right:auto}
 .sidekick-panel.chale-panel.chale-keyboard{bottom:calc(var(--chale-keyboard-inset,0px) + 8px);height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);max-height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);animation:none}
 .chale-keyboard .sidekick-context{display:none}
-.chale-panel .sidekick-thread{min-height:96px}
+.chale-panel .sidekick-thread{min-height:0}
 .chale-panel .sidekick-head button,.chale-panel .sidekick-input button{min-width:44px;min-height:44px}
 .chale-personalization{display:grid;gap:12px}
 .chale-personalization h2{margin:0;font-size:18px}
@@ -105,4 +105,41 @@
  .app .top-actions{gap:2px}
  .chale-header-slot .sidekick-launch{width:44px;height:44px;min-height:44px;padding:5px;justify-content:center;border-radius:12px}
  .chale-header-slot .sidekick-launch>span:not(.sidekick-orb),.chale-header-slot .sidekick-launch>i{display:none}
+}
+
+
+/* Conversation-first layout: information overlays the thread without resizing it. */
+.chale-panel .sidekick-head{position:relative;flex:0 0 56px;height:56px;padding:6px 10px;gap:8px}
+.chale-panel .sidekick-avatar{width:30px;height:30px;border-radius:10px;flex-shrink:0}
+.chale-panel .sidekick-head>span:nth-child(2){min-width:0;gap:3px}
+.chale-panel .sidekick-head b{font-size:15px;line-height:1.2}
+.chale-panel .sidekick-head small{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chale-panel .sidekick-thread{min-height:0;padding:16px 14px;gap:14px}
+.chale-panel .assistant-message{flex-shrink:0}
+.chale-panel .assistant-message p{font-size:14px;line-height:1.55}
+.chale-panel .sidekick-input{height:48px;margin:6px 12px 12px;padding:0 2px 0 12px;border-radius:14px}
+.chale-panel .sidekick-input input{font-size:16px}
+.chale-info-sheet{position:absolute;inset:56px 0 0;z-index:3;background:var(--paper);display:flex;flex-direction:column;outline:none}
+.chale-info-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);flex-shrink:0}
+.chale-info-head h2{font-size:13px;margin:0}
+.chale-info-head button{display:flex;align-items:center;gap:6px;min-height:44px;border:0;border-radius:8px;background:var(--canvas);color:var(--green2);padding:6px 10px;font:inherit;font-size:13px}
+.chale-info-scroll{min-height:0;overflow:auto;overscroll-behavior:contain;padding:16px}
+.chale-help-context{font-size:13px;line-height:1.5;color:var(--muted);margin:0 0 16px}
+.chale-info-sheet .chale-learning{border:0;padding:0;margin-bottom:18px;gap:10px;background:transparent}
+.chale-info-sheet .chale-learning>span,.chale-info-sheet .sidekick-disclosure{font-size:13px;line-height:1.6}
+.chale-info-sheet .chale-learning button{min-height:44px;font-size:13px}
+.chale-info-sheet .sidekick-disclosure{text-align:left;padding:0}
+.chale-info-sheet .chale-guide-version{font-size:11px;margin-top:12px}
+@media(max-width:780px){
+ .sidekick-panel.chale-panel{right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:calc(100vw - 16px);height:calc(var(--chale-viewport-height,100dvh) - 16px - env(safe-area-inset-bottom,0px));max-height:calc(var(--chale-viewport-height,100dvh) - 16px - env(safe-area-inset-bottom,0px))}
+ .sidekick-panel.chale-panel[data-edge="left"]{left:8px}
+ .sidekick-panel.chale-panel.chale-keyboard{bottom:calc(var(--chale-keyboard-inset,0px) + 8px);height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);max-height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px)}
+ .app:has(.chale-panel) .mobile-nav{visibility:hidden;pointer-events:none}
+}
+@media(max-height:480px){
+ .chale-panel .sidekick-head{height:48px;flex-basis:48px;padding-block:2px}
+ .chale-panel .sidekick-input{height:44px;margin:4px 10px 8px}
+ .chale-panel .sidekick-thread{padding:8px 12px}
+ .chale-info-sheet{top:48px}
+ .chale-info-head{padding-block:2px}
 }

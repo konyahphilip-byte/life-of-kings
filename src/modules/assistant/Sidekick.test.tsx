@@ -33,6 +33,12 @@ function mockFetch(handler?: FetchHandler) {
 }
 
 function openPanel() { fireEvent.click(screen.getByRole('button', { name: /Ask Chale AI/ })); }
+async function checkLearning(text:string) {
+  fireEvent.click(screen.getByRole('button',{name:'About replies & learning'}));
+  await screen.findByText(text);
+  fireEvent.click(screen.getByRole('button',{name:'Back to conversation'}));
+}
+
 function ask(value: string) {
   fireEvent.change(screen.getByRole('textbox', { name: 'Ask Chale AI' }), { target: { value } });
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
@@ -202,6 +208,7 @@ describe('Chale AI app integration', () => {
     mockFetch(() => response({ configured: true, hosting: 'local', dailyRequests: 20, guestDailyRequests: 5 }));
     render(<Sidekick {...props}/>); openPanel();
     await screen.findByText('Model configured');
+    fireEvent.click(screen.getByRole('button',{name:'About replies & learning'}));
     expect(screen.getByText(/model on the EcoVibes server/).textContent).toContain('20 requests per day');
     expect(screen.getByText(/model on the EcoVibes server/).textContent).toContain('Failed or busy attempts count');
   });
@@ -217,7 +224,7 @@ describe('Chale AI app integration', () => {
   it('describes its EcoVibes scope and reports configuration without claiming live availability', async () => {
     render(<Sidekick {...props}/>); openPanel();
     expect(screen.getByText(/your EcoVibes assistant/)).toBeTruthy();
-    expect(screen.getByPlaceholderText('Ask about EcoVibes or an app problem')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Message Chale…')).toBeTruthy();
     await screen.findByText('Model configured');
     expect(screen.queryByText('Ready to help')).toBeNull();
     expect(screen.queryByLabelText('Reply evidence')).toBeNull();
@@ -333,7 +340,7 @@ describe('Chale AI app integration', () => {
     const changed = vi.fn();
     window.addEventListener('ecovibes:recommendations_changed', changed);
     render(<Sidekick {...props}/>); openPanel();
-    await screen.findByText('Learning is on. Save or show less to tune it.');
+    await checkLearning('Learning is on. Save or show less to tune it.');
     ask('Find a product');
     fireEvent.click(await screen.findByRole('button', { name: 'Save Recycled plant pot' }));
     await screen.findByText('Saved to your learning profile.');
@@ -358,11 +365,11 @@ describe('Chale AI app integration', () => {
     const fetchMock = mockFetch((path) => path.endsWith('/ai/chat')
       ? response({ text: 'Here is a listing.', items: [product] }) : response({ configured: true, enabled: false }));
     render(<Sidekick {...props}/>); openPanel();
-    await screen.findByText('Learning is paused.'); ask('Find a product');
+    await checkLearning('Learning is paused.'); ask('Find a product');
     await screen.findByText(product.title);
     expect(screen.queryByRole('button', { name: 'Save Recycled plant pot' })).toBeNull();
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/recommendations/signals'))).toHaveLength(0);
-    fireEvent.click(screen.getByText('About replies & learning'));
+    fireEvent.click(screen.getByRole('button', {name:'About replies & learning'}));
     fireEvent.click(screen.getByRole('button', { name: 'Tune learning on Home' }));
     expect(props.onNavigate).toHaveBeenCalledWith('Home');
   });
@@ -376,7 +383,7 @@ describe('Chale AI app integration', () => {
     const changed = vi.fn();
     window.addEventListener('ecovibes:recommendations_changed', changed);
     render(<Sidekick {...props}/>); openPanel();
-    await screen.findByText('Learning is on. Save or show less to tune it.');
+    await checkLearning('Learning is on. Save or show less to tune it.');
     ask('Find a product');
     fireEvent.click(await screen.findByRole('button', { name: 'Save Recycled plant pot' }));
     await screen.findByText('Learning is paused. No feedback was saved.');
@@ -404,22 +411,24 @@ describe('Chale AI app integration', () => {
       return response({ configured: true });
     });
     render(<Sidekick {...props}/>); openPanel();
-    await screen.findByText('Learning is on. Save or show less to tune it.');
+    await checkLearning('Learning is on. Save or show less to tune it.');
     ask('Find a product'); await screen.findByRole('button', { name: 'Save Recycled plant pot' });
     act(() => window.dispatchEvent(new Event('ecovibes:recommendations_changed')));
     expect(screen.queryByRole('button', { name: 'Save Recycled plant pot' })).toBeNull();
     act(() => window.dispatchEvent(new Event('ecovibes:recommendations_changed')));
-    await screen.findByText('Learning is paused.');
+    await checkLearning('Learning is paused.');
     expect(oldSignal?.aborted).toBe(true);
     await act(async () => resolveOld(response({ enabled: true })));
+    fireEvent.click(screen.getByRole('button',{name:'About replies & learning'}));
     expect(screen.getByText('Learning is paused.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Back to conversation'}));
     expect(screen.queryByRole('button', { name: 'Save Recycled plant pot' })).toBeNull();
   });
 
   it('clears local saved toggles after an explicit profile reset event', async () => {
     mockFetch((path) => path.endsWith('/ai/chat') ? response({ text: 'Here is a listing.', items: [product] }) : response({ configured: true, enabled: true }));
     render(<Sidekick {...props}/>); openPanel();
-    await screen.findByText('Learning is on. Save or show less to tune it.');
+    await checkLearning('Learning is on. Save or show less to tune it.');
     ask('Find a product'); fireEvent.click(await screen.findByRole('button', { name: 'Save Recycled plant pot' }));
     await screen.findByRole('button', { name: 'Unsave Recycled plant pot' });
     act(() => window.dispatchEvent(new CustomEvent('ecovibes:recommendations_changed', { detail: { reset: true } })));
@@ -439,7 +448,7 @@ describe('Chale AI app integration', () => {
       return response({ configured: true, enabled: true });
     });
     render(<Sidekick {...props}/>); openPanel();
-    await screen.findByText('Learning is on. Save or show less to tune it.');
+    await checkLearning('Learning is on. Save or show less to tune it.');
     ask('Find a product'); fireEvent.click(await screen.findByRole('button', { name: 'Save Recycled plant pot' }));
     act(() => window.dispatchEvent(new CustomEvent('ecovibes:recommendations_changed', { detail: { reset: true } })));
     expect(pendingSignal?.aborted).toBe(true);
@@ -529,5 +538,49 @@ describe('Chale AI app integration', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /Ask Chale AI/ }));
+  });
+
+  it('keeps the conversation primary and opens learning details only on request', async () => {
+    mockFetch(path => response(path.endsWith('/ai/status') ? {configured:true,dailyRequests:40} : {enabled:false}));
+    render(<Sidekick {...props}/>); openPanel();
+    expect(document.querySelector('.sidekick-context')).toBeNull();
+    expect(screen.queryByRole('region',{name:'About replies & learning'})).toBeNull();
+    ask('hi');
+    expect(screen.getByText('Hi! What would you like help with today?')).toBeTruthy();
+    const input=screen.getByRole('textbox',{name:'Ask Chale AI'});
+    fireEvent.change(input,{target:{value:'Keep my unfinished question'}});
+    const info=screen.getByRole('button',{name:'About replies & learning'});
+    fireEvent.click(info);
+    await screen.findByText(/Free allowance: 40 requests/);
+    expect(document.activeElement).toBe(screen.getByRole('region',{name:'About replies & learning'}));
+    fireEvent.click(screen.getByRole('button',{name:'Back to conversation'}));
+    expect(screen.getByRole('textbox',{name:'Ask Chale AI'})).toBe(input);
+    expect((input as HTMLInputElement).value).toBe('Keep my unfinished question');
+    expect(document.activeElement).toBe(info);
+    expect(screen.getByText('Hi! What would you like help with today?')).toBeTruthy();
+  });
+
+  it('dismisses information first with Escape, then closes chat and restores its opener', () => {
+    render(<Sidekick {...props} online={false}/>); openPanel();
+    const info=screen.getByRole('button',{name:'About replies & learning'});
+    fireEvent.click(info); fireEvent.keyDown(window,{key:'Escape'});
+    expect(screen.queryByRole('region',{name:'About replies & learning'})).toBeNull();
+    expect(screen.getByRole('dialog',{name:'Chale AI'})).toBeTruthy();
+    expect(document.activeElement).toBe(info);
+    fireEvent.keyDown(window,{key:'Escape'});
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('does not jump away from earlier messages when an in-flight reply finishes', async () => {
+    let finish!: (r:Response)=>void;
+    mockFetch(path=>path.endsWith('/ai/chat') ? new Promise<Response>(resolve=>{finish=resolve;}) : response({configured:true,enabled:false}));
+    render(<Sidekick {...props}/>); openPanel(); ask('Help me organize a collection');
+    await waitFor(()=>expect(finish).toBeTypeOf('function'));
+    const thread=screen.getByRole('log',{name:'Conversation with Chale AI'});
+    Object.defineProperties(thread,{scrollHeight:{configurable:true,value:1000},clientHeight:{configurable:true,value:200}});
+    thread.scrollTop=10;fireEvent.scroll(thread);
+    await act(async()=>finish(response({text:'Start by separating your materials.',source:'model',items:[],guides:[],drafts:[]})));
+    await screen.findByText('Start by separating your materials.');
+    expect(thread.scrollTop).toBe(10);
   });
 });
