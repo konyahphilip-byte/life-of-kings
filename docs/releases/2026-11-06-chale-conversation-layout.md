@@ -44,3 +44,6 @@ Candidate c3aad4d3 release42258451406 passed. Browser42258451601 retained the ex
 
 
 The follow-up browser42260263050 reproduced visible mobile navigation before any geometry checks. Chale is rendered outside the app wrapper, so the app-scoped :has selector did not match. The source now scopes that condition to the document body; navigation remains hidden only while the chat exists and returns on close. The original assertion is retained.
+
+
+A390px local browser verified704/828px (85%) conversation height, hidden navigation, three complete turns, retained draft/processing disclosure and restored navigation on close. CI42262180495 still observed navigation visible at its immediate opening check. The harness now waits for the same required hidden/visible states before asserting, with viewport/body/style diagnostics retained and no deadline or hide/show assertion removed. The timing difference is not relabelled as a product pass; final CI must establish the outcome.

@@ -10,7 +10,7 @@ await mkdir(output,{recursive:true});
 const serve=await createWebHandler(new URL('../dist',import.meta.url).pathname);
 const server=createServer(async(req,res)=>{try{if(!await serve(req,res)){res.writeHead(503);res.end('{}');}}catch{res.writeHead(500);res.end();}});
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-const origin='http://127.0.0.1:'+server.address().port,checks=[];
+const origin='http://127.0.0.1:'+server.address().port,checks=[],diagnostics=[];
 let browser,failure;
 try{
  browser=await chromium.launch();
@@ -42,7 +42,11 @@ try{
   await page.locator('.topbar').getByRole('button',{name:'Ask Chale AI',exact:true}).click();
   const panel=page.getByRole('dialog',{name:'Chale AI'}),thread=page.getByRole('log',{name:'Conversation with Chale AI'}),input=page.getByRole('textbox',{name:'Ask Chale AI'});
   await panel.waitFor();
-  if(width<=780)assert.equal(await page.locator('.mobile-nav').isVisible(),false,'Mobile app navigation stays out of the conversation');
+  if(width<=780){
+   diagnostics.push(await page.evaluate(()=>({width:innerWidth,mobile:matchMedia('(max-width:780px)').matches,chat:!!document.querySelector('.chale-panel'),bodyMatches:document.body.matches(':has(.chale-panel)'),navVisibility:getComputedStyle(document.querySelector('.mobile-nav')).visibility,styleSheets:document.styleSheets.length})));
+   await page.locator('.mobile-nav').waitFor({state:'hidden'});
+   assert.equal(await page.locator('.mobile-nav').isVisible(),false,'Mobile app navigation stays out of the conversation');
+  }
   const geometry=await panel.evaluate(element=>{
    const panel=element.getBoundingClientRect(),thread=element.querySelector('.sidekick-thread').getBoundingClientRect(),head=element.querySelector('.sidekick-head').getBoundingClientRect();
    return {panelHeight:panel.height,threadHeight:thread.height,headHeight:head.height,panelScroll:element.scrollHeight,panelClient:element.clientHeight,overflow:getComputedStyle(element).overflowY};
@@ -90,7 +94,10 @@ try{
   await info.click();await page.keyboard.press('Escape');
   await panel.waitFor();assert.equal(await sheet.count(),0);
   await page.keyboard.press('Escape');assert.equal(await panel.count(),0);
-  if(width<=780)assert.equal(await page.locator('.mobile-nav').isVisible(),true,'Closing chat restores mobile navigation');
+  if(width<=780){
+   await page.locator('.mobile-nav').waitFor({state:'visible'});
+   assert.equal(await page.locator('.mobile-nav').isVisible(),true,'Closing chat restores mobile navigation');
+  }
   checks.push({width,height,check:'Escape dismisses details before closing chat'});
   if(width===390){
    await page.setViewportSize({width:844,height:180});
@@ -108,7 +115,7 @@ try{
  }
 }catch(error){failure={name:error.name,message:error.message};}
 finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
-const result={passed:!failure,checks,failure:failure||null,scope:'Actual built Chromium UI, synthetic replies and guest/API fixtures. Not hosted, physical phone, real keyboard, private account or model acceptance.'};
+const result={passed:!failure,checks,diagnostics,failure:failure||null,scope:'Actual built Chromium UI, synthetic replies and guest/API fixtures. Not hosted, physical phone, real keyboard, private account or model acceptance.'};
 await writeFile(output+'/chale-conversation-checks.json',JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify(result,null,2));if(failure)process.exitCode=1;
 
