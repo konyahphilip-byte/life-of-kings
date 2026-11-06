@@ -134,7 +134,7 @@
  .sidekick-panel.chale-panel{right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:calc(100vw - 16px);height:calc(var(--chale-viewport-height,100dvh) - 16px - env(safe-area-inset-bottom,0px));max-height:calc(var(--chale-viewport-height,100dvh) - 16px - env(safe-area-inset-bottom,0px))}
  .sidekick-panel.chale-panel[data-edge="left"]{left:8px}
  .sidekick-panel.chale-panel.chale-keyboard{bottom:calc(var(--chale-keyboard-inset,0px) + 8px);height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px);max-height:calc(min(var(--chale-viewport-height,100dvh),100dvh) - 16px)}
- .app:has(.chale-panel) .mobile-nav{visibility:hidden;pointer-events:none}
+ body:has(.chale-panel) .mobile-nav{visibility:hidden;pointer-events:none}
 }
 @media(max-height:480px){
  .chale-panel .sidekick-head{height:48px;flex-basis:48px;padding-block:2px}

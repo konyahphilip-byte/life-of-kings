@@ -41,3 +41,6 @@ Chale's model/tool authorization,40-request free allowance, guest network bucket
 ## Initial CI follow-up
 
 Candidate c3aad4d3 release42258451406 passed. Browser42258451601 retained the existing navigation checks but the new conversation harness stopped before layout assertions: the unscoped Ask Chale AI selector matched both the header shortcut and Home's hero action. Both product entry points remain; the harness now selects the reserved header shortcut explicitly. No test deadline or assertion was weakened. Exact follow-up CI/screenshots remain required.
+
+
+The follow-up browser42260263050 reproduced visible mobile navigation before any geometry checks. Chale is rendered outside the app wrapper, so the app-scoped :has selector did not match. The source now scopes that condition to the document body; navigation remains hidden only while the chat exists and returns on close. The original assertion is retained.
