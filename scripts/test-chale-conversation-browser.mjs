@@ -39,7 +39,7 @@ try{
   const page=await context.newPage(),errors=[];
   page.on('pageerror',()=>errors.push('page_error'));
   await page.goto(origin+'/#home');
-  await page.getByRole('button',{name:'Ask Chale AI',exact:true}).click();
+  await page.locator('.topbar').getByRole('button',{name:'Ask Chale AI',exact:true}).click();
   const panel=page.getByRole('dialog',{name:'Chale AI'}),thread=page.getByRole('log',{name:'Conversation with Chale AI'}),input=page.getByRole('textbox',{name:'Ask Chale AI'});
   await panel.waitFor();
   if(width<=780)assert.equal(await page.locator('.mobile-nav').isVisible(),false,'Mobile app navigation stays out of the conversation');
@@ -94,7 +94,7 @@ try{
   checks.push({width,height,check:'Escape dismisses details before closing chat'});
   if(width===390){
    await page.setViewportSize({width:844,height:180});
-   await page.getByRole('button',{name:'Ask Chale AI',exact:true}).click();
+   await page.locator('.topbar').getByRole('button',{name:'Ask Chale AI',exact:true}).click();
    const box=await panel.boundingBox(),threadBox=await thread.boundingBox(),inputBox=await input.boundingBox();
    assert(box&&box.y>=0&&box.y+box.height<=180,'Short viewport contains panel');
    assert(threadBox&&threadBox.height>=40&&inputBox&&inputBox.y>=box.y&&inputBox.y+inputBox.height<=box.y+box.height,'History and composer remain reachable in short viewport');

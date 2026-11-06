@@ -36,3 +36,8 @@ This is a reviewable UI increment, not a production release. Require exact CI/lo
 
 Chale's model/tool authorization,40-request free allowance, guest network bucket, no paid fallback and independent optional-character settings are unchanged. No camera, microphone, photo or location access is requested. No secret, paid resource, fee, migration or real-user message is involved. All protected dirty-primary work must remain intact.
 
+
+
+## Initial CI follow-up
+
+Candidate c3aad4d3 release42258451406 passed. Browser42258451601 retained the existing navigation checks but the new conversation harness stopped before layout assertions: the unscoped Ask Chale AI selector matched both the header shortcut and Home's hero action. Both product entry points remain; the harness now selects the reserved header shortcut explicitly. No test deadline or assertion was weakened. Exact follow-up CI/screenshots remain required.
