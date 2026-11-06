@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Info, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
 import type { AssistantDestination } from './assistant';
 import WorkStatusCard from './WorkStatusCard';
 import { useChaleUI } from './chale-ui';
@@ -166,6 +166,10 @@ async function searchLiveListings(query: string, dataMode: DataMode, signal: Abo
 
 export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode, online, launcherHost }: Props) {
   const [open, setOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoRef = useRef<HTMLDivElement>(null);
+  const infoButtonRef = useRef<HTMLButtonElement>(null);
+  const followLatest = useRef(true);
   const [draft, setDraft] = useState('');
   const [entries, setEntries] = useState<ChatEntry[]>([welcome]);
   const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
@@ -194,7 +198,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     if (chatRequest.current) clearTimeout(chatRequest.current.timer);
     feedbackRequest.current?.abort();
     chatRequest.current = null; feedbackRequest.current = null; busyRef.current = false;
-    setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null);
+    setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null); setInfoOpen(false); followLatest.current = true;
     return () => {
       generation.current += 1;
       chatRequest.current?.controller.abort();
@@ -306,16 +310,24 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
 
   useEffect(() => {
     if (!open) return;
-    inputRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key !== 'Escape') return;
+      if (infoOpen) { setInfoOpen(false); infoButtonRef.current?.focus(); }
+      else setOpen(false);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [open]);
+  }, [open, infoOpen]);
 
   useEffect(() => {
-    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    if (!open) { setInfoOpen(false); followLatest.current = true; return; }
+    inputRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => { if (infoOpen) infoRef.current?.focus(); }, [infoOpen]);
+
+  useEffect(() => {
+    if (threadRef.current && followLatest.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, [entries, open]);
 
   const ask = async (value: string) => {
@@ -324,6 +336,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     const requestGeneration = generation.current;
     const entryId = nextId.current++;
     const replyId = nextId.current++;
+    followLatest.current = true;
     setDraft(''); setNotice('');
     const greeting = chaleGreeting(query);
     if (greeting) {
@@ -462,12 +475,12 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     {launcherHost ? createPortal(launcher, launcherHost) : launcherHost === undefined ? launcher : null}
     {open && <section className={`sidekick-panel chale-panel${viewport.keyboard ? ' chale-keyboard' : ''}`} data-edge={display.edge} style={{ '--chale-viewport-height': `${viewport.height}px`, '--chale-keyboard-inset': `${viewport.bottom}px` } as CSSProperties} id="ecovibes-sidekick" role="dialog" aria-label="Chale AI">
       <header className="sidekick-head">
-        <span className="sidekick-avatar"><Sparkles size={19}/></span>
-        <span><b>Chale AI</b><small><i className={online && aiStatus?.configured && !aiStatus.unavailable ? 'connected' : ''}/>{connection}</small></span>
-        <button aria-label="Close Chale AI" onClick={() => setOpen(false)}><X size={17}/></button>
+        <span className="sidekick-avatar" aria-hidden="true"><Sparkles size={17}/></span>
+        <span><b>Chale AI</b><small><i className={online && aiStatus?.configured && !aiStatus.unavailable ? 'connected' : ''}/><span>{connection}</span> · {page}</small></span>
+        <button ref={infoButtonRef} type="button" aria-label="About replies & learning" aria-expanded={infoOpen} aria-controls="chale-reply-information" onClick={() => setInfoOpen(value => !value)}><Info size={19}/></button>
+        <button type="button" aria-label="Close Chale AI" onClick={() => setOpen(false)}><X size={17}/></button>
       </header>
-      <div className="sidekick-context"><span className="context-orbit"><span/><i/><b/></span><span><b>A way forward, together.</b><small>You’re in {page}. {dataMode === 'extreme' ? 'Text first, with fewer listings.' : 'Your choices stay yours.'}</small></span></div>
-      <div ref={threadRef} className="sidekick-thread" tabIndex={0} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
+      <div ref={threadRef} className="sidekick-thread" inert={infoOpen || undefined} aria-hidden={infoOpen || undefined} onScroll={event => { const el = event.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; }} tabIndex={0} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
         {userId && (page === 'Waste' || page === 'Quick&Handi') && <WorkStatusCard key={userId} userId={userId} online={online} onNavigate={navigate}/>}
         {entries.map((entry) => <div className={`assistant-message ${entry.role}`} key={entry.id}>
           {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'public_updates' ? 'Updates and sources' : entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
@@ -522,13 +535,15 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
         {entries.length === 1 && <div className="sidekick-prompts"><span>START WHERE YOU ARE</span>{pagePrompts(page).map((prompt) => <button type="button" disabled={busy} key={prompt} onClick={() => void ask(prompt)}>{prompt}<ChevronRight size={13}/></button>)}</div>}
       </div>
       {notice && <p className="chale-notice" role="status">{notice}</p>}
-      <form className="sidekick-input" onSubmit={submit}>
-        <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask about EcoVibes or an app problem" aria-label="Ask Chale AI" maxLength={1200}/>
+      <form className="sidekick-input" inert={infoOpen || undefined} aria-hidden={infoOpen || undefined} onSubmit={submit}>
+        <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Message Chale…" aria-label="Ask Chale AI" maxLength={1200}/>
         {busy ? <button type="button" className="chale-stop" aria-label="Stop answer" onClick={() => chatRequest.current?.controller.abort('stopped')}><X size={17}/></button> : <button disabled={!draft.trim()} aria-label="Send question"><ArrowUp size={17}/></button>}
       </form>
-      <details className="chale-about"><summary>About replies &amp; learning</summary>
+      {infoOpen && <div ref={infoRef} className="chale-info-sheet" id="chale-reply-information" role="region" aria-label="About replies & learning" tabIndex={-1}>
+      <div className="chale-info-head"><button type="button" aria-label="Back to conversation" onClick={() => { setInfoOpen(false); infoButtonRef.current?.focus(); }}><ArrowLeft size={18}/>Back to chat</button><h2>Replies &amp; learning</h2></div>
+      <div className="chale-info-scroll"><p className="chale-help-context">Helping in {page}. {dataMode === 'extreme' ? 'Text first, with fewer listings.' : 'Your choices stay yours.'}</p>
       <div className="chale-learning"><span>{!userId ? 'Sign in to manage your learning profile.' : learning?.enabled ? 'Learning is on. Save or show less to tune it.' : learning ? 'Learning is paused.' : 'Your learning choices are available on Home.'}</span><button type="button" onClick={() => navigate('Home')}>Tune learning on Home<ChevronRight size={12}/></button></div>
-      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : `Live replies use recent messages, safe app context and public listings with ${aiStatus?.hosting === 'local' ? 'the model on the EcoVibes server' : 'the configured model service'}. Keep passwords and payment codes private. Review drafts before sharing.${aiStatus?.allowance ? ` Free allowance: ${aiStatus.allowance} requests per day, resetting at 00:00 UTC. Failed or busy attempts count.` : ''}`}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p></details>
+      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : `Live replies use recent messages, safe app context and public listings with ${aiStatus?.hosting === 'local' ? 'the model on the EcoVibes server' : 'the configured model service'}. Keep passwords and payment codes private. Review drafts before sharing.${aiStatus?.allowance ? ` Free allowance: ${aiStatus.allowance} requests per day, resetting at 00:00 UTC. Failed or busy attempts count.` : ''}`}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p></div></div>}
     </section>}
   </>;
 }
