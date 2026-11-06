@@ -27,7 +27,7 @@ try{
    if(url.pathname==='/api/v1/ai/chat'){
     const number=++replies;
     const reply=()=>route.fulfill({contentType:'application/json',body:JSON.stringify({text:'Reply '+number+': Choose a small goal, make time for it and check your progress. Start with what you already have, and adjust the plan as you learn.',source:'model',items:[],guides:[],drafts:[]})});
-    if(number===4){releaseReply=reply;ready();return;}
+    if(number===7){releaseReply=reply;ready();return;}
     return reply();
    }
    if(url.pathname.startsWith('/api/v1/')){
@@ -56,17 +56,20 @@ try{
   assert.equal(await page.locator('.sidekick-context').count(),0);
   assert.equal(await page.getByRole('region',{name:'About replies & learning'}).count(),0);
   checks.push({width,height,check:'At least70% of chat belongs to messages, with no character banner or expanded disclosure by default',geometry});
-  for(let i=1;i<=3;i++){
+  for(let i=1;i<=6;i++){
    await input.fill('Help me plan a simple week '+i);
    await page.getByRole('button',{name:'Send question'}).click();
    await page.getByText('Reply '+i+':',{exact:false}).waitFor();
   }
-  await input.fill('Help me plan a simple week4');
+  await input.fill('Help me plan a simple week7');
   await page.getByRole('button',{name:'Send question'}).click();
   let timer;try{await Promise.race([replyReady,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Reply fixture not reached')),10000);})]);}finally{clearTimeout(timer);}
+  const historyBeforeReply=await thread.evaluate(element=>({scroll:element.scrollHeight,client:element.clientHeight}));
+  diagnostics.push({width,height,historyBeforeReply});
+  assert(historyBeforeReply.scroll-historyBeforeReply.client>100,'Fixture must contain genuinely scrollable earlier history before a pending reply');
   await thread.evaluate(element=>{element.scrollTop=0;element.dispatchEvent(new Event('scroll',{bubbles:true}));});
   await releaseReply();
-  await page.getByText('Reply 4:',{exact:false}).waitFor();
+  await page.getByText('Reply 7:',{exact:false}).waitFor();
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   assert(await thread.evaluate(element=>element.scrollTop<2),'Incoming reply must not jump away from older messages');
   assert(await thread.evaluate(element=>element.scrollHeight>element.clientHeight),'Real long history scrolls inside its own thread');
@@ -90,7 +93,7 @@ try{
   await page.screenshot({path:output+'/chale-conversation-'+width+'.png'});
   assert(await input.evaluate(element=>Number.parseFloat(getComputedStyle(element).fontSize)>=16),'Readable input avoids mobile focus zoom');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No page overflow');
-  checks.push({width,height,check:'Four real rendered reply turns, stable earlier-history position, optional focused information, retained draft, readable composer and character-off chat'});
+  checks.push({width,height,check:'Seven real rendered reply turns, stable earlier-history position, optional focused information, retained draft, readable composer and character-off chat'});
   await info.click();await page.keyboard.press('Escape');
   await panel.waitFor();assert.equal(await sheet.count(),0);
   await page.keyboard.press('Escape');assert.equal(await panel.count(),0);

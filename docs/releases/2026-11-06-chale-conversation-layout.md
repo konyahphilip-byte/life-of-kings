@@ -47,3 +47,6 @@ The follow-up browser42260263050 reproduced visible mobile navigation before any
 
 
 A390px local browser verified704/828px (85%) conversation height, hidden navigation, three complete turns, retained draft/processing disclosure and restored navigation on close. CI42262180495 still observed navigation visible at its immediate opening check. The harness now waits for the same required hidden/visible states before asserting, with viewport/body/style diagnostics retained and no deadline or hide/show assertion removed. The timing difference is not relabelled as a product pass; final CI must establish the outcome.
+
+
+Browser42263296124 passed the mobile visibility wait and conversation-space check, then failed its pending-reply reading-position expectation. The initial fixture had only three short prior replies, which can fit inside the enlarged thread; scrolling to zero does not establish that a user left the bottom in that case. The fixture now provides six completed turns and explicitly requires more than100px of earlier-history overflow before holding a seventh reply. The original no-jump assertion and all limits remain. Final logs must verify this strengthened precondition; no product cause is inferred merely from a passing rerun.
