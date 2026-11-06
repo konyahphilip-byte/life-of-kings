@@ -1,3 +1,11 @@
+## October 28 - new critical directive; private work request increment locally tested
+
+The [October28 critical execution/Finance directive](directives/2026-10-28-critical-execution-finance.md) supersedes the October27 email-first order: repository/release assessment, Chale, Connect, genuine GPS/3D, Finance integrity, approved domestic sandbox, remittance/partner sandbox, integrated hardening. Authentication/security remain mandatory; unrelated expansion/Games stay paused. No production merge/deploy, paid resources, DNS or real-money action is authorised by a local pass.
+
+LOCALLY BUILT on codex/chale-private-work-20261028, based hosted main26c1b555, separately from [Auth draft PR24](https://github.com/konyahphilip-byte/life-of-kings/pull/24). Five source/test files let supported affirmative own-work questions open the existing account-bound Quick&Handi/Waste count card from any screen without inference/model history. Negative/capability questions do not auto-read; named/record selector requests are refused locally. One-time requests, no offline queue, cancellation/account-switch/late/malformed-data guards retained. This is bounded English routing, not general natural-language authorization.
+
+Final492/492/32files,113focused/2files,34actual HTTP/SQLite synthetic-account checks, TypeScript/build1670/security probes pass. All five source hashes stable;145 protected primary source/assets preserved. Review findings were reproduced and fixed; all REDs retained. Historical QA001 cause remains undiagnosed. No authenticated hosted, real-device, media, GPS, inference/provider, email or financial acceptance occurred. Current hosted remains PR23; full Milestone2 is UNVERIFIED. [Execution report](releases/2026-10-28-chale-private-work.md), work/chale-private-work-20261028/checks.json.
+
 # EcoVibes continuation — backend release checkpoint
 
 ## October 15 — atomic role activation verified locally
