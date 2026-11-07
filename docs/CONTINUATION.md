@@ -1,3 +1,7 @@
+## 7 November 2026 — Chale source updates locally verified
+
+One approved Wikidata country-profile source now has a bounded leased update queue and Studio fetch/review/draft controls. Final605/605 tests47files/build1688/audit0/security8, HTTP14+12/PG17.10 36+46 and synthetic built390px UI checks pass. Parent Studio plus sync migrations remain UNAPPLIED; source/publication approvals, independent review, exact CI, real admin/MFA/device/capacity/retention and explicit release approval remain open. No Chale answer/RAG integration or broader agent completion is claimed. See docs/releases/2026-11-07-chale-source-updates-local.md. Preserve all REDs/QA001 and145 primary source hashes.
+
 # EcoVibes continuation — backend release checkpoint
 
 ## October 15 — atomic role activation verified locally
