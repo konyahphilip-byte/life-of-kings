@@ -1,0 +1,33 @@
+BEGIN;
+SET LOCAL lock_timeout='5s';
+SET LOCAL statement_timeout='30s';
+SET LOCAL search_path=public;
+CREATE TABLE knowledge_sync_jobs(provider_key TEXT PRIMARY KEY,enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),approval_version TEXT NOT NULL,revision INTEGER NOT NULL,configured_by uuid NOT NULL REFERENCES users(id),configured_at TEXT NOT NULL,next_at TEXT NOT NULL,lease_id uuid,lease_until TEXT,last_checked TEXT,last_success TEXT,last_hash TEXT,last_remote_revision TEXT,etag TEXT,last_modified TEXT,latest_snapshot_id uuid,imported_snapshot_id uuid,imported_version INTEGER,last_outcome TEXT NOT NULL,failures INTEGER NOT NULL DEFAULT 0,error_code TEXT);
+CREATE TABLE knowledge_sync_snapshots(id uuid PRIMARY KEY,provider_key TEXT NOT NULL REFERENCES knowledge_sync_jobs(provider_key),body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 20000),content_hash TEXT NOT NULL,remote_revision TEXT NOT NULL,checked_at TEXT NOT NULL,expires_at TEXT NOT NULL);
+CREATE TABLE knowledge_sync_events(id uuid PRIMARY KEY,provider_key TEXT NOT NULL REFERENCES knowledge_sync_jobs(provider_key),action TEXT NOT NULL CHECK(action IN('configured','leased','staged','unchanged','failed','applied')),actor_id uuid REFERENCES users(id),snapshot_id uuid,created_at TEXT NOT NULL,error_code TEXT);
+CREATE INDEX knowledge_sync_due ON knowledge_sync_jobs(enabled,next_at,lease_until);
+CREATE INDEX knowledge_sync_expiry ON knowledge_sync_snapshots(expires_at);
+CREATE INDEX knowledge_sync_event_order ON knowledge_sync_events(provider_key,created_at,id);
+ALTER TABLE knowledge_sync_jobs ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON knowledge_sync_jobs FROM PUBLIC,anon,authenticated,service_role,ecovibes_api_runtime;
+GRANT SELECT,INSERT ON knowledge_sync_jobs TO ecovibes_api_runtime;
+CREATE POLICY sync_read ON knowledge_sync_jobs FOR SELECT TO ecovibes_api_runtime USING(true);
+CREATE POLICY sync_insert ON knowledge_sync_jobs FOR INSERT TO ecovibes_api_runtime WITH CHECK(true);
+ALTER TABLE knowledge_sync_snapshots ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON knowledge_sync_snapshots FROM PUBLIC,anon,authenticated,service_role,ecovibes_api_runtime;
+GRANT SELECT,INSERT ON knowledge_sync_snapshots TO ecovibes_api_runtime;
+CREATE POLICY sync_read ON knowledge_sync_snapshots FOR SELECT TO ecovibes_api_runtime USING(true);
+CREATE POLICY sync_insert ON knowledge_sync_snapshots FOR INSERT TO ecovibes_api_runtime WITH CHECK(true);
+ALTER TABLE knowledge_sync_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON knowledge_sync_events FROM PUBLIC,anon,authenticated,service_role,ecovibes_api_runtime;
+GRANT SELECT,INSERT ON knowledge_sync_events TO ecovibes_api_runtime;
+CREATE POLICY sync_read ON knowledge_sync_events FOR SELECT TO ecovibes_api_runtime USING(true);
+CREATE POLICY sync_insert ON knowledge_sync_events FOR INSERT TO ecovibes_api_runtime WITH CHECK(true);
+GRANT UPDATE(enabled,approval_version,revision,configured_by,configured_at,next_at,lease_id,lease_until,last_checked,last_success,last_hash,last_remote_revision,etag,last_modified,latest_snapshot_id,imported_snapshot_id,imported_version,last_outcome,failures,error_code) ON knowledge_sync_jobs TO ecovibes_api_runtime;
+CREATE POLICY sync_update ON knowledge_sync_jobs FOR UPDATE TO ecovibes_api_runtime USING(true) WITH CHECK(true);
+GRANT DELETE ON knowledge_sync_snapshots TO ecovibes_api_runtime;
+CREATE POLICY sync_expire ON knowledge_sync_snapshots FOR DELETE TO ecovibes_api_runtime USING(true);
+INSERT INTO ecovibes_schema_version(version) VALUES('20261107064239_chale_knowledge_sync');
+COMMIT;
+-- Disable CHALE_KNOWLEDGE_SYNC_ENABLED before rollback. Preserve canonical versions and audit events; do not remove unrelated authentication barriers.
+
