@@ -1,6 +1,9 @@
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import App from './App';
+// Navigation assertions exercise the real account screen without racing its
+// test-runner compilation. Lazy loading/error states have separate coverage.
+import './backend/BackendWorkspace';
 
 vi.mock('./assistant/Sidekick',()=>({default:()=>null}));
 beforeEach(()=>{
@@ -21,7 +24,7 @@ describe('actual app navigation recovery',()=>{
   render(<App/>);navigate('Profile');const nav=screen.getByRole('navigation',{name:'Main navigation'});fireEvent.click(within(nav).getByRole('button',{name:'Create'}));expect(screen.getByRole('heading',{name:'Share a moment'})).toBeTruthy();expect(screen.getByRole('heading',{name:'Guest preview'})).toBeTruthy();expect(window.location.hash).toBe('#profile');
  });
  it('closes the composer on browser Back and preserves its local draft',async()=>{
-  render(<App/>);navigate('Create');fireEvent.click(screen.getByRole('button',{name:/Write a post/}));const field=await screen.findByPlaceholderText('What’s on your mind?');fireEvent.change(field,{target:{value:'Unsent local draft'}});
+  window.history.replaceState(null,'','/#create');render(<App/>);fireEvent.click(screen.getByRole('button',{name:/Write a post/}));const field=await screen.findByPlaceholderText('What’s on your mind?');fireEvent.change(field,{target:{value:'Unsent local draft'}});
   act(()=>{window.history.replaceState(null,'','/#profile');window.dispatchEvent(new PopStateEvent('popstate'));});expect(screen.queryByRole('heading',{name:'Share a moment'})).toBeNull();navigate('Create');fireEvent.click(screen.getByRole('button',{name:/Write a post/}));expect((screen.getByPlaceholderText('What’s on your mind?') as HTMLTextAreaElement).value).toBe('Unsent local draft');fireEvent.click(screen.getByRole('button',{name:'Close'}));expect(window.location.hash).toBe('#create');expect(screen.getByRole('button',{name:/List a product/})).toBeTruthy();
  });
  it('preserves the existing Create options and their real navigation',async()=>{
@@ -30,7 +33,7 @@ describe('actual app navigation recovery',()=>{
  it('shows an understandable unsupported destination instead of a blank page',async()=>{
   render(<App/>);navigate({screen:'unknown',secret:'must-not-display'});
   const alert=await screen.findByRole('alert');expect(alert.textContent).toContain('destination');expect(alert.textContent).not.toContain('must-not-display');
-  fireEvent.click(within(alert).getByRole('button',{name:'Back to Home'}));expect(screen.getByRole('heading',{name:/Welcome to EcoVibes/})).toBeTruthy();
+  fireEvent.click(within(alert).getByRole('button',{name:'Back to Home'}));expect(screen.getByRole('heading',{name:/Welcome to EcoVibes/,level:1})).toBeTruthy();
  });
  it('opens a messages deep link and follows browser Back to another valid screen',async()=>{
   window.history.replaceState(null,'','/#messages');render(<App/>);expect(await screen.findByRole('heading',{name:'Messages'})).toBeTruthy();

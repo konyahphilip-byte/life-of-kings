@@ -3,9 +3,15 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import Sidekick from './Sidekick';
 import ChalePersonalization from './ChalePersonalization';
 import {saveChaleUI} from './chale-ui';
+import {useRef} from 'react';
 
 const props={onNavigate:vi.fn(),page:'Home' as const,userId:'test-account',csrfToken:'synthetic',dataMode:'saver' as const,online:true};
 describe('Chale launcher and settings',()=>{
+ it('attaches through a stable header ref and keeps the dialog outside that header',()=>{
+  function HeaderHost(){const host=useRef<HTMLDivElement|null>(null);return <><header><div ref={host}/></header><Sidekick {...props} launcherHostRef={host}/></>;}
+  render(<HeaderHost/>);const launcher=screen.getByRole('button',{name:'Ask Chale AI'});expect(launcher.closest('header')).not.toBeNull();
+  fireEvent.click(launcher);expect(screen.getByRole('dialog',{name:'Chale AI'}).closest('header')).toBeNull();
+ });
  beforeEach(()=>{
   localStorage.clear();saveChaleUI({launcher:'compact',edge:'right',showCharacter:false});
   vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>Response.json(String(input).endsWith('/ai/chat')?{text:'A useful answer.',source:'model'}:{configured:true,enabled:false})));
