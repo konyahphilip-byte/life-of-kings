@@ -45,7 +45,18 @@ try{
   const db=new DatabaseSync(dbPath);assert.equal(db.prepare("SELECT response_text FROM chale_turns WHERE text='HISTORY_SESSION_HOLD'").get().response_text,null);db.close();
  });
  await check('History and search content stays out of server logs',async()=>{assert(!logs.includes(question.text));assert(!logs.includes('My reusable plan'));});
- await stop();await start(false);
+ await ok(base+'/settings',{account:b,method:'POST',body:{enabled:true,consentVersion:version}});
+ const currentId=randomUUID();await ok(conv,{account:b,method:'POST',body:{id:currentId}});await ok(conv+'/'+currentId+'/turns',{account:b,method:'POST',body:{...greeting,id:randomUUID()}});
+ await stop();
+ {const db=new DatabaseSync(dbPath);assert(db.prepare('SELECT count(*) n FROM chale_turns WHERE conversation_id=?').get(failedId).n>0);db.prepare('UPDATE chale_conversations SET expires_at=? WHERE id=?').run('2000-01-01T00:00:00.000Z',failedId);db.close();}
+ await start(false);
+ await check('Restart with history disabled erases expired text and retains current chats and deletion identifiers',async()=>{
+  const db=new DatabaseSync(dbPath);try{
+   assert.equal(db.prepare('SELECT count(*) n FROM chale_turns WHERE conversation_id=?').get(failedId).n,0);
+   const expired=db.prepare('SELECT title,deleted FROM chale_conversations WHERE id=?').get(failedId);assert.equal(expired.title,'');assert.equal(expired.deleted,1);
+   assert.equal(db.prepare('SELECT count(*) n FROM chale_turns WHERE conversation_id=?').get(currentId).n,1);
+  }finally{db.close();}
+ });
  await check('Default-off operator gate does not disable ordinary temporary AI',async()=>{assert.equal((await request(conv,{account:b})).status,503);const r=await ok('/ai/chat',{account:b,method:'POST',body:{messages:[{role:'user',content:'Hi'}],temporary:true,context:{currentPage:'Home',dataMode:'saver'}}});assert.equal(r.source,'greeting');});
 }catch(e){failure={name:e.name,message:e.message};}
 finally{await stop();await rm(temp,{recursive:true,force:true});}

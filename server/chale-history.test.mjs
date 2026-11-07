@@ -2,14 +2,41 @@ import {afterEach,beforeEach,it,expect,vi} from 'vitest';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {createChaleHistory,createHistorySessionCheck,HISTORY_SQLITE_SCHEMA} from './chale-history.mjs';
-let db,history,clock,invoke;
+let db,history,clock,invoke,ports;
 const a={user:{id:'00000000-0000-4000-8000-000000000001'},sessionHash:'a'.repeat(64)},b={user:{id:'00000000-0000-4000-8000-000000000002'},sessionHash:'b'.repeat(64)};
 const assert=(ok,status,code,message)=>{if(!ok)throw Object.assign(Error(message),{status,code});};
 const consent='2026-11-06-history-v1';
 async function setup(){await history.settings(a,{enabled:true,consentVersion:consent});return history.create(a,{id:randomUUID()});}
 const turn=()=>({id:randomUUID(),text:'How can I prepare clean bottles?',context:{currentPage:'Waste',dataMode:'saver'}});
-beforeEach(()=>{clock='2026-11-06T00:00:00.000Z';db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON;CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT);CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id TEXT,expires_at TEXT);');for(const ctx of [a,b]){db.prepare('INSERT INTO users VALUES(?,?)').run(ctx.user.id,'active');db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(ctx.sessionHash,ctx.user.id,'2027-01-01T00:00:00.000Z');}db.exec(HISTORY_SQLITE_SCHEMA);invoke=vi.fn(async()=>({text:'Separate materials and check collector requirements.',source:'model',usage:{requests:1}}));history=createChaleHistory({q:async(s,...p)=>db.prepare(s).get(...p),all:async(s,...p)=>db.prepare(s).all(...p),run:async(s,...p)=>db.prepare(s).run(...p),transaction:async work=>{db.exec('BEGIN');try{const r=await work();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}},assert,now:()=>clock,authorize:createHistorySessionCheck({q:async(s,...p)=>db.prepare(s).get(...p),assert,now:()=>clock}),enabled:true,available:true,invoke});});
+beforeEach(()=>{clock='2026-11-06T00:00:00.000Z';db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON;CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT);CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id TEXT,expires_at TEXT);');for(const ctx of [a,b]){db.prepare('INSERT INTO users VALUES(?,?)').run(ctx.user.id,'active');db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(ctx.sessionHash,ctx.user.id,'2027-01-01T00:00:00.000Z');}db.exec(HISTORY_SQLITE_SCHEMA);invoke=vi.fn(async()=>({text:'Separate materials and check collector requirements.',source:'model',usage:{requests:1}}));history=createChaleHistory(ports={q:async(s,...p)=>db.prepare(s).get(...p),all:async(s,...p)=>db.prepare(s).all(...p),run:async(s,...p)=>db.prepare(s).run(...p),transaction:async work=>{db.exec('BEGIN');try{const r=await work();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}},assert,now:()=>clock,authorize:createHistorySessionCheck({q:async(s,...p)=>db.prepare(s).get(...p),assert,now:()=>clock}),enabled:true,available:true,invoke});});
 afterEach(()=>db.close());
+it('purges expired text while history is disabled and preserves current chats and tombstones',async()=>{
+ const expired=await setup();await history.send(a,expired.id,turn());
+ clock='2026-11-22T00:00:00.000Z';const current=await history.create(a,{id:randomUUID()});await history.send(a,current.id,turn());
+ clock='2026-12-07T00:00:00.000Z';const disabled=createChaleHistory({...ports,enabled:false});
+ await expect(disabled.settings(a)).rejects.toMatchObject({code:'history_unavailable'});
+ await disabled.pruneExpired();
+ expect(db.prepare('SELECT count(*) n FROM chale_turns WHERE conversation_id=?').get(expired.id).n).toBe(0);
+ const tombstone=db.prepare('SELECT title,deleted,revision FROM chale_conversations WHERE id=?').get(expired.id);
+ expect(tombstone).toMatchObject({title:'',deleted:1});
+ expect(db.prepare('SELECT count(*) n FROM chale_turns WHERE conversation_id=?').get(current.id).n).toBe(1);
+ expect((await history.read(a,current.id,{})).turns[0].responseText).toBeTruthy();
+ await disabled.pruneExpired();expect(db.prepare('SELECT revision FROM chale_conversations WHERE id=?').get(expired.id).revision).toBe(tombstone.revision);
+ await expect(history.create(a,{id:expired.id})).rejects.toMatchObject({status:410});
+});
+it('does not query missing history tables when the schema is unavailable',async()=>{
+ const unavailable=vi.fn(()=>{throw Error('History schema is absent');});
+ await createChaleHistory({...ports,enabled:false,available:false,q:unavailable,all:unavailable,run:unavailable,transaction:unavailable}).pruneExpired();
+ expect(unavailable).not.toHaveBeenCalled();
+});
+it('feature-off cleanup prevents a late reply from an older enabled worker restoring expired text',async()=>{
+ const chat=await setup();let finish;invoke.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const pending=history.send(a,chat.id,turn());while(!finish)await new Promise(resolve=>setTimeout(resolve,0));
+ clock='2026-12-07T00:00:00.000Z';await createChaleHistory({...ports,enabled:false}).pruneExpired();
+ finish({text:'Synthetic late reply after cleanup',source:'model'});await expect(pending).rejects.toMatchObject({code:'history_changed'});
+ expect(db.prepare('SELECT count(*) n FROM chale_turns WHERE conversation_id=?').get(chat.id).n).toBe(0);
+ expect(db.prepare('SELECT title,deleted FROM chale_conversations WHERE id=?').get(chat.id)).toMatchObject({title:'',deleted:1});
+});
 it('requires separate history consent; temporary chat does not create rows',async()=>{expect((await history.settings(a)).enabled).toBe(false);await expect(history.create(a,{id:randomUUID()})).rejects.toMatchObject({code:'history_consent_required'});await expect(history.settings(a,{enabled:true,consentVersion:'old'})).rejects.toMatchObject({status:400});expect(db.prepare('SELECT count(*) n FROM chale_conversations').get().n).toBe(0);});
 it('binds every resource and selector to the authenticated owner',async()=>{const c=await setup();await expect(history.read(b,c.id,{})).rejects.toMatchObject({status:404});await expect(history.change(b,c.id,{revision:1,title:'Stolen',pinned:false,archived:false})).rejects.toMatchObject({status:404});await expect(history.send(b,c.id,turn())).rejects.toMatchObject({status:404});await expect(history.list(a,{ownerId:b.user.id})).rejects.toMatchObject({status:400});expect(invoke).not.toHaveBeenCalled();});
 it('persists server replies, bounded context and immutable turn retries',async()=>{const c=await setup(),input=turn();const first=await history.send(a,c.id,input);expect(first.history.saved).toBe(true);const retry=await history.send(a,c.id,input);expect(retry.history.replayed).toBe(true);expect(invoke).toHaveBeenCalledTimes(1);await expect(history.send(a,c.id,{...input,text:'Changed retry'})).rejects.toMatchObject({status:409});const saved=await history.read(a,c.id,{});expect(saved.turns[0]).toMatchObject({id:input.id,text:input.text,responseText:first.text,status:'complete'});await history.send(a,c.id,turn());expect(invoke.mock.calls[1][0].messages).toEqual([{role:'user',content:input.text},{role:'assistant',content:first.text},{role:'user',content:input.text}]);await expect(history.send(a,c.id,{...turn(),responseText:'Fake assistant'})).rejects.toMatchObject({status:400});});
