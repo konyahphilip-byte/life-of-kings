@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Info, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
 import type { AssistantDestination } from './assistant';
 import WorkStatusCard from './WorkStatusCard';
+import {ChaleHistoryPanel,useChaleHistory,type SavedChat} from './ChaleHistory';
 import { useChaleUI } from './chale-ui';
 import { apiUrl } from '../../lib/api';
 import { chaleGreeting } from '../../../shared/chale-greeting.mjs';
@@ -25,8 +26,8 @@ type Diagnostic = {
   guides: GuideEntry[]; destination: AssistantDestination;
 };
 type ChatEntry = {
-  id: number; role: 'assistant' | 'user'; text: string; pending?: boolean;
-  source?: 'model' | 'app_guide' | 'greeting' | 'public_updates'; updates?: PublicUpdate[]; newsRequested?: boolean; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
+  id: number; role: 'assistant' | 'user'; text: string; pending?: boolean; savedAt?: string;
+  source?: 'model' | 'app_guide' | 'greeting' | 'public_updates' | 'history_notice'; updates?: PublicUpdate[]; newsRequested?: boolean; items?: LiveSearchItem[]; guides?: GuideEntry[]; drafts?: ReviewDraft[]; diagnostics?: Diagnostic[];
 };
 type AIStatus = { configured: boolean; unavailable?: boolean; hosting?: 'local' | 'remote'; allowance?: number };
 type LearningState = { enabled: boolean };
@@ -172,6 +173,11 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   useLayoutEffect(()=>{if(launcherHostRef)setAttachedLauncherHost(launcherHostRef.current);},[launcherHostRef]);
   const portalHost=launcherHostRef?attachedLauncherHost:launcherHost;
   const [open, setOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoRef = useRef<HTMLDivElement>(null);
+  const infoButtonRef = useRef<HTMLButtonElement>(null);
+  const followLatest = useRef(true);
+  const prependPosition=useRef<{height:number;top:number}|null>(null);
   const [draft, setDraft] = useState('');
   const [entries, setEntries] = useState<ChatEntry[]>([welcome]);
   const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
@@ -193,14 +199,31 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   const busyRef = useRef(false);
   const chatRequest = useRef<{ controller: AbortController; timer: ReturnType<typeof setTimeout> } | null>(null);
   const feedbackRequest = useRef<AbortController | null>(null);
+  function resetConversation(){
+    generation.current++;chatRequest.current?.controller.abort('conversation_changed');
+    if(chatRequest.current)clearTimeout(chatRequest.current.timer);
+    feedbackRequest.current?.abort();chatRequest.current=null;feedbackRequest.current=null;
+    busyRef.current=false;setBusy(false);setFeedbackBusy(null);setEntries([welcome]);setDraft('');setNotice('');setSignals({});nextId.current=1;prependPosition.current=null;followLatest.current=true;
+  }
+  function loadSavedChat(chat:SavedChat,append=false){
+    if(append&&threadRef.current){prependPosition.current={height:threadRef.current.scrollHeight,top:threadRef.current.scrollTop};followLatest.current=false;}
+    const loaded:ChatEntry[]=chat.turns.flatMap(turn=>[
+      {id:turn.seq*2,role:'user' as const,text:turn.text},
+      {id:turn.seq*2+1,role:'assistant' as const,text:turn.responseText|| (turn.status==='pending'?'Answer is still processing. Refresh this saved chat to check.':'This attempt has no saved complete answer.'),savedAt:turn.completedAt||turn.createdAt,source:turn.source==='model'?'model' as const:turn.source==='greeting'?'greeting' as const:turn.source==='public_updates'?'public_updates' as const:'app_guide' as const}
+    ]);
+    nextId.current=Math.max(nextId.current,...loaded.map(v=>v.id+1));
+    setEntries(old=>append?[...new Map([...old,...loaded].map(v=>[v.id,v])).values()].sort((a,b)=>a.id-b.id):[welcome,...loaded]);
+  }
+  const savedHistory=useChaleHistory({userId,csrf:csrfToken,open,online,onLoad:loadSavedChat,onReset:resetConversation});
 
-  useEffect(() => {
+
+  useLayoutEffect(() => {
     generation.current += 1;
     chatRequest.current?.controller.abort();
     if (chatRequest.current) clearTimeout(chatRequest.current.timer);
     feedbackRequest.current?.abort();
     chatRequest.current = null; feedbackRequest.current = null; busyRef.current = false;
-    setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null);
+    setBusy(false); setFeedbackBusy(null); setEntries([welcome]); setDraft(''); setSignals({}); setNotice(''); setLearning(null); setInfoOpen(false); followLatest.current = true;
     return () => {
       generation.current += 1;
       chatRequest.current?.controller.abort();
@@ -268,7 +291,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   }, [open, online, userId]);
 
   useEffect(() => {
-    if (!open || !online || !userId) { setLearning(null); return; }
+    if (!open || !online || !userId || savedHistory.mode==='temporary') { setLearning(null); return; }
     const accountGeneration = generation.current;
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -308,20 +331,31 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       clearTimeout(timer);
       window.removeEventListener('ecovibes:recommendations_changed', refresh);
     };
-  }, [open, online, userId]);
+  }, [open, online, userId, savedHistory.mode]);
 
   useEffect(() => {
     if (!open) return;
-    inputRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key !== 'Escape') return;
+      if (savedHistory.panel) savedHistory.setPanel(false);
+      else if (infoOpen) { setInfoOpen(false); infoButtonRef.current?.focus(); }
+      else setOpen(false);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [open]);
+  }, [open, infoOpen, savedHistory.panel]);
 
   useEffect(() => {
-    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    if (!open) { setInfoOpen(false); followLatest.current = true; return; }
+    inputRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => { if (infoOpen) infoRef.current?.focus(); }, [infoOpen]);
+
+  useLayoutEffect(()=>{if(prependPosition.current&&threadRef.current){threadRef.current.scrollTop=prependPosition.current.top+threadRef.current.scrollHeight-prependPosition.current.height;prependPosition.current=null;}},[entries]);
+
+  useEffect(() => {
+    if (threadRef.current && followLatest.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, [entries, open]);
 
   const ask = async (value: string) => {
@@ -330,9 +364,11 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     const requestGeneration = generation.current;
     const entryId = nextId.current++;
     const replyId = nextId.current++;
+    followLatest.current = true;
     setDraft(''); setNotice('');
+    if (!savedHistory.saving) savedHistory.setStatus('');
     const greeting = chaleGreeting(query);
-    if (greeting) {
+    if (greeting && !savedHistory.saving) {
       setEntries(current => [...current, { id: entryId, role: 'user', text: query }, { id: replyId, role: 'assistant', source: 'greeting', text: greeting }]);
       return;
     }
@@ -362,10 +398,10 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     let reply: ChatEntry = { id: replyId, role: 'assistant', source: 'app_guide', text: '', guides, drafts: localDraft(query, page) };
     let needsCatalog = false;
     try {
-      const response = await fetch(apiUrl('/ai/chat'), {
+      const response = savedHistory.saving ? await savedHistory.send(query,{currentPage:page,dataMode},controller.signal) : await fetch(apiUrl('/ai/chat'), {
         method: 'POST', credentials: 'include', signal: controller.signal,
         headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
-        body: JSON.stringify({ messages: history, context: { currentPage: page, dataMode } }),
+        body: JSON.stringify({ messages: history, context: { currentPage: page, dataMode }, ...(savedHistory.mode==='temporary'?{temporary:true}:{}) }),
       });
       const payload = await jsonResponse(response);
       if (requestGeneration !== generation.current) return;
@@ -378,17 +414,23 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
         if (reply.source === 'app_guide' && !reply.guides?.length) reply.guides = guides;
       } else {
         const code = isRecord(payload.error) ? payload.error.code : null;
+        if(savedHistory.saving&&typeof code==='string'&&code.startsWith('history_')){
+          reply={id:replyId,role:'assistant',source:'history_notice',text:isRecord(payload.error)?safeString(payload.error.message,400)||'The saved chat request was not completed.':'The saved chat request was not completed.'};
+        }else{
         setAiStatus({ configured: code !== 'ai_not_configured', unavailable: code !== 'ai_not_configured' });
         reply.text = code === 'ai_daily_limit'
           ? 'Today’s free Chale allowance has been used. It resets at 00:00 UTC. You can keep using these app steps.'
           : code === 'ai_busy' ? 'Chale is helping someone else. Please try again shortly. These app steps are available now.'
           : 'Live Chale AI is unavailable right now. Here are verified app steps you can use while we find the next way forward.';
         needsCatalog = /\b(find|search|product|buy|job|service|listing|shop)\b/i.test(query);
+        }
       }
     } catch {
       if (requestGeneration !== generation.current) return;
       if (controller.signal.aborted && controller.signal.reason !== 'timeout') {
         reply = { id: replyId, role: 'assistant', source: 'app_guide', text: 'Stopped. Your question has not been retried.' };
+      } else if(savedHistory.saving){
+        reply={id:replyId,role:'assistant',source:'history_notice',text:'The saved-chat request was not confirmed. Open History to check the attempt, or start a temporary chat. Your question has not been retried.'};
       } else {
         setAiStatus({ configured: false, unavailable: true });
         reply.text = controller.signal.reason === 'timeout'
@@ -411,7 +453,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
   };
 
   const signal = async (item: LiveSearchItem, action: 'saved' | 'dismissed') => {
-    if (!online || !userId || !csrfToken || learning?.enabled !== true || !uuidPattern.test(item.id) || feedbackBusy) return;
+    if (savedHistory.mode==='temporary' || !online || !userId || !csrfToken || learning?.enabled !== true || !uuidPattern.test(item.id) || feedbackBusy) return;
     const key = `${item.kind}:${item.id}`;
     const requestGeneration = generation.current;
     const active = action === 'saved' ? !signals[key]?.saved : true;
@@ -468,15 +510,17 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
     {portalHost ? createPortal(launcher, portalHost) : portalHost === undefined ? launcher : null}
     {open && <section className={`sidekick-panel chale-panel${viewport.keyboard ? ' chale-keyboard' : ''}`} data-edge={display.edge} style={{ '--chale-viewport-height': `${viewport.height}px`, '--chale-keyboard-inset': `${viewport.bottom}px` } as CSSProperties} id="ecovibes-sidekick" role="dialog" aria-label="Chale AI">
       <header className="sidekick-head">
-        <span className="sidekick-avatar"><Sparkles size={19}/></span>
-        <span><b>Chale AI</b><small><i className={online && aiStatus?.configured && !aiStatus.unavailable ? 'connected' : ''}/>{connection}</small></span>
-        <button aria-label="Close Chale AI" onClick={() => setOpen(false)}><X size={17}/></button>
+        <span className="sidekick-avatar" aria-hidden="true"><Sparkles size={17}/></span>
+        <span><b>Chale AI</b><small><i className={online && aiStatus?.configured && !aiStatus.unavailable ? 'connected' : ''}/><span>{connection}</span> · {page}</small></span>
+        <button type="button" aria-label="Chat history" aria-expanded={savedHistory.panel} onClick={()=>{setInfoOpen(false);savedHistory.setPanel(v=>!v);}}>History</button>
+        <button ref={infoButtonRef} type="button" aria-label="About replies & learning" aria-expanded={infoOpen} aria-controls="chale-reply-information" onClick={() => { savedHistory.setPanel(false);setInfoOpen(value => !value); }}><Info size={19}/></button>
+        <button type="button" aria-label="Close Chale AI" onClick={() => setOpen(false)}><X size={17}/></button>
       </header>
-      <div className="sidekick-context"><span className="context-orbit"><span/><i/><b/></span><span><b>A way forward, together.</b><small>You’re in {page}. {dataMode === 'extreme' ? 'Text first, with fewer listings.' : 'Your choices stay yours.'}</small></span></div>
-      <div ref={threadRef} className="sidekick-thread" tabIndex={0} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
-        {userId && (page === 'Waste' || page === 'Quick&Handi') && <WorkStatusCard key={userId} userId={userId} online={online} onNavigate={navigate}/>}
+      <div ref={threadRef} className="sidekick-thread" inert={infoOpen || savedHistory.panel || undefined} aria-hidden={infoOpen || savedHistory.panel || undefined} onScroll={event => { const el = event.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; }} tabIndex={0} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation with Chale AI">
+        {savedHistory.mode!=='temporary' && userId && (page === 'Waste' || page === 'Quick&Handi') && <WorkStatusCard key={userId} userId={userId} online={online} onNavigate={navigate}/>}
+        {savedHistory.active?.before&&<button type="button" disabled={savedHistory.busy||busy} onClick={()=>void savedHistory.act(()=>savedHistory.load(savedHistory.active!.conversation.id,true))}>Load earlier saved messages</button>}
         {entries.map((entry) => <div className={`assistant-message ${entry.role}`} key={entry.id}>
-          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && entry.source !== 'greeting' && <span className="chale-source">{entry.source === 'public_updates' ? 'Updates and sources' : entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
+          {entry.role === 'assistant' && entry.id > 0 && !entry.pending && (entry.savedAt || entry.source !== 'greeting') && <span className="chale-source">{entry.source==='history_notice'?'Saved chat notice':entry.savedAt?'Saved reply · '+new Date(entry.savedAt).toLocaleString():entry.source === 'public_updates' ? 'Updates and sources' : entry.source === 'app_guide' ? 'App guide' : 'Chale AI'}</span>}
           <p>{entry.pending && <LoaderCircle size={13} className="chale-thinking" aria-hidden="true"/>}{entry.text}</p>
           {entry.source === 'public_updates' && <div className="chale-guides">
             {(['app','ghana','world'] as const).map(kind=>entry.updates?.some(item=>item.kind===kind) && <article key={kind} aria-label={kind==='app'?'EcoVibes updates':kind==='ghana'?'Ghana news':'World news'}>
@@ -509,7 +553,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
           {!!entry.items?.length && <div className="assistant-results chale-results">{entry.items.map((item) => {
             const key = `${item.kind}:${item.id}`;
             const signalState = signals[key];
-            const canLearn = online && Boolean(userId && csrfToken) && learning?.enabled === true && uuidPattern.test(item.id);
+            const canLearn = savedHistory.mode!=='temporary' && online && Boolean(userId && csrfToken) && learning?.enabled === true && uuidPattern.test(item.id);
             return <article key={key}>
               <button type="button" onClick={() => navigate(item.destination)}>
                 <span><small>{item.kind === 'job' ? 'QUICK&HANDI JOB' : 'MARKETPLACE PRODUCT'} · {item.category}</small><b>{item.title}</b><i>{[item.detail, item.area, item.actor_eco_id && `@${item.actor_eco_id}`, item.price].filter(Boolean).join(' · ')}</i></span><ChevronRight size={16}/>
@@ -527,14 +571,18 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
         </div>)}
         {entries.length === 1 && <div className="sidekick-prompts"><span>START WHERE YOU ARE</span>{pagePrompts(page).map((prompt) => <button type="button" disabled={busy} key={prompt} onClick={() => void ask(prompt)}>{prompt}<ChevronRight size={13}/></button>)}</div>}
       </div>
+      <p className="chale-history-state" role="status" tabIndex={0}>{savedHistory.mode==='temporary'&&savedHistory.status&&!savedHistory.status.startsWith('Temporary chat')&&<b>Temporary chat · </b>}{savedHistory.status|| (savedHistory.saving?'Saved chat · new messages need server confirmation.':savedHistory.mode==='temporary'?'Temporary chat · not added to saved history or memories.':'Session chat · not saved to account history.')}</p>
       {notice && <p className="chale-notice" role="status">{notice}</p>}
-      <form className="sidekick-input" onSubmit={submit}>
-        <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask about EcoVibes or an app problem" aria-label="Ask Chale AI" maxLength={1200}/>
+      <form className="sidekick-input" inert={infoOpen || savedHistory.panel || undefined} aria-hidden={infoOpen || savedHistory.panel || undefined} onSubmit={submit}>
+        <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Message Chale…" aria-label="Ask Chale AI" maxLength={1200}/>
         {busy ? <button type="button" className="chale-stop" aria-label="Stop answer" onClick={() => chatRequest.current?.controller.abort('stopped')}><X size={17}/></button> : <button disabled={!draft.trim()} aria-label="Send question"><ArrowUp size={17}/></button>}
       </form>
-      <details className="chale-about"><summary>About replies &amp; learning</summary>
+      {savedHistory.panel&&<ChaleHistoryPanel key={userId||'guest'} history={savedHistory} userId={userId} online={online} onClose={()=>savedHistory.setPanel(false)}/>}
+      {infoOpen && <div ref={infoRef} className="chale-info-sheet" id="chale-reply-information" role="region" aria-label="About replies & learning" tabIndex={-1}>
+      <div className="chale-info-head"><button type="button" aria-label="Back to conversation" onClick={() => { setInfoOpen(false); infoButtonRef.current?.focus(); }}><ArrowLeft size={18}/>Back to chat</button><h2>Replies &amp; learning</h2></div>
+      <div className="chale-info-scroll"><p className="chale-help-context">Helping in {page}. {dataMode === 'extreme' ? 'Text first, with fewer listings.' : 'Your choices stay yours.'}</p>
       <div className="chale-learning"><span>{!userId ? 'Sign in to manage your learning profile.' : learning?.enabled ? 'Learning is on. Save or show less to tune it.' : learning ? 'Learning is paused.' : 'Your learning choices are available on Home.'}</span><button type="button" onClick={() => navigate('Home')}>Tune learning on Home<ChevronRight size={12}/></button></div>
-      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : `Live replies use recent messages, safe app context and public listings with ${aiStatus?.hosting === 'local' ? 'the model on the EcoVibes server' : 'the configured model service'}. Keep passwords and payment codes private. Review drafts before sharing.${aiStatus?.allowance ? ` Free allowance: ${aiStatus.allowance} requests per day, resetting at 00:00 UTC. Failed or busy attempts count.` : ''}`}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p></details>
+      <p className="sidekick-disclosure">{!online ? 'The app guide works on this device. No messages are sent while offline.' : `Live replies use recent messages, safe app context and public listings with ${aiStatus?.hosting === 'local' ? 'the model on the EcoVibes server' : 'the configured model service'}. Keep passwords and payment codes private. Review drafts before sharing.${aiStatus?.allowance ? ` Free allowance: ${aiStatus.allowance} requests per day, resetting at 00:00 UTC. Failed or busy attempts count.` : ''}`}<span className="chale-guide-version" title={appGuideVersion}> Verified EcoVibes app guide</span></p></div></div>}
     </section>}
   </>;
 }

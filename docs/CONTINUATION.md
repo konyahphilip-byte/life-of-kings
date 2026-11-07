@@ -1,3 +1,26 @@
+## Local combined-draft compatibility checkout — 7 November 2026
+
+This temporary checkout combines public drafts46/47/48/49 for local tests only. It does not merge any public PR, deploy, enable a feature or apply a hosted migration. Conflict resolution retains both existing history and knowledge hooks and all their checks. The following earlier local checkpoints remain historical. The primary docs/partner-readiness/README.md outside this disposable checkout remains authoritative.
+
+## Chale history review follow-up - 7 November 2026
+
+Client-only stale save confirmations were reproduced in two journeys and fixed. Final596/596, focused14/14, TypeScript/build1687 and security8 pass. Parent source/migration/HTTP/PG contracts unchanged; independent review/publication/CI/real accounts and release approval remain gates. See docs/releases/2026-11-07-chale-history-review.md. No production change.
+
+## Chale persistent history — 6–7 November 2026
+
+LOCALLY BUILT on isolated branch `codex/chale-history-20261106`, based on compact PR46/local8f330e3b. No public draft, exact CI, hosted migration, merge, enablement or deployment. The new ultimate directive is preserved at docs/directives/2026-11-06-chale-ultimate-master.md. Its P1 history/memory priority supersedes the earlier proposed next public-source adapter.
+
+Private account history now offers separate consent, durable server-generated turns, reload/search/pin/rename/archive/earlier pages/export/confirmed deletion, current-session checks, immutable duplicate-safe retries, honest failure states and30-day text expiry. Explicit Temporary Chat stays unsaved when normal saving is enabled, shows its mode beside notices and remains separate from future memories/training. No private public-index ingestion or automatic training. Existing provider/quota/tool boundaries and character-off chat are retained.
+
+Final594/594 tests/45files/68.900s; focused26/26; TypeScript/build1687; audit0/security8; actual isolated HTTP16 and disposable PostgreSQL17.10/migration/RLS/runtime/concurrency36 pass. Built390px synthetic A/B browser lifecycle/export/reload/delete and no-overflow pass. Author review reproduced late-export account-switch RED0/1; final owner/generation/abort guard passes focused/full/build, with no second browser pass for that final helper delta. Existing ordinary chat contract RED65/1, cursor overflow after20 PG checks, cache/fixture/type/npm-config/UI diagnostics and QA001 remain retained; no limits weakened.
+
+All145 protected primary source/assets unchanged. Proposed migration20261106220412 SHA256945685165e587166ee1af6892a103be93fd5e4bed7ead2a3a7dda7341c5eff00 is UNAPPLIED, including narrow session-row-lock privilege. Independent review, public publication/exact CI, current-main/recovery compatibility, capacity/retention/backups, real Auth/MFA/two physical devices and explicit migration/merge/deploy approval remain gates. Production last verified snapshot remains PR39; no new hosted audit. Preview used synthetic accounts/intercepted provider only, then was stopped.
+
+Next smallest task: separate confirmed user memory with provenance/update/delete/export and actual “What do you remember about me?” retrieval. Memory, cross-chat intelligence, RAG/sync, multimodal agents, language quality and owned models are not complete. No resource/provider spend/platform fee or real-user transaction. [Architecture/matrix](ai/CHALE_MEMORY_AND_HISTORY.md); [receipt](releases/2026-11-06-chale-history.md); evidence work/chale-history-20261106/checkpoint.json and checks.json.
+## 7 November 2026 — Chale source updates locally verified
+
+One approved Wikidata country-profile source now has a bounded leased update queue and Studio fetch/review/draft controls. Final605/605 tests47files/build1688/audit0/security8, HTTP14+12/PG17.10 36+46 and synthetic built390px UI checks pass. Parent Studio plus sync migrations remain UNAPPLIED; source/publication approvals, independent review, exact CI, real admin/MFA/device/capacity/retention and explicit release approval remain open. No Chale answer/RAG integration or broader agent completion is claimed. See docs/releases/2026-11-07-chale-source-updates-local.md. Preserve all REDs/QA001 and145 primary source hashes.
+
 # EcoVibes continuation — backend release checkpoint
 
 ## October 15 — atomic role activation verified locally
