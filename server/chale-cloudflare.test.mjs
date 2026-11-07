@@ -9,9 +9,20 @@ const env = {
   CLOUDFLARE_ACCOUNT_ID: 'a'.repeat(32), CHALE_INFERENCE_KEY: 'synthetic-fixture',
 };
 const completion = () => ({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Open Quick&Handi to find work.' } }], usage: { prompt_tokens: 20, completion_tokens: 9 } });
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers();vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('Chale Cloudflare free launch', () => {
+  it('returns honest guide fallback for a stalled catalog without calling inference',async()=>{
+    for(const [key,value] of Object.entries(env))vi.stubEnv(key,value);vi.useFakeTimers();const fetch=vi.fn();vi.stubGlobal('fetch',fetch);const audit=[];
+    const pending=generateChaleAIReply([{role:'user',content:'Find jobs on Quick&Handi'}],()=>new Promise(()=>{}),{}, {onToolAudit:event=>audit.push(event)});
+    await vi.advanceTimersByTimeAsync(5001);const reply=await pending;
+    expect(reply).toMatchObject({source:'app_guide',items:[],usage:{requests:0}});expect(reply.text).toContain('could not check the public catalog');expect(fetch).not.toHaveBeenCalled();expect(audit[0].outcome).toBe('timeout');
+  });
+  it('cancels grounded lookup promptly without spending a model request',async()=>{
+    for(const [key,value] of Object.entries(env))vi.stubEnv(key,value);const fetch=vi.fn();vi.stubGlobal('fetch',fetch);const controller=new AbortController();let entered=false;
+    const pending=generateChaleAIReply([{role:'user',content:'Find jobs on Quick&Handi'}],()=>{entered=true;return new Promise(()=>{});},{},{signal:controller.signal});const rejected=expect(pending).rejects.toMatchObject({name:'AbortError'});
+    while(!entered)await new Promise(resolve=>setTimeout(resolve,0));controller.abort();await rejected;expect(fetch).not.toHaveBeenCalled();
+  });
   it.each(['CHALE_REMOTE_APPROVED', 'CHALE_CLOUDFLARE_FREE_PLAN_CONFIRMED', 'CHALE_INFERENCE_KEY'])('requires explicit setup: %s', (key) => {
     expect(chaleConfig({ ...env, [key]: '' }).configured).toBe(false);
   });
