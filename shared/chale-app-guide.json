@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-21-connect-availability",
+  "version": "2026-11-07-connect-text-and-tool-boundaries",
   "entries": [
     {
       "id": "home",
@@ -295,15 +295,15 @@
     },
     {
       "id": "calls-live",
-      "title": "Start a call or live room when configured",
+      "title": "Find friends and check call availability",
       "destination": "Calls & Live",
       "availability": "provider_required",
-      "summary": "Audio, video and live rooms have an implemented LiveKit workflow that requires server credentials, sign-in and device media permissions. The page shows provider configuration status and disables room actions when unavailable.",
+      "summary": "Calls & Live supports exact-ID lookup and saved friend requests. Private voice/video calling remains unavailable and is not enabled by adding credentials alone. Approved owned media/TLS/TURN, active relationships, recipient consent, short admission and remote revocation still require acceptance. Public live-room setup is separate from private call readiness.",
       "steps": [
-        "Open Calls & Live and sign in with EcoVibes ID.",
-        "Check the provider notice; a maintainer must configure LiveKit before room actions work.",
-        "Choose voice, video or live, enter a title and relevant invitees, then review before creating a room.",
-        "Use Join or Leave for rooms you can access. A host can end the room for everyone. Keep OBS stream keys private."
+        "Open Calls & Live and sign in with EcoVibes ID. Use the exact public ID shown on the other person’s Profile.",
+        "Use Find person and Add friend; the recipient can accept or decline in Friends & requests. Acceptance does not start a call or share a phone number.",
+        "Check the availability notice. No private call is sent while calling is unavailable; do not request camera or microphone access just to find a friend.",
+        "A maintainer must complete approved media hosting, consent and admission verification before private calls can be enabled. Never share server credentials or OBS stream keys."
       ],
       "keywords": [
         "call",
@@ -320,14 +320,15 @@
     },
     {
       "id": "messages",
-      "title": "Understand Messages and job conversations",
+      "title": "Message accepted friends and use job conversations",
       "destination": "Messages",
-      "availability": "preview",
-      "summary": "EcoVibes Connect's main Messages page cannot send or receive direct messages. Its optional sample conversations are explicitly read-only, with sending disabled and no real unread or presence claims. Actual job participant messages are in EcoVibes ID → Quick&Handi and require ownership or assignment.",
+      "availability": "implemented",
+      "summary": "Private text between accepted friends is saved by the server and updates while Messages is open and online. Saved means server storage; Received means the recipient app acknowledged it. Ticks do not mean read. Background push, voice notes and attachments are not connected. Job messages remain limited to the customer and assigned provider.",
       "steps": [
-        "Open Messages to check availability. View sample conversations opens a read-only fictional preview; it does not send messages.",
-        "Choose Open job conversations to reach EcoVibes ID → Quick&Handi, sign in if needed, and locate your own or assigned job. If the shortcut is unavailable, open that workspace manually.",
-        "Review the participant and text before using that job's Send control. Chale only drafts text and never sends it."
+        "Open Calls & Live to find the exact EcoVibes ID and use Add friend. The recipient must accept in Friends & requests before direct messaging.",
+        "Open Messages. Select an accepted friend, or use Find friend by EcoVibes ID and Find friend to locate the conversation.",
+        "Review the recipient, enter text in Write a message, then choose Send message. Confirm the server result; if interrupted, check before using Retry same message.",
+        "Choose Open job conversations for EcoVibes ID → Quick&Handi; only the customer and assigned provider can use that job's conversation. Use Refresh messages or Refresh conversation when needed. Chale does not read private conversations or send messages for you."
       ],
       "keywords": [
         "messages",
