@@ -565,7 +565,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
         </div>)}
         {entries.length === 1 && <div className="sidekick-prompts"><span>START WHERE YOU ARE</span>{pagePrompts(page).map((prompt) => <button type="button" disabled={busy} key={prompt} onClick={() => void ask(prompt)}>{prompt}<ChevronRight size={13}/></button>)}</div>}
       </div>
-      <p className="chale-history-state" role="status">{savedHistory.mode==='temporary'&&savedHistory.status&&!savedHistory.status.startsWith('Temporary chat')&&<b>Temporary chat · </b>}{savedHistory.status|| (savedHistory.saving?'Saved chat · new messages need server confirmation.':savedHistory.mode==='temporary'?'Temporary chat · not added to saved history or memories.':'Session chat · not saved to account history.')}</p>
+      <p className="chale-history-state" role="status" tabIndex={0}>{savedHistory.mode==='temporary'&&savedHistory.status&&!savedHistory.status.startsWith('Temporary chat')&&<b>Temporary chat · </b>}{savedHistory.status|| (savedHistory.saving?'Saved chat · new messages need server confirmation.':savedHistory.mode==='temporary'?'Temporary chat · not added to saved history or memories.':'Session chat · not saved to account history.')}</p>
       {notice && <p className="chale-notice" role="status">{notice}</p>}
       <form className="sidekick-input" inert={infoOpen || savedHistory.panel || undefined} aria-hidden={infoOpen || savedHistory.panel || undefined} onSubmit={submit}>
         <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Message Chale…" aria-label="Ask Chale AI" maxLength={1200}/>
