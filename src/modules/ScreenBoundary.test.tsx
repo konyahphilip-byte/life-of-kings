@@ -6,6 +6,14 @@ import {ScreenBoundary,ScreenPending} from './ScreenBoundary';
 import * as ScreenModule from './ScreenBoundary';
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.useRealTimers();});
 describe('recoverable screen states',()=>{
+ it('keeps a cold lazy screen pending until its module resolves, then shows its heading',async()=>{
+  let finish!:(value:{default:()=>React.JSX.Element})=>void;
+  const Pending=lazy(()=>new Promise<{default:()=>React.JSX.Element}>(resolve=>{finish=resolve;}));
+  render(<ScreenBoundary screen="EcoVibes ID" online onHome={()=>{}}><Suspense fallback={<ScreenPending screen="EcoVibes ID" online onHome={()=>{}}/>}><Pending/></Suspense></ScreenBoundary>);
+  expect(screen.getByRole('status').textContent).toContain('Opening EcoVibes ID');expect(screen.queryByRole('heading',{name:'Loaded account',level:1})).toBeNull();
+  await act(async()=>{finish({default:()=> <h1>Loaded account</h1>});});
+  expect(screen.getByRole('heading',{name:'Loaded account',level:1})).toBeTruthy();expect(screen.queryByRole('status')).toBeNull();expect(document.querySelector('.screen-recovery[role="alert"]')).toBeNull();
+ });
  it('recovers a transient Home failure when Back to Home keeps the same page key',()=>{
   vi.spyOn(console,'error').mockImplementation(()=>{});let broken=true;function Home(){if(broken)throw Error('temporary');return <h1>Home restored</h1>;}
   render(<ScreenBoundary screen="Home" online onHome={()=>{broken=false;}}><Home/></ScreenBoundary>);fireEvent.click(screen.getByRole('button',{name:'Back to Home'}));expect(screen.getByRole('heading',{name:'Home restored'})).toBeTruthy();
