@@ -29,6 +29,7 @@ jobs:
       - run: npm run test:chale-work-status
       - run: node scripts/test-direct-messages.mjs
       - run: node scripts/test-public-trends-http.mjs
+      - run: node scripts/test-chale-history.mjs
       - name: Verify disposable PostgreSQL message receipts
         run: |
           sudo apt-get update
@@ -45,3 +46,4 @@ jobs:
           test -x "$PG_BINDIR/postgres"
           "$PG_BINDIR/postgres" --version
           node scripts/test-message-receipts-postgres.mjs
+          node scripts/test-chale-history-postgres.mjs
