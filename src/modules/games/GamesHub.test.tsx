@@ -4,7 +4,7 @@ import GamesHub from './GamesHub';
 const rumble={id:'rumble-rush',title:'Rumble Rush: Fusion Edition',category:'Racing',status:'development',summary:'Accra Skyway racing',milestone:'M1 driving',target:'Browser target',controls:'Keyboard target',playable:false,releaseVersion:null,downloadBytes:null,notice:'Not released yet.'};
 const word={...rumble,id:'word-sprint',title:'Word Sprint',category:'Puzzle',status:'planned'};
 const catalog={version:1,source:'ecovibes-roadmap',categories:['All','Racing','Puzzle'],games:[rumble,word]};
-const props={ownerId:null,saver:'standard' as const,onSupport:vi.fn(),onAskAI:vi.fn()};
+const props={ownerId:null,saver:'standard' as const,onSupport:vi.fn(),onAskAI:vi.fn(),onAccount:vi.fn()};
 beforeEach(()=>{localStorage.clear();vi.stubGlobal('fetch',vi.fn(async()=>Response.json(catalog)));});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 test('uses the public catalog and never loads a game or claims rankings',async()=>{

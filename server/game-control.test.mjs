@@ -1,0 +1,14 @@
+// @vitest-environment node
+import {afterEach,beforeEach,expect,test} from 'vitest';
+import {DatabaseSync} from 'node:sqlite';
+import {randomUUID} from 'node:crypto';
+import {createGameControl,GAME_CONTROL_SQLITE_SCHEMA} from './game-control.mjs';
+import {emptyWorkspace} from '../shared/game-control.mjs';
+let db,service;const A='account-a',B='account-b',ctx=id=>({user:{id,status:'active'}});
+beforeEach(()=>{db=new DatabaseSync(':memory:');db.exec("PRAGMA foreign_keys=ON;CREATE TABLE users(id TEXT PRIMARY KEY);INSERT INTO users VALUES('account-a'),('account-b');"+GAME_CONTROL_SQLITE_SCHEMA);service=createGameControl({q:async(s,...p)=>db.prepare(s).get(...p),run:async(s,...p)=>db.prepare(s).run(...p),all:async(s,...p)=>db.prepare(s).all(...p),now:()=>new Date().toISOString(),rateLimit:async()=>{},available:true});});
+afterEach(()=>db.close());
+const body=(owner=A)=>({expectedOwnerId:owner,revision:0,operationId:randomUUID(),workspace:emptyWorkspace()});
+test('requires active authentication even when schema is absent',async()=>{await expect(service.route({},'GET',{},new URLSearchParams())).rejects.toMatchObject({status:401});await expect(service.route({user:{id:A,status:'suspended'}},'GET',{},new URLSearchParams())).rejects.toMatchObject({status:403});});
+test('saved data is durable, private, append-only and retry-safe',async()=>{const p=body();p.workspace.milestones=[{id:'m1',title:'Actual local work',status:'Unknown'}];const saved=await service.route(ctx(A),'PUT',p,new URLSearchParams());expect(saved.revision).toBe(1);expect((await service.route(ctx(B),'GET',{},new URLSearchParams())).workspace.milestones).toEqual([]);expect((await service.route(ctx(A),'PUT',p,new URLSearchParams())).revision).toBe(1);expect(db.prepare('SELECT count(*) n FROM game_control_revisions').get().n).toBe(1);});
+test('rejects stale revision, changed retry payload and account retargeting',async()=>{const p=body();await service.route(ctx(A),'PUT',p,new URLSearchParams());await expect(service.route(ctx(A),'PUT',body(),new URLSearchParams())).rejects.toMatchObject({status:409});const changed={...p,workspace:{...p.workspace,milestones:[{id:'x',title:'Changed',status:'Unknown'}]}};await expect(service.route(ctx(A),'PUT',changed,new URLSearchParams())).rejects.toMatchObject({status:409});await expect(service.route(ctx(B),'PUT',p,new URLSearchParams())).rejects.toMatchObject({status:409});});
+test('unknown routes, queries and approval fields fail closed',async()=>{await expect(service.route(ctx(A),'POST',body(),new URLSearchParams())).rejects.toMatchObject({status:405});await expect(service.route(ctx(A),'GET',{},new URLSearchParams('ownerId=account-b'))).rejects.toMatchObject({status:400});await expect(service.route(ctx(A),'PUT',{...body(),approved:true},new URLSearchParams())).rejects.toMatchObject({status:400});});
