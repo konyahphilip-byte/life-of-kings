@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
 import {createServer} from 'node:http';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
@@ -7,7 +8,7 @@ import {createWebHandler} from '../server/web.mjs';
 // Built app, disposable guest browser, synthetic API outage. No .env or provider access.
 const output='artifacts/navigation';
 await mkdir(output,{recursive:true});
-const serve=await createWebHandler(new URL('../dist',import.meta.url).pathname);
+const serve=await createWebHandler(fileURLToPath(new URL('../dist',import.meta.url)));
 const server=createServer(async(req,res)=>{try{if(!await serve(req,res)){res.writeHead(503,{'Content-Type':'application/json'});res.end('{}');}}catch{res.writeHead(500);res.end();}});
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
 const origin=`http://127.0.0.1:${server.address().port}`;
@@ -37,7 +38,7 @@ async function verifyChaleHeader(page){
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Shortcut causes horizontal overflow');
 }
 try{
- browser=await chromium.launch();
+ browser=await chromium.launch(process.platform==='darwin'?{executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'}:{});
  for(const width of [1280,390]){
   const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'no-preference',serviceWorkers:'block'});
   await context.addInitScript(()=>{if(!localStorage.getItem('ecovibes:v1'))localStorage.setItem('ecovibes:v1',JSON.stringify({saver:'standard'}));});
@@ -197,7 +198,7 @@ try{
 finally{
  try{await browser?.close();}catch{failure??={name:'CleanupError',message:'Browser did not close normally'};}
  finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
- const report={passed:!failure,checks,failure,scope:'Real Linux Chromium built UI at desktop/narrow widths; guest/synthetic API outage only. No hosted, physical phone, role or provider acceptance.'};
+ const report={passed:!failure,checks,failure,scope:'Real installed Chromium-compatible browser, built UI at desktop/narrow widths; guest/synthetic API outage only. No hosted, physical phone, role or provider acceptance.'};
  await writeFile(`${output}/checks.json`,JSON.stringify(report,null,2));
  console.log(JSON.stringify(report,null,2));if(failure)process.exitCode=1;
 }
