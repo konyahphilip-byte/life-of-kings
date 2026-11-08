@@ -1,0 +1,86 @@
+{
+  "checkedAt": "2026-11-08",
+  "tools": [
+    {
+      "id": "godot",
+      "name": "Godot Engine",
+      "license": "MIT",
+      "use": "Existing game runtime and reproducible exports",
+      "stage": "Existing tooling",
+      "url": "https://godotengine.org/license/",
+      "note": "Retain engine and third-party notices. Rumble Rush 2 renderer/engine acceptance remains open."
+    },
+    {
+      "id": "three",
+      "name": "Three.js",
+      "license": "MIT",
+      "use": "Interactive browser asset and scene inspection",
+      "stage": "Existing dependency",
+      "url": "https://github.com/mrdoob/three.js/blob/dev/LICENSE",
+      "note": "Already in EcoVibes; standalone hub's concept garage still needs a reviewed React port."
+    },
+    {
+      "id": "blender",
+      "name": "Blender",
+      "license": "GPL; artwork separate",
+      "use": "Create original cars, environments, rigs and animations",
+      "stage": "Candidate",
+      "url": "https://www.blender.org/about/license/",
+      "note": "Commercial artwork is permitted. Distributed Blender modifications/add-ons need their own licence review."
+    },
+    {
+      "id": "polyhaven",
+      "name": "Poly Haven assets",
+      "license": "CC0 assets",
+      "use": "HDR lighting, textures and reference production assets",
+      "stage": "Candidate",
+      "url": "https://polyhaven.com/license",
+      "note": "Record each exact asset, source, licence and checksum. Website/API terms are separate; no bulk ingestion enabled."
+    },
+    {
+      "id": "gltf",
+      "name": "glTF Transform",
+      "license": "MIT",
+      "use": "Inspect and optimize glTF/GLB assets",
+      "stage": "Candidate",
+      "url": "https://github.com/donmccurdy/glTF-Transform/blob/main/LICENSE.md",
+      "note": "Validate meshes and texture budgets before importing into games; not installed by this milestone."
+    },
+    {
+      "id": "ktx",
+      "name": "KTX-Software",
+      "license": "Mixed; generally Apache-2.0",
+      "use": "Texture compression and KTX2 packaging",
+      "stage": "Conditional",
+      "url": "https://github.com/KhronosGroup/KTX-Software/blob/main/LICENSE.md",
+      "note": "Contains an explicitly non-open-source ETC decoder option. Review exact components and disable that option before adoption."
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright",
+      "license": "Apache-2.0",
+      "use": "Real browser journeys, screenshots and failure checks",
+      "stage": "Existing tooling",
+      "url": "https://github.com/microsoft/playwright/blob/main/LICENSE",
+      "note": "Desktop browser emulation does not prove low-end phone or controller performance."
+    },
+    {
+      "id": "o3de",
+      "name": "Open 3D Engine",
+      "license": "Apache-2.0 / MIT option",
+      "use": "Later high-fidelity native engine evaluation",
+      "stage": "Deferred",
+      "url": "https://github.com/o3de/o3de/blob/development/LICENSE.txt",
+      "note": "Third-party licences, hardware, target platforms and maintenance cost require evaluation. No engine replacement approved here."
+    },
+    {
+      "id": "nakama",
+      "name": "Nakama",
+      "license": "Apache-2.0",
+      "use": "Later authoritative multiplayer services",
+      "stage": "Deferred",
+      "url": "https://github.com/heroiclabs/nakama/blob/master/LICENSE",
+      "note": "Server operation has real resource costs. Reuse EcoVibes identity; no duplicate account system or new service now."
+    }
+  ]
+}

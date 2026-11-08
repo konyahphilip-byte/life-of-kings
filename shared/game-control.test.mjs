@@ -1,0 +1,19 @@
+import {expect,test} from 'vitest';
+import {emptyWorkspace,normalizeWorkspace,mergeImport,advisoryGate,serializeWorkspace} from './game-control.mjs';
+const stamp='2026-11-08T14:00:00.000Z';
+const milestone={id:'m1',title:'Car controls',status:'Unknown',owner:'Philip',nextAction:'Test keyboard'};
+test('empty workspace never manufactures completed work',()=>{const w=emptyWorkspace();expect(w.milestones).toEqual([]);expect(advisoryGate(w).ready).toBe(false);});
+test('preserves six cloud export collections without granting approval',()=>{const w=normalizeWorkspace({...emptyWorkspace(),milestones:[milestone],exportedAt:stamp,provenance:'Manual workspace evidence, not a project audit'});expect(w.milestones[0]).toEqual(milestone);});
+test.each([null,[],{...emptyWorkspace(),ownerId:'other'},{...emptyWorkspace(),milestones:[{...milestone,token:'secret'}]},{...emptyWorkspace(),milestones:[milestone,milestone]}])('rejects malformed or account-bearing snapshots',w=>expect(()=>normalizeWorkspace(w)).toThrow());
+test('claimed pass requires device, specific build, owner, timestamp and safe evidence',()=>{const record={id:'t1',status:'Pass',caseId:'A01',platform:'Web',evidence:'https://example.org/tests/1',owner:'QA',lastChecked:stamp};expect(()=>normalizeWorkspace({...emptyWorkspace(),tests:[record]})).toThrow();expect(normalizeWorkspace({...emptyWorkspace(),tests:[{...record,device:'Chrome',buildVersion:'abc123'}]}).tests).toHaveLength(1);});
+test.each(['javascript:alert(1)','https://name:password@example.org/','https://example.org/?token=private'])('rejects unsafe or credential-bearing evidence',evidence=>expect(()=>normalizeWorkspace({...emptyWorkspace(),milestones:[{...milestone,evidence}]})).toThrow());
+test('imports are duplicate-safe and never overwrite a conflicting local record',()=>{const w={...emptyWorkspace(),milestones:[milestone]};expect(mergeImport(w,w).milestones).toHaveLength(1);expect(()=>mergeImport(w,{...w,milestones:[{...milestone,title:'Different'}]})).toThrow(/conflict/i);});
+test('release checklist ties tests to the same build and remains advisory',()=>{const w=emptyWorkspace();w.milestones=[{...milestone,status:'Verified',evidence:'https://example.org/m',lastChecked:stamp,confidence:'High'}];w.builds=[{id:'b1',version:'build-new',platform:'Web',status:'Ready for release',evidence:'https://example.org/b',owner:'QA',lastChecked:stamp}];for(let i=1;i<=12;i++)w.tests.push({id:'t'+i,caseId:'A'+String(i).padStart(2,'0'),platform:'Web',status:'Pass',device:'Chrome',buildVersion:'build-old',owner:'QA',lastChecked:stamp,evidence:'https://example.org/t'});expect(advisoryGate(w,['Web']).ready).toBe(false);w.tests.forEach(t=>t.buildVersion='build-new');expect(advisoryGate(w,['Web']).ready).toBe(true);expect(advisoryGate(w,['Web']).authority).toBe('advisory-only');});
+
+test('different projects cannot borrow each other’s same-named build evidence',()=>{const w=emptyWorkspace();w.milestones=[{id:'m',title:'Project',status:'Verified',owner:'QA',lastChecked:stamp,evidence:'https://example.org/m'}];w.builds=[{id:'b',version:'v1',platform:'Web',projectId:'rumble-rush-2',status:'Ready for release',owner:'QA',lastChecked:stamp,evidence:'https://example.org/b'}];for(let i=1;i<=12;i++)w.tests.push({id:'t'+i,caseId:'A'+String(i).padStart(2,'0'),platform:'Web',projectId:'rumble-rush-1',status:'Pass',device:'Chrome',buildVersion:'v1',owner:'QA',lastChecked:stamp,evidence:'https://example.org/t'});expect(advisoryGate(w,['Web']).ready).toBe(false);});
+
+test('near-limit workspaces export and reimport without exceeding the input bound',()=>{
+ const workspace={...emptyWorkspace(),milestones:Array.from({length:61},(_,i)=>({id:'large-'+i,title:'Near-boundary record '+i,status:'Unknown',notes:'x'.repeat(2000)}))};
+ const json=serializeWorkspace(workspace);expect(new TextEncoder().encode(json).length).toBeGreaterThan(120000);
+ expect(normalizeWorkspace(json)).toEqual(normalizeWorkspace(workspace));
+});

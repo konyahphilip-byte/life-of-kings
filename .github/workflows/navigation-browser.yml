@@ -20,6 +20,7 @@ jobs:
       - run: npx --no-install playwright install --with-deps chromium
       - run: node scripts/test-navigation-browser.mjs
       - run: node scripts/test-games-browser.mjs
+      - run: node scripts/test-game-control-browser.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -27,4 +28,5 @@ jobs:
           path: |
             artifacts/navigation/
             work/ecogames-20261108/
+            work/ecogames-control-20261108/browser/
           retention-days: 7

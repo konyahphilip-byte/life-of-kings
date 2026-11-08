@@ -1,0 +1,13 @@
+export type WorkspaceRecord=Record<string,string>;
+export type Collection='milestones'|'tests'|'builds'|'compatibility'|'submissions'|'changes';
+export type Workspace={schema:'ecovibes-games-control-hub-v1'}&Record<Collection,WorkspaceRecord[]>;
+export const COLLECTIONS:Collection[];
+export const PLATFORMS:string[];
+export const STATUSES:string[];
+export const MAX_WORKSPACE_BYTES:number;
+export function emptyWorkspace():Workspace;
+export function normalizeWorkspace(value:unknown):Workspace;
+export function safeEvidenceURL(value:unknown):boolean;
+export function mergeImport(current:Workspace,incoming:Workspace):Workspace;
+export function advisoryGate(input:Workspace,platforms?:string[],clock?:number):{ready:boolean;failures:string[];authority:'advisory-only'};
+export function serializeWorkspace(value:Workspace):string;

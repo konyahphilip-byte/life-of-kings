@@ -1,0 +1,11 @@
+# EcoGames Control Hub — source-only release candidate
+
+LOCALLY BUILT, not public/CI/merged/deployed. Based on local fe8f1a9, identical tree21076b56 to the already-public reviewed hubPR51. The19 code/test/config files are byte-identical to the independently reviewed Control Hub increment e4f4ab4; no unpublished Rumble controller/launcher/scene/source is included. Two new documents describe this bounded slice.
+
+Implements owner-scoped metadata workboards, append-only revisions, duplicate-safe saves, strict import with revision-bound preview and separate storage consent, current-draft/near-limit export, project-specific evidence and open-tool register. It does not complete Vault/Studio/Forge/publishing or AAA Rumble Rush2. Migration20261108150000 is additive and UNAPPLIED. Existing shared identity/API/database/CSRF/rate protections are reused; no dependency, provider, resource or fee changes.
+
+Development evidence on e4f4ab4: full676/50/build1692/HTTP13/PostgreSQL17.10-22/browser10/audit0/security8. Retain missing-module/import-refresh/status/project/draft-export/boundary REDs and earlier675/676 Home5000ms timeout; isolated pass and final green did not establish cause. This exact source-only candidate passed652/652 across48files in68.32s, TypeScript/build1692, actual HTTP13, PostgreSQL17.10/22, built-app browser10 and security8. The audit result is retained with the candidate; no dependencies changed. These are local synthetic-account checks, not hosted or physical-device acceptance. See work/ecogames-control-20261108/checks.json/checkpoint.json.
+
+Before release: scoped approval to publish these new files in a public draft, exact-source remote CI, compatibility review and explicit migration/merge/deploy approval, green main checks and hosted two-account/device/import/rollback acceptance. Missing schema marker denies the new feature. Disable via ECOVIBES_GAME_CONTROL_DISABLED=true; retain the additive revisions on compatible app rollback. No production rollback drill or real cloud-data migration has occurred.
+
+See ../ecogames/CONTROL_HUB_INTEGRATION.md for source discovery, data/authority boundaries, pilot limits, deployment and remaining gaps. No private source/export/user record is sent to AI. Core platform access remains GH₵0.
