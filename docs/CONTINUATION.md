@@ -1,5 +1,21 @@
 # EcoVibes continuation — backend release checkpoint
 
+## 8 November 2026 — EcoGames independent review findings fixed
+
+LOCALLY BUILT / independently reviewed; not public/merged/deployed. Follow-up fixes blocked-storage support navigation, repeated/open-removed detail focus and accessible View project names. RED22/26 retained; focused26/26/full620/62045files/build/five browser groups pass. Independent recheck closed all three P2 findings against exact hashes. Remote CI, scoped public draft and merge/release approval plus hosted/physical-device acceptance remain. No migration, fee, dependency or production change. See releases/2026-11-08-ecogames-review-local.md and work/ecogames-review-20261108/. Rumble recovery continues independently.
+
+## 8 November 2026 — EcoGames hub implemented locally
+
+**LOCALLY BUILT; not public, merged or deployed.** The new EcoGames 3.0 directive explicitly reopens bounded Games work; prior Games-paused/research-only notes remain historical. Isolated branch `codex/ecogames-hub-20261108` is based on freshly verified main `56e0c2eb` in `/Users/philipkonyah/Documents/ChatGPT/Ecovibes/Builds/EcoGames hub`. Existing nineteen draft PRs and dirty primary app source remain untouched.
+
+The real app now has a lazy premium Games hub, original2653byte vector art, seven source-controlled development projects, validated public catalog GET/search/category filters and rate limits, accessible project details/focus return, Creator guide linking existing Chale, and account/guest-partitioned device-local saved IDs. Persisted writes are confirmed before success; corruption/quota errors preserve the list. No fake players, rankings, notification subscription or playable builds. The saved list is not a Game Vault, backup or cloud sync. Extreme Saver makes no art request.
+
+**Evidence:**617/617tests45files/154.15s;52 Games tests included; baseline18; production TypeScript/build passes; actual isolated HTTP9groups; installed Chrome320/768/1024/1440 and390 Extreme/offline journeys pass, screenshots inspected; audit0/security8. New checks are wired into existing CI but remote CI has NOT run for this source. No weakened deadlines/workers/assertions/isolation. Missing-module RED,49/50accessible-name failure, compile errors, probe startup/path errors, wrong404 checker expectation and616/617 old-heading failure retained. Historical QA001 remains undiagnosed. Existing bundle warnings remain.
+
+Rumble Rush is preserved; its main scene still references missing `scripts/main.gd`. No game, race, controller, native-device, real-account or hosted acceptance is claimed. Game Vault, Studio, Story Bible, generation, Forge, multiplayer, publishing and broader platform gaps remain. No migration, provider, resource, paid service, model, production or fee change; core launch remains GH₵0.
+
+Receipt: `docs/releases/2026-11-08-ecogames-hub-local.md`; exact reports/hashes/screenshots: isolated `work/ecogames-20261108/`. Independent review, scoped public publication/exact CI and explicit merge/release authorization remain required. Next smallest code task: isolated recovery of Rumble Rush main controller, then actual race/checkpoint/finish/restart and export evidence before a launcher.
+
 ## October 15 — atomic role activation verified locally
 
 Seller/provider self-activation now saves its role, profile and domain/audit event together under the applicant lock. Failed writes roll back; retries preserve existing profile/verification state without duplicate grants. Legacy missing profiles get a distinct audited repair. Only the authenticated active owner can self-enable seller/provider. No migration or game changes are included. See [the identity activation receipt](releases/2026-10-15-identity-role-activation.md).
