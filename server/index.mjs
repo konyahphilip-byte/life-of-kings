@@ -1,3 +1,4 @@
+import {createGameVault,GAME_VAULT_SQLITE_SCHEMA,GAME_VAULT_VERSION} from './game-vault.mjs';
 import {createGameControl,GAME_CONTROL_SQLITE_SCHEMA,GAME_CONTROL_VERSION} from './game-control.mjs';
 import {queryGames} from './games.mjs';
 import { createServer } from "node:http";
@@ -191,6 +192,7 @@ if (!postgresMode) {
   db.exec(FRIENDS_SQLITE_SCHEMA);
   db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
   db.exec(GAME_CONTROL_SQLITE_SCHEMA);
+  db.exec(GAME_VAULT_SQLITE_SCHEMA);
 }
 
 const now = () => new Date().toISOString();
@@ -1106,6 +1108,8 @@ async function recordRecommendationSignals(userId, itemType, itemId, item, actio
 const providers = createProviderService({ q, all, run, transaction, assert, inputString, validMinor, now, id, event, notify, rateLimit, postgresMode });
 const chaleWorkStatus = createChaleWorkStatus({ all, transaction, rateLimit, assert, now });
 const peopleFriends = createPeopleFriends({q,all,run,transaction,assert,now,notify,event,rateLimit,postgresMode});
+const gameVaultAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',GAME_VAULT_VERSION));
+const gameVault=createGameVault({q,run,now,rateLimit,available:gameVaultAvailable&&process.env.ECOVIBES_GAME_VAULT_DISABLED!=='true'});
 const gameControlAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',GAME_CONTROL_VERSION));
 const gameControl=createGameControl({q,run,all,now,rateLimit,available:gameControlAvailable&&process.env.ECOVIBES_GAME_CONTROL_DISABLED!=='true'});
 const directMessagesAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',DIRECT_MESSAGES_VERSION));
@@ -1117,6 +1121,7 @@ const publicTrends = createPublicTrends();
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
 async function route(ctx, req, res, method, path, body, query) {
+  if(path==='/games/vault')return gameVault.route(ctx,method,body,query);
   if(path==='/games/control')return gameControl.route(ctx,method,body,query);
   if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {

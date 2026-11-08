@@ -30,6 +30,7 @@ jobs:
       - run: node scripts/test-direct-messages.mjs
       - run: node scripts/test-games-http.mjs
       - run: node scripts/test-game-control-http.mjs
+      - run: node scripts/test-game-vault-http.mjs
       - run: node scripts/test-public-trends-http.mjs
       - name: Verify disposable PostgreSQL message receipts
         run: |
@@ -48,3 +49,4 @@ jobs:
           "$PG_BINDIR/postgres" --version
           node scripts/test-message-receipts-postgres.mjs
           node scripts/test-game-control-postgres.mjs
+          node scripts/test-game-vault-postgres.mjs

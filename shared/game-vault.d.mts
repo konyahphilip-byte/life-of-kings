@@ -1,0 +1,15 @@
+export type VaultFile={path:string;content:string};
+export type ProjectContent={title:string;engine:'godot'|'three'|'custom';story:string;files:VaultFile[]};
+export type VaultCheckpoint=ProjectContent&{id:string;label:string;at:string};
+export type VaultProject=ProjectContent&{id:string;checkpoints:VaultCheckpoint[]};
+export type GameVault={schema:'ecogames-vault-v1';projects:VaultProject[]};
+export const VAULT_BYTES:number,FILE_BYTES:number,BACKUP_BYTES:number;
+export function emptyVault():GameVault;
+export function newProject(title?:string):VaultProject;
+export function normalizeVault(value:unknown):GameVault;
+export function vaultDigest(value:GameVault):Promise<string>;
+export function exportBackup(value:GameVault):Promise<string>;
+export function readBackup(value:string):Promise<GameVault>;
+export function mergeVault(a:GameVault,b:GameVault):GameVault;
+export function checkpointProject(project:VaultProject,label:string):VaultProject;
+export function restoreCheckpoint(project:VaultProject,id:string):VaultProject;
