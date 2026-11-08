@@ -1,3 +1,4 @@
+import {queryGames} from './games.mjs';
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { Pool } from "pg";
@@ -1210,6 +1211,11 @@ async function route(ctx, req, res, method, path, body, query) {
       await recordRecommendationSignals(ctx.user.id, itemType, itemId, item, action, active, stamp);
     });
     return { ok: true, active, action };
+  }
+  if (method === "GET" && path === "/games") {
+    await rateLimit(`public-games:${req.socket.remoteAddress}`, 30, 60_000);
+    try { return queryGames(query); }
+    catch { fault(400, 'invalid_game_query', 'Choose a listed game category and a search of up to 80 characters.'); }
   }
   if (method === "GET" && path === "/discover/happening") {
     assert([...query.keys()].length === 0, 400, 'invalid_trends_query', 'This public feed does not accept account details or search queries.');

@@ -45,3 +45,10 @@ describe('actual app navigation recovery',()=>{
   act(()=>{window.history.replaceState(null,'','/#settings');window.dispatchEvent(new HashChangeEvent('hashchange'));});expect(screen.getByRole('heading',{name:'Settings'})).toBeTruthy();
  });
 });
+
+it('keeps Games support reachable when session storage rejects writes',async()=>{
+ window.history.replaceState(null,'','/#gaming');render(<App/>);await screen.findByRole('heading',{name:'EcoGames'});
+ const original=Storage.prototype.setItem;vi.spyOn(Storage.prototype,'setItem').mockImplementation(function(this:Storage,key:string,value:string){if(this===sessionStorage)throw new DOMException('Blocked','SecurityError');return original.call(this,key,value);});
+ fireEvent.click(screen.getByRole('button',{name:'Report a concern'}));
+ expect(await screen.findByRole('heading',{name:'One account. Shared services.'})).toBeTruthy();expect(window.location.hash).toBe('#account');
+});
