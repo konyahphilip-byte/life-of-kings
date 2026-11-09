@@ -22,6 +22,7 @@ jobs:
       - run: node scripts/test-games-browser.mjs
       - run: node scripts/test-game-control-browser.mjs
       - run: node scripts/test-game-vault-browser.mjs
+      - run: node scripts/test-game-project-export-browser.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -31,4 +32,5 @@ jobs:
             work/ecogames-20261108/
             work/ecogames-control-20261108/browser/
             work/ecogames-vault-20261108/browser/
+            work/ecogames-project-export-20261108/browser/
           retention-days: 7
