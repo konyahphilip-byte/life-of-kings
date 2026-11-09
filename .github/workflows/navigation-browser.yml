@@ -24,6 +24,7 @@ jobs:
       - run: node scripts/test-game-vault-browser.mjs
       - run: node scripts/test-game-project-export-browser.mjs
       - run: node scripts/test-game-folder-import-browser.mjs
+      - run: node scripts/test-game-godot-preflight-browser.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -35,4 +36,5 @@ jobs:
             work/ecogames-vault-20261108/browser/
             work/ecogames-project-export-20261108/browser/
             work/ecogames-folder-import-20261109/browser/
+            work/ecogames-godot-preflight-20261109/browser/
           retention-days: 7

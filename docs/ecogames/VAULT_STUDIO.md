@@ -1,5 +1,5 @@
 # EcoGames project Vault and text Studio
-Status: LOCALLY BUILT. Vault/source ZIP are public draftsPR53/54 with exact prior remote CI. The new selected-folder import is local-only. ParentPR51–54 and their migrations remain unmerged/unapplied; no feature here is deployed.
+Status: LOCALLY BUILT. Vault/source ZIP/selected-folder import are public draftsPR53/54/55 with exact remote CI verified. ParentPR51–55 remain unmerged and their migrations unapplied; no feature here is deployed. The new nonexecuting Godot source inspector is local-only; see GODOT_PREFLIGHT.md.
 
 ## Delivered boundary
 
@@ -51,7 +51,7 @@ Production: UNAPPLIED.
 
 PR51 Games hub and PR52 Control Hub remain draft/unmerged dependencies. Preserve their reviewed sources. This additive migration coexists with the exact PR52 migration in disposable PostgreSQL; it does not replace identity, workboard or transaction tables.
 
-Before hosted rollout: PR53 source already has scoped public approval and exact remote CI. Source ZIP public draftPR54 has exact remote CI; its later local selected-folder import needs scoped public approval and exact remote CI. Review current-main/dependency compatibility, then obtain explicit parent migration/merge/activation/deployment authorization. Set ECOVIBES_GAME_VAULT_DISABLED=true before an approved schema/deployment change. Without the schema marker, or with this deny-only flag, the API returns unavailable. Apply reviewed dependencies in order and verify marker, RLS and grants. A migration alone is not hosted acceptance.
+Before hosted rollout: PR53 source already has scoped public approval and exact remote CI. Source ZIP public draftPR54 and selected-folder import public draftPR55 have exact remote CI. PR55's publication gate is fulfilled; its native creator-project import remains UNVERIFIED. The later local Godot inspector needs its own scoped public approval and exact remote CI. Review current-main/dependency compatibility, then obtain explicit parent migration/merge/activation/deployment authorization. Set ECOVIBES_GAME_VAULT_DISABLED=true before an approved schema/deployment change. Without the schema marker, or with this deny-only flag, the API returns unavailable. Apply reviewed dependencies in order and verify marker, RLS and grants. A migration alone is not hosted acceptance.
 
 Only an approved pilot should enable the feature after hosted owner/account switching, duplicate/stale/offline saves, backup import/export, device and privacy acceptance. A rollback keeps additive data and disables Vault access, or uses a reviewed compatible app. Do not drop private data as a routine rollback. Production rollback/restore has not been rehearsed.
 
@@ -68,14 +68,15 @@ Project memory has no automatic background sync; server reads occur on opening/r
 | Two-account source and draft isolation | LOCALLY BUILT; synthetic local accounts, not hosted users |
 | Parent Vault public PR / remote CI | LOCALLY BUILT public draftPR53; exact692tests/CI verified, unmerged |
 | Folder-preserving project source ZIP | LOCALLY BUILT public draftPR54; exact prior remote CI,14local browser checks and trusted Godot4.7.2 import |
-| Selected-folder text source import | LOCALLY BUILT;748tests/34local browser checks, metadata-only preview, explicit subset read and separate save consent; publication/remote CI open |
+| Selected-folder text source import | LOCALLY BUILT public draftPR55; exact748tests/53files and both remote workflows verified;34browser checks; native creator import UNVERIFIED |
+| Godot-aware source inspector | LOCALLY BUILT; explicit local static graph/repairs, exact source preserved; new publication/remote CI open; see GODOT_PREFLIGHT.md |
 | Production migration, merge, activation, deployment | BLOCKED on explicit approvals and release gates |
 | Physical low-end Android/iOS and real Auth acceptance | UNVERIFIED |
 | Binary asset storage, isolated runner/playable builds | MISSING; source ZIP is not a packaged game |
 | Forge/generation, moderation/publishing and multiplayer | MISSING in this increment |
 | AAA Rumble Rush2 | MISSING; separate future native/high-fidelity project |
 
-Next smallest implementation: nonexecuting Godot source preflight for root project.godot and supported scene/script references, reporting missing dependencies before local-engine import. Build/runner isolation, binary storage/retention, licensed assets, CI synchronization and public moderation remain separate gates.
+The nonexecuting Godot source preflight is now LOCALLY BUILT for root project.godot and supported scene/script/resource references. Next dependency-ready implementation: private binary asset manifest/selected upload and existing storage integration, separately reviewed before any runner or playable preview. Build/runner isolation, binary storage/retention, licensed assets, CI synchronization and public moderation remain separate gates.
 
 References: the platform's selected-file boundary follows the [browser file input model](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file); concurrency reasoning is tested against PostgreSQL and its [transaction isolation contract](https://www.postgresql.org/docs/18/transaction-iso.html). Tests and actual source, rather than diagrams or prompts, define the delivered scope.
 
@@ -95,4 +96,4 @@ The selected root is stripped once, with nested paths preserved. Hidden/cache/bi
 
 Sequential reads verify metadata/bytes/UTF-8 and preserve BOM, CRLF, emoji and empty content. Full-Vault validation precedes atomic draft replacement. Cancel/deadline/account change ignores late results and prevents subsequent reads; a started browser file read cannot itself be stopped. Preview references are memory-only and not resumed across navigation. Source already added to the draft follows existing owner-keyed memory rules. No AI, execution, public publishing, automatic upload or new server/database operation is introduced.
 
-Save/export stay disabled until preview is applied or cancelled. Failed/revoked reads preserve current work and expose no OS details. Focus returns to a stable picker/editor after controls disappear. Actual local748tests/34Chrome checks cover save/reload, exact ZIP byte roundtrip, offline subset read, denied access, cancellation and two synthetic accounts at390/1440. Physical picker/device/hosted acceptance and exact remote CI remain open. See docs/releases/2026-11-09-ecogames-folder-import-local.md for full evidence, retained failures, cost and release gates.
+Save/export stay disabled until preview is applied or cancelled. Failed/revoked reads preserve current work and expose no OS details. Focus returns to a stable picker/editor after controls disappear. Actual local748tests/34Chrome checks cover save/reload, exact ZIP byte roundtrip, offline subset read, denied access, cancellation and two synthetic accounts at390/1440. Physical picker/device/hosted acceptance remains open. Exact PR55 remote CI is now verified: Release42585263187 and Browser42585263372 on tree8586533315bdae3d68122b4555e6b4b17a7c86c4; native engine import was not run by CI. See docs/releases/2026-11-09-ecogames-folder-import-local.md for full evidence, retained failures, cost and release gates.

@@ -4,6 +4,7 @@ import {GameVaultDraftContext,GameVaultDraftProvider} from './GameVaultDraft';
 import {useGameVault} from './useGameVault';
 import {projectSourceArchive} from '../../../shared/game-project-export.mjs';
 import {planSourceFolder,readSourceFolder,type FolderPlan} from '../../../shared/game-folder-import.mjs';
+import GameGodotInspector from './GameGodotInspector';
 import './vault-studio.css';
 type Props={ownerId:string|null;onAccount:()=>void};
 export default function GameVaultStudio(props:Props){const context=useContext(GameVaultDraftContext);return context?.ownerId===props.ownerId?<Studio key={props.ownerId??'guest'} {...props}/>:<GameVaultDraftProvider ownerId={props.ownerId}><Studio {...props}/></GameVaultDraftProvider>;}
@@ -129,6 +130,7 @@ function Studio({ownerId,onAccount}:Props){
     <div className="eg-folder-files">{folderPreview.entries.map(e=><label key={e.path}><input type="checkbox" disabled={e.size>FILE_BYTES} checked={folderPaths.includes(e.path)} onChange={event=>setFolderPaths(paths=>event.target.checked?[...paths,e.path]:paths.filter(p=>p!==e.path))}/><span>{e.path}<small>{e.size} bytes{e.size>FILE_BYTES?' · too large for this pilot':''}</small></span></label>)}</div>
     <div className="eg-vault-actions"><button type="button" disabled={!folderPaths.length||project.files.length+folderPaths.length>20} onClick={()=>void addFolderSelection()}>Read selected source into draft</button><button type="button" onClick={cancelFolderPreview}>Cancel folder preview</button></div><p>Add selected files or cancel this preview before saving or exporting source. Reading files is a local action; Save project still needs separate private-storage consent.</p></section>}
     </section>
+    <GameGodotInspector key={project.id} ownerId={ownerId} project={project} disabled={!!folderPreview||busy||loading||reading}/>
     <section aria-label="Local project export"><h3>Open in your local engine</h3><p>Download only this project’s current source, with its folders preserved. Unsaved source edits are included; this does not save to EcoVibes. Story Bible and checkpoints stay in the separate Vault JSON backup.</p><button type="button" disabled={!!folderPreview} onClick={exportProject}>Export {dirty?'draft':'project'} source ZIP</button><p>Extract into a fresh folder. For Godot, import the included root project.godot if present. Missing configuration, binary assets and engine builds are not generated. A source ZIP is not a playable game.</p></section>
     <label className="eg-vault-consent"><input type="checkbox" disabled={!!folderPreview} checked={consent} onChange={e=>setConsent(e.target.checked)}/>Store this Story Bible, selected source and checkpoints privately in my EcoVibes account. No AI processing or public publishing.</label>
     <button className="eg-primary" disabled={!consent||!dirty||busy||loading||reading||!!folderPreview} onClick={saveDraft}>Save project</button>

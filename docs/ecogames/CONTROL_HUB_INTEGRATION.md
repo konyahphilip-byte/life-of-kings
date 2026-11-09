@@ -1,6 +1,6 @@
 # EcoGames Control Hub integration — 8 November 2026
 
-Status: LOCALLY BUILT. No public publication, production migration, merge, feature activation or deployment is implied.
+Status: LOCALLY BUILT; public draftPR52 exists, current head323f337c77f9713b4186a3124340e32206cdd5e3 and workflows42518745158/42518745165 verified passing on9November2026. No production migration, merge, feature activation or deployment. Later Vault/source-import drafts are stacked dependencies, not hosted capabilities.
 
 ## Source discovery and preservation
 
