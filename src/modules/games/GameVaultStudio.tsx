@@ -3,12 +3,16 @@ import {emptyVault,newProject,normalizeVault,exportBackup,readBackup,mergeVault,
 import {GameVaultDraftContext,GameVaultDraftProvider} from './GameVaultDraft';
 import {useGameVault} from './useGameVault';
 import {projectSourceArchive} from '../../../shared/game-project-export.mjs';
+import {planSourceFolder,readSourceFolder,type FolderPlan} from '../../../shared/game-folder-import.mjs';
 import './vault-studio.css';
 type Props={ownerId:string|null;onAccount:()=>void};
 export default function GameVaultStudio(props:Props){const context=useContext(GameVaultDraftContext);return context?.ownerId===props.ownerId?<Studio key={props.ownerId??'guest'} {...props}/>:<GameVaultDraftProvider ownerId={props.ownerId}><Studio {...props}/></GameVaultDraftProvider>;}
 function Studio({ownerId,onAccount}:Props){
  const cache=useContext(GameVaultDraftContext)!;const {memory,setMemory}=cache;const draft=memory.project,dirty=memory.dirty;
  const vault=useGameVault(ownerId),{snapshot,error,setError,busy,loading}=vault;
+ const [folderPreview,setFolderPreview]=useState<FolderPlan|null>(null),[folderPaths,setFolderPaths]=useState<string[]>([]);
+ const folderPlanRef=useRef<FolderPlan|null>(null),folderRead=useRef<AbortController|null>(null);
+ const folderPicker=useRef<HTMLInputElement|null>(null),sourceEditor=useRef<HTMLTextAreaElement|null>(null),folderFocus=useRef<'picker'|'source'|null>(null);
  const [reading,setReading]=useState(false),readingRef=useRef(false);
  const [consent,setConsent]=useState(false),[notice,setNotice]=useState(memory.dirty?'Unsaved draft resumed in this open app.':''),[selectedFile,setSelectedFile]=useState(draft?.files[0]?.path??'');
  const [newPath,setNewPath]=useState(''),[label,setLabel]=useState(''),[preview,setPreview]=useState<{vault:GameVault;revision:number}|null>(null);
@@ -17,16 +21,17 @@ function Studio({ownerId,onAccount}:Props){
  const dialogRef=useRef<HTMLDivElement|null>(null),createRef=useRef<HTMLButtonElement|null>(null),reloadRef=useRef<HTMLButtonElement|null>(null),focusRequested=useRef(false),busyRef=useRef(busy);busyRef.current=busy;
  const [focusVersion,setFocusVersion]=useState(0);useEffect(()=>{if(!focusRequested.current||busy||loading)return;const target=[createRef.current,reloadRef.current].find(e=>e?.isConnected&&!e.disabled);if(target){target.focus();focusRequested.current=false;}},[focusVersion,busy,loading]);
  function requestUsefulFocus(){focusRequested.current=true;setFocusVersion(v=>v+1);}
+ useEffect(()=>{if(reading||busy||loading||!folderFocus.current)return;const target=folderFocus.current==='picker'?folderPicker.current:sourceEditor.current;if(target?.isConnected&&!target.matches(':disabled')){target.focus();folderFocus.current=null;}},[folderPreview,reading,busy,loading,selectedFile]);
  const live=useRef(true),generation=useRef(0),fileGeneration=useRef(0),draftRef=useRef<VaultProject|null>(draft);
- useEffect(()=>{live.current=true;return()=>{live.current=false;fileGeneration.current++;draftRef.current=null;};},[]);
+ useEffect(()=>{live.current=true;return()=>{live.current=false;fileGeneration.current++;folderRead.current?.abort();folderPlanRef.current=null;draftRef.current=null;};},[]);
  useEffect(()=>{if(!confirm)return;const previous=document.activeElement as HTMLElement|null,dialog=dialogRef.current;const buttons=()=>[...(dialog?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')??[])];buttons()[0]?.focus();const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!busyRef.current){e.preventDefault();setConfirm(null);}if(e.key==='Tab'){const list=buttons(),index=list.indexOf(document.activeElement as HTMLButtonElement);if(index<0||(!e.shiftKey&&index===list.length-1)||(e.shiftKey&&index===0)){e.preventDefault();(e.shiftKey?list.at(-1):list[0])?.focus();}}};document.addEventListener('keydown',key);return()=>{document.removeEventListener('keydown',key);if(previous?.isConnected&&!previous.matches(':disabled'))previous.focus();};},[confirm]);
- function replace(value:VaultProject|null,modified:boolean,base=snapshot){generation.current++;draftRef.current=value;setMemory({project:value,dirty:modified,baseRevision:base?.revision??0,baseVault:base?.vault??emptyVault()});if(!modified)cache.pending.current=null;setConsent(false);setNotice('');setPreview(null);setSelectedFile(value?.files[0]?.path??'');}
+ function replace(value:VaultProject|null,modified:boolean,base=snapshot){clearFolderPreview();generation.current++;draftRef.current=value;setMemory({project:value,dirty:modified,baseRevision:base?.revision??0,baseVault:base?.vault??emptyVault()});if(!modified)cache.pending.current=null;setConsent(false);setNotice('');setPreview(null);setSelectedFile(value?.files[0]?.path??'');}
  useLayoutEffect(()=>{if(vault.accountInvalid){replace(null,false,null);return;}if(snapshot&&!dirty&&memory.baseRevision!==snapshot.revision)replace(snapshot.vault.projects.find(p=>p.id===draft?.id)??null,false,snapshot);},[snapshot,vault.accountInvalid,dirty,memory.baseRevision]);
- function edit(value:VaultProject){generation.current++;draftRef.current=value;setMemory(old=>({...old,project:value,dirty:true}));setConsent(false);setNotice('');setPreview(null);}
+ function edit(value:VaultProject){clearFolderPreview();generation.current++;draftRef.current=value;setMemory(old=>({...old,project:value,dirty:true}));setConsent(false);setNotice('');setPreview(null);}
  function choose(value:VaultProject){if(dirty){setConfirm({kind:'discard',project:value});return;}replace(value,false);}
  function draftVault(){const current=draft?memory.baseVault:snapshot?.vault??emptyVault();return normalizeVault(draft?{...current,projects:[...current.projects.filter(p=>p.id!==draft.id),draft]}:current);}
  async function save(value:GameVault,revision=draft?memory.baseRevision:snapshot?.revision,selectedId:string|null=draft?.id??null){
-  if(revision===undefined)return;if(readingRef.current){setError('Wait for selected files to finish reading, or cancel the read.');return;}const savedGeneration=generation.current;try{const result=await vault.save(value,revision);if(!live.current||!result)return;if(savedGeneration!==generation.current){setError('The submitted revision was saved, but newer draft edits remain unsaved. Export or save them separately.');return;}replace(result.vault.projects.find(p=>p.id===selectedId)??null,false,result);if(!selectedId)requestUsefulFocus();setNotice('Project Vault saved by the server.');}
+  if(revision===undefined)return;if(folderPlanRef.current){setError('Add selected source or cancel the folder preview before saving.');return;}if(readingRef.current){setError('Wait for selected files to finish reading, or cancel the read.');return;}const savedGeneration=generation.current;try{const result=await vault.save(value,revision);if(!live.current||!result)return;if(savedGeneration!==generation.current){setError('The submitted revision was saved, but newer draft edits remain unsaved. Export or save them separately.');return;}replace(result.vault.projects.find(p=>p.id===selectedId)??null,false,result);if(!selectedId)requestUsefulFocus();setNotice('Project Vault saved by the server.');}
   catch(e){setError(e instanceof Error?e.message:'Check the project before saving.');}
  }
  async function refresh(){
@@ -39,7 +44,7 @@ function Studio({ownerId,onAccount}:Props){
   catch(e){if(live.current)setError(e instanceof Error?e.message:'Could not export the project.');}
  }
  function exportProject(){
-  if(readingRef.current||busy||loading||!draftRef.current)return;
+  if(readingRef.current||folderPlanRef.current||busy||loading||!draftRef.current)return;
   setError('');setNotice('');let url:string|undefined,anchor:HTMLAnchorElement|undefined;
   try{
    const archive=projectSourceArchive(draftRef.current);
@@ -48,7 +53,30 @@ function Studio({ownerId,onAccount}:Props){
   }catch(e){setError(e instanceof Error?e.message:'Could not prepare the project ZIP. Your draft remains here.');}
   finally{anchor?.remove();if(url){const downloadUrl=url;setTimeout(()=>URL.revokeObjectURL(downloadUrl),30000);}}
  }
+ function clearFolderPreview(){folderPlanRef.current=null;setFolderPreview(null);setFolderPaths([]);}
+ function cancelFolderPreview(){folderFocus.current='picker';clearFolderPreview();}
+ function cancelReading(){folderFocus.current='picker';fileGeneration.current++;folderRead.current?.abort();folderRead.current=null;readingRef.current=false;setReading(false);clearFolderPreview();setError('File reading cancelled. Nothing was added or uploaded.');}
+ function previewFolder(selection:FileList|null){
+  if(busy||loading||readingRef.current||!draftRef.current)return;
+  clearFolderPreview();setConsent(false);setError('');setNotice('');if(!selection?.length)return;
+  try{const plan=planSourceFolder(selection);folderPlanRef.current=plan;setFolderPreview(plan);}catch(e){setError(e instanceof Error?e.message:'The folder preview is unavailable.');}
+ }
+ async function addFolderSelection(){
+  const plan=folderPlanRef.current,project=draftRef.current;if(!plan||!project||busy||loading||readingRef.current)return;
+  const token=++fileGeneration.current,start=generation.current,controller=new AbortController();folderRead.current=controller;readingRef.current=true;setReading(true);setError('');setNotice('');setConsent(false);
+  const deadline=setTimeout(()=>controller.abort(),10000);
+  try{
+   const incoming=await readSourceFolder(plan,folderPaths,project,controller.signal);
+   if(!live.current||token!==fileGeneration.current)return;
+   if(start!==generation.current||folderPlanRef.current!==plan||draftRef.current?.id!==project.id)throw Error('The draft changed. Re-select the folder; current edits were preserved.');
+   const proposed={...project,files:[...project.files,...incoming]};
+   normalizeVault({...memory.baseVault,projects:[...memory.baseVault.projects.filter(p=>p.id!==project.id),proposed]});
+   edit(proposed);setSelectedFile(incoming[0].path);folderFocus.current='source';setNotice(incoming.length+' selected source files added to the local draft; not uploaded. Save project separately.');
+  }catch(e){if(live.current&&token===fileGeneration.current)setError(e instanceof Error?e.message:'Source could not be added. Your current draft is unchanged.');}
+  finally{clearTimeout(deadline);if(folderRead.current===controller)folderRead.current=null;if(live.current&&token===fileGeneration.current){readingRef.current=false;setReading(false);}}
+ }
  async function files(selected:FileList|null){
+  clearFolderPreview();
   const token=++fileGeneration.current,start=generation.current,project=draftRef.current;readingRef.current=false;setReading(false);if(!selected?.length||!project)return;
   if(selected.length>20||[...selected].some(f=>f.size>FILE_BYTES)){setError('Choose up to 20 UTF-8 text files, at most 32 KB each.');return;}
   readingRef.current=true;setReading(true);try{
@@ -59,6 +87,7 @@ function Studio({ownerId,onAccount}:Props){
   finally{if(live.current&&token===fileGeneration.current){readingRef.current=false;setReading(false);}}
  }
  async function importBackup(file:File|undefined){
+  clearFolderPreview();
   const token=++fileGeneration.current,start=generation.current,revision=snapshot?.revision;readingRef.current=false;setReading(false);setPreview(null);setConsent(false);if(!file||revision===undefined)return;
   if(file.size>BACKUP_BYTES){setError('Choose a Vault backup smaller than 129 KB.');return;}
   if(dirty){setError('Save or export your draft before importing a backup.');return;}
@@ -78,7 +107,7 @@ function Studio({ownerId,onAccount}:Props){
  return <section className="eg-vault" aria-label="Game Vault and Studio">
   <header><p className="eg-kicker">YOUR PROJECTS, YOUR ORIGINALS</p><h2>Keep building where you left off.</h2><p>Create a project, write its Story Bible and edit selected text files. Save privately to your EcoVibes account, then reopen on another signed-in device.</p><p>Text-source pilot: five projects, twenty files each, three checkpoints each, 128 KB combined. Game execution, binary assets and AI generation are not connected here.</p></header>
   {error&&<p role="alert" className="eg-error">{error}</p>}<p role="status">{notice||(busy?'Saving project…':reading?'Reading selected files locally…':loading?'Loading your project Vault…':'')}</p>
-  {reading&&<button onClick={()=>{fileGeneration.current++;readingRef.current=false;setReading(false);setError('File reading cancelled. Nothing was added or uploaded.');}}>Cancel file read</button>}
+  {reading&&<button onClick={cancelReading}>Cancel file read</button>}
   {!ownerId?<section><h3>Your own workspace</h3><p>Sign in before uploading or retrieving project source.</p><button onClick={onAccount}>Open EcoVibes ID</button></section>
   :vault.accountInvalid?<section><p>The account changed. This workspace is hidden.</p><button onClick={onAccount}>Open EcoVibes ID</button></section>
   :!snapshot?<button disabled={loading} onClick={()=>void vault.load()}>Retry project Vault</button>
@@ -91,11 +120,18 @@ function Studio({ownerId,onAccount}:Props){
     <section><h3>Source files</h3><p>Only selected files are read locally. Save project separately to upload them privately. No source is executed, rendered as a web page or sent to AI.</p><label>Choose text source files<input type="file" multiple accept=".gd,.godot,.tscn,.tres,.ts,.tsx,.js,.jsx,.json,.md,.txt,.html,.css,.glsl,.shader,.svg" onChange={e=>{void files(e.target.files);e.target.value='';}}/></label>
     <div className="eg-new-file"><label>New file path<input value={newPath} maxLength={160} onChange={e=>setNewPath(e.target.value)} placeholder="scripts/main.gd"/></label><button type="button" onClick={addFile}>Add empty text file</button></div>
     <nav aria-label="Project source files">{project.files.map(f=><button key={f.path} aria-pressed={selectedFile===f.path} onClick={()=>setSelectedFile(f.path)}>{f.path}</button>)}</nav>
-    {activeFile&&<><label>Source: {activeFile.path}<textarea aria-label={'Source: '+activeFile.path} className="eg-source" spellCheck={false} maxLength={FILE_BYTES} value={activeFile.content} onChange={e=>mutate({files:project.files.map(f=>f.path===activeFile.path?{...f,content:e.target.value}:f)})}/></label><button onClick={()=>{mutate({files:project.files.filter(f=>f.path!==activeFile.path)});setSelectedFile(project.files.find(f=>f.path!==activeFile.path)?.path??'');}}>Remove selected file from draft</button></>}
+    {activeFile&&<><label>Source: {activeFile.path}<textarea ref={sourceEditor} aria-label={'Source: '+activeFile.path} className="eg-source" spellCheck={false} maxLength={FILE_BYTES} value={activeFile.content} onChange={e=>mutate({files:project.files.map(f=>f.path===activeFile.path?{...f,content:e.target.value}:f)})}/></label><button onClick={()=>{mutate({files:project.files.filter(f=>f.path!==activeFile.path)});setSelectedFile(project.files.find(f=>f.path!==activeFile.path)?.path??'');}}>Remove selected file from draft</button></>}
     </section>
-    <section aria-label="Local project export"><h3>Open in your local engine</h3><p>Download only this project’s current source, with its folders preserved. Unsaved source edits are included; this does not save to EcoVibes. Story Bible and checkpoints stay in the separate Vault JSON backup.</p><button type="button" onClick={exportProject}>Export {dirty?'draft':'project'} source ZIP</button><p>Extract into a fresh folder. For Godot, import the included root project.godot if present. Missing configuration, binary assets and engine builds are not generated. A source ZIP is not a playable game.</p></section>
-    <label className="eg-vault-consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>Store this Story Bible, selected source and checkpoints privately in my EcoVibes account. No AI processing or public publishing.</label>
-    <button className="eg-primary" disabled={!consent||!dirty||busy||loading||reading} onClick={saveDraft}>Save project</button>
+    <section aria-label="Folder source import"><h3>Bring in a source folder</h3><p>Choose a project folder using your browser’s picker. Preview names first, then select the text files to read into your local draft. Hidden files, dependency/build caches and binary assets are skipped. No source is sent to AI. Save project separately to upload privately.</p>
+    {typeof document!=='undefined'&&'webkitdirectory' in document.createElement('input')?<label>Choose source folder<input type="file" multiple ref={input=>{folderPicker.current=input;input?.setAttribute('webkitdirectory','');}} onChange={e=>{previewFolder(e.target.files);e.target.value='';}}/></label>:<p>Folder selection is unavailable in this browser. Use Choose text source files above, or a browser with folder selection.</p>}
+    {folderPreview&&<section aria-label="Folder source preview"><h4>{folderPreview.root}</h4><p>{folderPreview.entries.length} supported source files; {folderPreview.skipped} hidden, cache or non-source items skipped. The selected root folder name is removed once; nested paths stay intact. No contents have been added.</p><p>{folderPaths.length} selected. Keep at most 20 files in a project and 32 KB per file. Existing paths are never overwritten.</p>
+    <div className="eg-vault-actions"><button type="button" onClick={()=>setFolderPaths(folderPreview.entries.filter(e=>e.size<=FILE_BYTES).map(e=>e.path))}>Select eligible source</button><button type="button" onClick={()=>setFolderPaths([])}>Clear source selection</button></div>
+    <div className="eg-folder-files">{folderPreview.entries.map(e=><label key={e.path}><input type="checkbox" disabled={e.size>FILE_BYTES} checked={folderPaths.includes(e.path)} onChange={event=>setFolderPaths(paths=>event.target.checked?[...paths,e.path]:paths.filter(p=>p!==e.path))}/><span>{e.path}<small>{e.size} bytes{e.size>FILE_BYTES?' · too large for this pilot':''}</small></span></label>)}</div>
+    <div className="eg-vault-actions"><button type="button" disabled={!folderPaths.length||project.files.length+folderPaths.length>20} onClick={()=>void addFolderSelection()}>Read selected source into draft</button><button type="button" onClick={cancelFolderPreview}>Cancel folder preview</button></div><p>Add selected files or cancel this preview before saving or exporting source. Reading files is a local action; Save project still needs separate private-storage consent.</p></section>}
+    </section>
+    <section aria-label="Local project export"><h3>Open in your local engine</h3><p>Download only this project’s current source, with its folders preserved. Unsaved source edits are included; this does not save to EcoVibes. Story Bible and checkpoints stay in the separate Vault JSON backup.</p><button type="button" disabled={!!folderPreview} onClick={exportProject}>Export {dirty?'draft':'project'} source ZIP</button><p>Extract into a fresh folder. For Godot, import the included root project.godot if present. Missing configuration, binary assets and engine builds are not generated. A source ZIP is not a playable game.</p></section>
+    <label className="eg-vault-consent"><input type="checkbox" disabled={!!folderPreview} checked={consent} onChange={e=>setConsent(e.target.checked)}/>Store this Story Bible, selected source and checkpoints privately in my EcoVibes account. No AI processing or public publishing.</label>
+    <button className="eg-primary" disabled={!consent||!dirty||busy||loading||reading||!!folderPreview} onClick={saveDraft}>Save project</button>
     <section><h3>Checkpoints</h3><p>Prepare a checkpoint from the saved project, then save it. Only the latest three are retained. Removing a checkpoint or project removes it from the current Vault; provider backup retention is separate.</p><label>Checkpoint label<input maxLength={80} value={label} onChange={e=>setLabel(e.target.value)}/></label><button disabled={dirty||!label.trim()||!projects.some(p=>p.id===project.id)} onClick={()=>{try{edit(checkpointProject(project,label));setLabel('');}catch(e){setError(e instanceof Error?e.message:'Checkpoint could not be prepared.');}}}>Prepare checkpoint</button>
     {project.checkpoints.map(c=><article key={c.id}><strong>{c.label}</strong><span>{new Date(c.at).toLocaleString()} · {c.files.length} files</span><button onClick={()=>{try{setConfirm({kind:'restore',project:restoreCheckpoint(project,c.id)});}catch(e){setError(e instanceof Error?e.message:'Checkpoint unavailable.');}}}>Preview checkpoint {c.label}</button><button onClick={()=>mutate({checkpoints:project.checkpoints.filter(item=>item.id!==c.id)})}>Remove checkpoint {c.label}</button></article>)}</section>
     {projects.some(p=>p.id===project.id)&&<button className="eg-vault-remove" disabled={dirty} onClick={()=>setConfirm({kind:'remove',project})}>Remove project from Vault</button>}

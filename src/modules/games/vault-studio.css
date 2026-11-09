@@ -3,3 +3,5 @@
 .eg-vault label{min-width:0}.eg-vault input[type=file]{width:100%;min-width:0}.eg-vault nav button{overflow-wrap:anywhere}
 
 .eg-vault .eg-editor-top{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:12px}.eg-vault .eg-editor-top>span{grid-column:1/-1}.eg-vault .eg-new-file{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px}.eg-vault .eg-editor-top label,.eg-vault .eg-new-file label{min-width:0}.eg-vault .eg-editor-top input,.eg-vault .eg-editor-top select,.eg-vault .eg-new-file input{width:100%;min-width:0}@media(max-width:700px){.eg-vault .eg-editor-top,.eg-vault .eg-new-file{grid-template-columns:minmax(0,1fr)}.eg-vault .eg-new-file button{justify-self:start}}
+
+.eg-vault .eg-folder-files{max-height:18rem;overflow:auto;border:1px solid #536279;border-radius:8px;padding:8px 12px}.eg-vault .eg-folder-files label{display:flex;gap:12px;align-items:start;overflow-wrap:anywhere}.eg-folder-files input{flex:none}.eg-folder-files span{min-width:0}.eg-folder-files small{display:block;color:var(--eg-muted)}
