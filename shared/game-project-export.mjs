@@ -1,4 +1,5 @@
 import {emptyVault,normalizeVault} from './game-vault.mjs';
+import {assertPortableSourcePaths} from './game-source-paths.mjs';
 
 // Bounded, deterministic ZIP STORE archives: source files only, never engine execution.
 export const PROJECT_ZIP_BYTES=140000;
@@ -11,12 +12,9 @@ function crc32(bytes){let crc=0xffffffff;for(const byte of bytes){crc^=byte;for(
 export function projectSourceArchive(value){
  const project=normalizeVault({...emptyVault(),projects:[value]}).projects[0];
  if(!project.files.length)throw Error('Add at least one source file before exporting a project ZIP.');
- if(value.files.some(file=>file.path!==file.path.trim()))throw Error('Remove surrounding whitespace from source paths before exporting.');
- const rootDirectory='ecogames-'+project.id,folders=new Map();
+ assertPortableSourcePaths(value.files.map(file=>file.path));
+ const rootDirectory='ecogames-'+project.id;
  const files=project.files.map(file=>{
-  const parts=file.path.split('/');
-  for(const part of parts)if(part.endsWith('.')||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))throw Error('Use portable source paths without reserved device names or trailing dots. Rename the file and update its references before exporting.');
-  for(let i=1;i<parts.length;i++){const folder=parts.slice(0,i).join('/'),key=folder.toLowerCase();if(folders.has(key)&&folders.get(key)!==folder)throw Error('Use consistent folder capitalization before exporting.');folders.set(key,folder);}
   const name=encoder.encode(rootDirectory+'/'+file.path),data=losslessUtf8(file.content);
   return {name,data,crc:crc32(data)};
  });
