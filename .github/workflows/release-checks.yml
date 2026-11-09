@@ -32,6 +32,7 @@ jobs:
       - run: node scripts/test-game-control-http.mjs
       - run: node scripts/test-game-vault-http.mjs
       - run: node scripts/test-game-project-export.mjs
+      - run: node scripts/test-game-godot-preflight.mjs
       - run: node scripts/test-public-trends-http.mjs
       - name: Verify disposable PostgreSQL message receipts
         run: |
