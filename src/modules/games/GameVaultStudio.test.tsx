@@ -60,3 +60,32 @@ test('discard reload at project capacity focuses enabled Reload and consumes the
  await open();create();state={...state,revision:1,vault:{...emptyVault(),projects:Array.from({length:5},(_,i)=>newProject('Saved '+i))}};fireEvent.click(screen.getByText('Reload saved projects'));fireEvent.click(screen.getByText('Discard draft and reload'));await screen.findByText('Saved revision 1');expect((screen.getByText('Create project') as HTMLButtonElement).disabled).toBe(true);expect(document.activeElement).toBe(screen.getByText('Reload saved projects'));
  fireEvent.click(screen.getByText('Saved 0'));const title=screen.getByLabelText('Project title');title.focus();fireEvent.change(title,{target:{value:'New title'}});await save();expect(document.activeElement).not.toBe(screen.getByText('Reload saved projects'));
 });
+
+function mockDownloads(){
+ const createObjectURL=vi.fn((_blob:Blob)=> 'blob:synthetic-project-export'),revokeObjectURL=vi.fn(),OriginalURL=URL;
+ vi.stubGlobal('URL',class extends OriginalURL{static createObjectURL=createObjectURL;static revokeObjectURL=revokeObjectURL;});
+ const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+ return {createObjectURL,revokeObjectURL,click};
+}
+function addSource(path='scripts/main.gd',content='extends Node3D\n'){
+ fireEvent.change(screen.getByLabelText('New file path'),{target:{value:path}});fireEvent.click(screen.getByText('Add empty text file'));fireEvent.change(screen.getByLabelText('Source: '+path),{target:{value:content}});
+}
+test('project ZIP download includes the current draft without saving or clearing separate storage consent',async()=>{
+ const downloads=mockDownloads();await open();create();addSource();fireEvent.click(screen.getByRole('checkbox'));const before=vi.mocked(fetch).mock.calls.length;
+ fireEvent.click(screen.getByRole('button',{name:'Export draft source ZIP'}));expect(downloads.click).toHaveBeenCalledOnce();const anchor=downloads.click.mock.instances[0] as HTMLAnchorElement;expect(anchor.download).toMatch(/^ecogames-[0-9a-f-]+\.zip$/);expect(anchor.href).toBe('blob:synthetic-project-export');expect(downloads.createObjectURL.mock.calls[0][0].type).toBe('application/zip');expect(anchor.isConnected).toBe(false);
+ expect(writes).toHaveLength(0);expect(vi.mocked(fetch).mock.calls.length).toBe(before);expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);expect(screen.getByText('Unsaved draft')).toBeTruthy();expect(screen.getByRole('status').textContent).toMatch(/download requested.*Vault unchanged/i);
+ fireEvent.click(screen.getByRole('button',{name:'Save project'}));await screen.findByText('Project Vault saved by the server.');fireEvent.click(screen.getByRole('button',{name:'Export project source ZIP'}));expect(downloads.click).toHaveBeenCalledTimes(2);expect(writes).toHaveLength(1);
+});
+test('empty or nonportable source fails visibly without a partial download or draft loss',async()=>{
+ const downloads=mockDownloads();await open();create();fireEvent.click(screen.getByRole('button',{name:'Export draft source ZIP'}));expect(screen.getByRole('alert').textContent).toMatch(/source file/i);addSource('CON.gd');fireEvent.click(screen.getByRole('button',{name:'Export draft source ZIP'}));expect(screen.getByRole('alert').textContent).toMatch(/portable/i);expect(downloads.click).not.toHaveBeenCalled();expect(writes).toHaveLength(0);expect((screen.getByLabelText('Source: CON.gd') as HTMLTextAreaElement).value).toBe('extends Node3D\n');expect(screen.getByRole('status').textContent).not.toContain('download requested');
+});
+test('browser download failure keeps source and does not report a completed or requested export',async()=>{
+ const downloads=mockDownloads();downloads.createObjectURL.mockImplementation(()=>{throw Error('Downloads unavailable in this browser.');});await open();create();addSource();fireEvent.click(screen.getByRole('button',{name:'Export draft source ZIP'}));expect(screen.getByRole('alert').textContent).toContain('Downloads unavailable');expect(downloads.click).not.toHaveBeenCalled();expect(writes).toHaveLength(0);expect((screen.getByLabelText('Source: scripts/main.gd') as HTMLTextAreaElement).value).toBe('extends Node3D\n');expect(screen.getByRole('status').textContent).not.toContain('download requested');
+});
+test('pending file reads cannot export an older incomplete draft',async()=>{
+ const downloads=mockDownloads();await open();create();addSource();let finish:(b:ArrayBuffer)=>void=()=>{};fireEvent.change(screen.getByLabelText('Choose text source files'),{target:{files:[{name:'late.gd',size:7,arrayBuffer:()=>new Promise<ArrayBuffer>(resolve=>{finish=resolve;})}]}});
+ expect(screen.getByRole('button',{name:'Export draft source ZIP'}).matches(':disabled')).toBe(true);fireEvent.click(screen.getByRole('button',{name:'Export draft source ZIP'}));expect(downloads.click).not.toHaveBeenCalled();finish(new TextEncoder().encode('source\n').buffer);await screen.findByLabelText('Source: late.gd');expect(screen.getByRole('button',{name:'Export draft source ZIP'}).matches(':disabled')).toBe(false);
+});
+test('switching accounts removes access to the previous project export',async()=>{
+ const downloads=mockDownloads(),view=render(<Studio ownerId="a" onAccount={vi.fn()}/>);await screen.findByRole('button',{name:'Create project'});create();addSource();state=initial('b');view.rerender(<Studio ownerId="b" onAccount={vi.fn()}/>);await screen.findByRole('button',{name:'Create project'});expect(screen.queryByRole('button',{name:/source ZIP/})).toBeNull();expect(downloads.click).not.toHaveBeenCalled();
+});

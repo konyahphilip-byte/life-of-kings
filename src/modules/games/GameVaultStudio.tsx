@@ -2,6 +2,7 @@ import {useContext,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {emptyVault,newProject,normalizeVault,exportBackup,readBackup,mergeVault,checkpointProject,restoreCheckpoint,FILE_BYTES,BACKUP_BYTES,type GameVault,type VaultProject} from '../../../shared/game-vault.mjs';
 import {GameVaultDraftContext,GameVaultDraftProvider} from './GameVaultDraft';
 import {useGameVault} from './useGameVault';
+import {projectSourceArchive} from '../../../shared/game-project-export.mjs';
 import './vault-studio.css';
 type Props={ownerId:string|null;onAccount:()=>void};
 export default function GameVaultStudio(props:Props){const context=useContext(GameVaultDraftContext);return context?.ownerId===props.ownerId?<Studio key={props.ownerId??'guest'} {...props}/>:<GameVaultDraftProvider ownerId={props.ownerId}><Studio {...props}/></GameVaultDraftProvider>;}
@@ -36,6 +37,16 @@ function Studio({ownerId,onAccount}:Props){
  async function backup(){
   try{const json=await exportBackup(draftVault());if(!live.current)return;const url=URL.createObjectURL(new Blob([json],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='ecogames-vault.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}
   catch(e){if(live.current)setError(e instanceof Error?e.message:'Could not export the project.');}
+ }
+ function exportProject(){
+  if(readingRef.current||busy||loading||!draftRef.current)return;
+  setError('');setNotice('');let url:string|undefined,anchor:HTMLAnchorElement|undefined;
+  try{
+   const archive=projectSourceArchive(draftRef.current);
+   url=URL.createObjectURL(new Blob([archive.bytes],{type:'application/zip'}));anchor=document.createElement('a');anchor.href=url;anchor.download=archive.filename;document.body.appendChild(anchor);anchor.click();
+   setNotice('Project ZIP download requested. '+archive.sourceFiles+' source files; Vault unchanged.');
+  }catch(e){setError(e instanceof Error?e.message:'Could not prepare the project ZIP. Your draft remains here.');}
+  finally{anchor?.remove();if(url){const downloadUrl=url;setTimeout(()=>URL.revokeObjectURL(downloadUrl),30000);}}
  }
  async function files(selected:FileList|null){
   const token=++fileGeneration.current,start=generation.current,project=draftRef.current;readingRef.current=false;setReading(false);if(!selected?.length||!project)return;
@@ -82,6 +93,7 @@ function Studio({ownerId,onAccount}:Props){
     <nav aria-label="Project source files">{project.files.map(f=><button key={f.path} aria-pressed={selectedFile===f.path} onClick={()=>setSelectedFile(f.path)}>{f.path}</button>)}</nav>
     {activeFile&&<><label>Source: {activeFile.path}<textarea aria-label={'Source: '+activeFile.path} className="eg-source" spellCheck={false} maxLength={FILE_BYTES} value={activeFile.content} onChange={e=>mutate({files:project.files.map(f=>f.path===activeFile.path?{...f,content:e.target.value}:f)})}/></label><button onClick={()=>{mutate({files:project.files.filter(f=>f.path!==activeFile.path)});setSelectedFile(project.files.find(f=>f.path!==activeFile.path)?.path??'');}}>Remove selected file from draft</button></>}
     </section>
+    <section aria-label="Local project export"><h3>Open in your local engine</h3><p>Download only this project’s current source, with its folders preserved. Unsaved source edits are included; this does not save to EcoVibes. Story Bible and checkpoints stay in the separate Vault JSON backup.</p><button type="button" onClick={exportProject}>Export {dirty?'draft':'project'} source ZIP</button><p>Extract into a fresh folder. For Godot, import the included root project.godot if present. Missing configuration, binary assets and engine builds are not generated. A source ZIP is not a playable game.</p></section>
     <label className="eg-vault-consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>Store this Story Bible, selected source and checkpoints privately in my EcoVibes account. No AI processing or public publishing.</label>
     <button className="eg-primary" disabled={!consent||!dirty||busy||loading||reading} onClick={saveDraft}>Save project</button>
     <section><h3>Checkpoints</h3><p>Prepare a checkpoint from the saved project, then save it. Only the latest three are retained. Removing a checkpoint or project removes it from the current Vault; provider backup retention is separate.</p><label>Checkpoint label<input maxLength={80} value={label} onChange={e=>setLabel(e.target.value)}/></label><button disabled={dirty||!label.trim()||!projects.some(p=>p.id===project.id)} onClick={()=>{try{edit(checkpointProject(project,label));setLabel('');}catch(e){setError(e instanceof Error?e.message:'Checkpoint could not be prepared.');}}}>Prepare checkpoint</button>

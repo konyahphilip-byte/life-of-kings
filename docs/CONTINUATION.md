@@ -1,3 +1,23 @@
+## 9 November2026 — folder-preserving EcoGames project export verified locally
+
+**LOCALLY BUILT; not newly public, CI-tested remotely, merged or deployed.** The current Vault/Studio adds per-project source ZIP export with exact relative folders/UTF-8 bytes, explicit saved-versus-draft labels, no server write/upload/AI/execution and preserved dirty state. It rejects escaping/nonportable/case-conflicting/lossy paths/text; existing JSON Vault backup remains separate. No new dependency/API/schema/provider/fee.
+
+Full721/721tests52files86.46s; focused44/2; TypeScript/build1698/audit0/security8; actual Chrome/local API14checks at390/1440 with two synthetic accounts and independent downloaded-ZIP extraction pass. Official checksum/Apple-signature verified task-local Godot4.7.2 imports only a trusted extracted fixture with exit0/no errors/editor cache. Not hosted/physical-owner/GPU/packaged-game acceptance. Independent review closed bounded findings. REDs/native setup failures and QA001 history remain; no weakened assertions/deadlines/workers/isolation/quotas.
+
+ParentPR53/52/51 remain draft/unmerged, migrations UNAPPLIED. New source needs scoped public-draft approval and exact remote CI; parent compatibility and explicit migration/merge/activation/deploy approval plus hosted/device/retention/restore/capacity gates remain. No production or original racing/primary source change. GH₵0 core launch retained.
+
+Receipt: Builds/EcoGames Control Hub release/docs/releases/2026-11-09-ecogames-project-export-local.md. Exact reports/hashes/checkpoint: work/ecogames-project-export-20261108/. Next: selected-folder import preserving source paths with preview and separate upload consent; binary assets, isolated builds, Forge, publishing, multiplayer and AAA RumbleRush2 remain incomplete.
+
+## 8 November2026 — Vault/Studio public draftPR53 and exact CI verified
+
+**LOCALLY BUILT / public draft; not merged, migrated, activated or deployed.** Owner approved23-file Vault source. [PR53](https://github.com/konyahphilip-byte/life-of-kings/pull/53) is stacked on unmerged draftPR52/51. Publishededd5b8f and tested merge722da03 share tree2827026709f45f8a089208e35425b103c549dce4. All23 approved files match local49b504d byte-for-byte; its earlier local-only parent receipt was deliberately excluded, so the complete local/public trees differ only by that documentation file. No unpublished Rumble/other-draft source or assets were published.
+
+Actual remote logs read:Release42534706524 and Browser42534706530 passed;692tests51files/build1697/audit0/security8; VaultHTTP21/disposablePG18.6-31/browser36 at390/1440, plus existing workflows/navigation39/Games5/Control10 and PGControl22/messages84. Both jobs checked exact722da03. Artifact13638822525 metadata/digest retained; remote bytes/screenshots not newly inspected, local screenshots inspected. Synthetic CI/local evidence does not prove hosted/physical-owner journeys. All REDs and connector/harness failures remain; QA001 is not diagnosed by green. No weakened assertions/deadlines/workers/isolation/quotas.
+
+Publication/CI approval is fulfilled; no repeat approval is needed for these already-public23 files. Migration20261108210000/hash07fb41cafa40c9f0de12746a4bc8969ad17610e377e1563f65a3f7c7f299f45b remains UNAPPLIED. Dependency/current-main compatibility, explicit migration/merge/activation/deploy approval, guarded rollback and hosted real-Auth/two-owner/phone/slow-network/retention/backup/capacity checks remain. No provider/resource/dependency/fee/production change; core launch GH₵0. Primary application source/assets remain unchanged.
+
+Receipt: Builds/EcoGames Control Hub release/docs/releases/2026-11-08-ecogames-vault-public.md. Exact evidence: work/ecogames-vault-20261108/publication.json, ci-final.json and decoded logs. Delivered scope is private text projects/Story Bible, navigation-resumable drafts, checkpoints and integrity JSON backup/restore. Next: safe folder-preserving project archive; execution/builds, binary assets, Forge, moderation/publishing, multiplayer and AAA RumbleRush2 remain incomplete. Broader ecosystem release gaps remain unchanged.
+
 ## 8 November2026 — private EcoGames project Vault and resumable text Studio
 
 **LOCALLY BUILT / independently reviewed; not public, merged, migrated or deployed.** New bounded increment follows public draftPR52 without rebuilding it. Branch codex/ecogames-vault-studio-20261108 in Builds/EcoGames Control Hub release adds private project/Story Bible/UTF-8 text source saves, explicit selected-file upload consent, account-keyed in-memory draft resume, user-controlled checkpoints and integrity JSON backup/restore. No source execution, binary assets, AI processing, playable build or public publishing.
