@@ -4,6 +4,7 @@ dialog.drawer-backdrop::backdrop{background:transparent}
 .cart-drawer{min-width:0;overflow-y:auto;gap:0}
 .cart-drawer .eyebrow{font-size:.6875rem;color:var(--green)}
 .cart-drawer .drawer-head h2{font:700 1.25rem/1.3 system-ui,sans-serif}
+.cart-drawer .drawer-head h2 span{font-size:.8125rem;color:var(--ink);background:var(--canvas)}
 .cart-drawer .icon-button,.cart-drawer .cart-item>button{min-width:44px;min-height:44px;color:var(--ink);flex-shrink:0}
 .cart-drawer .cart-items{min-height:88px;flex:1 0 auto;overflow:visible}
 .cart-drawer .cart-item>div{min-width:0;overflow-wrap:anywhere}

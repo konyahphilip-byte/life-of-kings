@@ -91,3 +91,72 @@ No paid dependency, service, infrastructure, platform fee, real payment or produ
 Independent review, specific public publication approval, exact remote CI, explicit merge/deployment approval and hosted/physical-device acceptance remain open. Safari, Firefox, native mobile apps, device screen readers and real account/provider journeys were not tested in this assignment. Native dialog support is required for the new modal behavior; desktop Chrome is the browser actually used locally.
 
 The next task is independent review of this bounded candidate. Durable account-cart/order creation and the genuine seller-to-buyer journey remain the separate PR40–44 workstream; Request Market must not be substituted for those prerequisites. No durable orders or live payments were implemented or certified by Assignment 00A.
+
+
+## Assignment 00A-R1 — quantity badge accessibility correction
+
+15 November 2026. **LOCALLY TESTED — AWAITING INDEPENDENT REVIEW.** The independent 00A review required changes for the small quantity badge. The earlier evidence above is historical; this section records the new bounded revision. It is not release approval.
+
+Parent: `fe8de3b9680ef1724f563c6033f5f52bfcac6f20`; existing branch `codex/bag-safety-00a-20261114`. The exact new commit and tree are recorded after commit creation in `work/assignment-00a-r1/checkpoint.json`. Only three files change from that parent:
+
+- `src/modules/bag-safety.css`: one scoped rule for `.cart-drawer .drawer-head h2 span`, using the existing ink/canvas theme tokens and `.8125rem` (13px at the tested default size). No global typography change.
+- `scripts/test-bag-safety-browser.mjs`: explicitly measure `#bag-title span`, composite transparent backgrounds to an opaque effective background, require at least 4.5:1 contrast and 13px, retain actual values, and check light/dark at 320/1440px before the existing matrix. The same measurement also runs in all 32 guest/member, online/offline, appearance and viewport cases. Unsupported image backgrounds fail measurement rather than producing a guessed pass. An optional output directory preserves the original 00A evidence; CI's default directory is unchanged.
+- This existing release receipt: append the R1 evidence and remaining limits.
+
+`App.tsx`, `App.checkout.test.tsx`, `src/styles.css`, basket storage, server/API contracts, dependencies and workflows are unchanged from the reviewed parent. Existing browser assertions and time bounds remain intact.
+
+### Reproduced failure and actual correction
+
+The new regression ran against the original populated Bag before the style change and failed its accessibility assertion. All four measurements were saved before failing, with original screenshots in `work/assignment-00a-r1/red/browser/` and exact output in `red-browser.log`.
+
+| Appearance, both 320px and 1440px | Original computed colors / font / contrast | Corrected computed colors / font / contrast |
+| --- | --- | --- |
+| Light | `#818983` on `#f7f8f4`; 11px; **3.3715839974:1** | `#17251f` on `#f7f8f4`; 13px; **14.9057068232:1** |
+| Dark | `#9ca79f` on `#101713`; 11px; **7.3152140609:1** | `#edf3ed` on `#101713`; 13px; **16.1560900724:1** |
+
+Dark already passed contrast but failed minimum size. These are computed browser values, not assumed token ratios. The corrected 36 measurements all pass both thresholds. Before/after reports and screenshot SHA256s are in `work/assignment-00a-r1/checks.json`.
+
+### Fresh R1 execution evidence
+
+All 18 commands in `work/assignment-00a-r1/final/gates.json` exited 0; exact argument arrays, timestamps, duration and individual complete logs are retained. The pinned Node26.12.1 / Vite8.3.5 / built-in Undici8.12.2 / npm Undici8.12.3 runtime was used. Reproduction commands from this worktree, with that Node binary on PATH:
+
+```sh
+node node_modules/vitest/vitest.mjs run src/modules/App.checkout.test.tsx src/modules/App.identity.test.tsx src/modules/App.navigation.test.tsx src/modules/navigation.test.ts --reporter=json --outputFile=work/assignment-00a-r1/final/focused.json
+node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=work/assignment-00a-r1/final/full.json
+node node_modules/typescript/bin/tsc -b
+node node_modules/vite/bin/vite.js build
+BAG_SAFETY_OUTPUT=work/assignment-00a-r1/green/browser node scripts/test-bag-safety-browser.mjs
+node scripts/test-navigation-browser.mjs
+node scripts/test-dependency-security.mjs
+```
+
+Use fresh output folders for subsequent runs; the retained gate file also records the exact npm audit, nine HTTP workflow and disposable PostgreSQL commands, including the required local PostgreSQL binary path.
+
+| R1 gate | Result |
+| --- | --- |
+| Focused Bag/identity/navigation | 35 passed, 0 failed / 4 files, including all 7 existing Bag regressions. |
+| Full regression | 572 passed, 0 failed / 44 files. |
+| TypeScript / production build | Exit 0 / exit 0; 1686 transformed modules. Existing index/Communications chunk warnings remain. |
+| Bag browser | **40 passed**: 4 explicit badge checks plus all 36 previous safety cases; 36 actual badge measurements. |
+| Navigation browser | 39 passed, 390/1280px. Original artifacts copied before rerunning; new copy is `green/navigation/`. |
+| Dependency audit / security | 0 vulnerabilities / 8 local HTTP assertions passed. |
+| Existing isolated HTTP workflows | All nine exit 0, including 6 public-trends checks; synthetic provider acceptance only. |
+| Disposable PostgreSQL17.10 | 84 checks passed; no production migration. |
+| Source stability | All seven code/test/style/workflow hashes in `final/source-before-gates.json` stayed unchanged throughout the final gates. |
+| Preservation | All 15 original worktree heads/statuses and 3915 protected file hashes unchanged; inventory remains 16 including the isolated 00A worktree. All other tracked candidate files match the parent. |
+
+Visually inspected `green/browser/badge-light-320.png`, `badge-dark-320.png`, `badge-light-1440.png`, `badge-dark-1440.png` and `short-landscape.png`. The new badge is readable and remains aligned with the heading. The full matrix checks no horizontal overflow, 44px buttons, native modal isolation, keyboard wrapping, Escape, focus restoration, truthful unavailable copy, no false success toast, no financial mutation, A/B basket isolation and retained reload/offline behavior. Screenshots use synthetic fixture items and identities, not production customer activity.
+
+The original badge RED and all earlier 00A failures remain retained. A read-only shell manifest inspection was initially blocked by the shell's temporary-file restriction; the approved retry succeeded. This was an environment diagnostic, not an application test failure. No deadline, assertion, worker limit or isolation was weakened. Fresh green results do not diagnose historical QA001 timing failures.
+
+### Risk, limits and review handoff
+
+The production change is a scoped CSS rule. No JavaScript runtime behavior, data retention, telemetry, financial authority, migration, provider setting or paid dependency is introduced; core access remains GH₵0. The tests collect only synthetic UI styles and fixtures locally. No new network or performance-heavy effects are introduced.
+
+This is desktop Chrome on macOS with emulated viewport sizes, not physical-phone, Safari/Firefox, native-app, screen-reader or hosted acceptance. No public publication, remote CI, merge, deployment or release approval occurred. Independent review of the new exact commit is the next smallest task, followed only by separately authorized remote/public and release steps.
+
+**Guest → member → guest basket restoration is explicitly outside R1.** It remains a separate product/storage decision; no account baskets were combined or storage rules changed. Durable orders and live payments remain unimplemented by this assignment.
+
+A rollback must retain the checkout safety guard and honest message. Do not revert the whole 00A repair or restore the inaccessible badge as an accepted release. If R1 causes an unforeseen UI issue, use a bounded forward style correction that continues to meet both badge thresholds; prepare/test that fallback before an authorized deployment. No production rollback drill is claimed.
+
+R1 CSS SHA256: `e7d28fc962171081c71d49988d113dbc826239c76add414f1f5f787857ec9acc`. R1 browser-test SHA256: `c7bbea77e1bcbdbe923bc1084f6e6720ef0d26ecb879ebc8adbe9ec725779e42`. Receipt, screenshot and complete source/evidence hashes are recorded in the ignored R1 checkpoint/evidence files so the committed receipt does not attempt to contain its own Git SHA.

@@ -7,7 +7,7 @@ import {createWebHandler} from '../server/web.mjs';
 
 // Actual production build, disposable browser profiles and synthetic identity only.
 // No production API, .env, real account, provider or financial operation is used.
-const output='work/assignment-00a/browser';
+const output=process.env.BAG_SAFETY_OUTPUT||'work/assignment-00a/browser';
 await mkdir(output,{recursive:true});
 const serve=await createWebHandler(fileURLToPath(new URL('../dist',import.meta.url)));
 const server=createServer(async(req,res)=>{try{if(!await serve(req,res)){res.writeHead(503,{'Content-Type':'application/json'});res.end('{}');}}catch{res.writeHead(500);res.end();}});
@@ -18,6 +18,7 @@ const other={...user,id:'00000000-0000-4000-8000-000000000002',eco_id:'bag.owner
 const accountKey=u=>`ecovibes:v1:account:${u.id}`;
 const checks=[];
 const failures=[];
+const badgeMeasurements=[];
 let browser;
 async function setup({width=390,height=844,signedIn=false,theme='light',serviceWorkers='block'}={}){
  const context=await browser.newContext({viewport:{width,height},reducedMotion:'reduce',serviceWorkers});
@@ -51,6 +52,31 @@ const financial=r=>!['GET','HEAD'].includes(r.method)&&/orders|checkout|payments
 async function openBag(page){await page.locator('.bag-button').click();const bag=page.getByRole('dialog',{name:'Your bag 2',exact:true});await bag.waitFor();return bag;}
 async function hasBasket(page,key,cart){assert.deepEqual(await page.evaluate(k=>JSON.parse(localStorage.getItem(k)||'{}').cart,key),cart);}
 function luminance(rgb){const c=rgb.match(/[\d.]+/g).slice(0,3).map(Number).map(n=>{const s=n/255;return s<=.04045?s/12.92:((s+.055)/1.055)**2.4;});return .2126*c[0]+.7152*c[1]+.0722*c[2];}
+
+async function measureBadge(bag,{width,theme,phase}){
+ const computed=await bag.locator('#bag-title span').evaluate(badge=>{
+  const style=getComputedStyle(badge),backgrounds=[];
+  for(let node=badge;node;node=node.parentElement){
+   const current=getComputedStyle(node);backgrounds.push({color:current.backgroundColor,image:current.backgroundImage});
+   const rgba=current.backgroundColor.match(/[\d.]+/g)?.map(Number);
+   if(rgba&&(rgba.length===3||rgba[3]===1))break;
+  }
+  return {foreground:style.color,background:style.backgroundColor,fontSize:parseFloat(style.fontSize),backgrounds};
+ });
+ const rgba=value=>{assert(/^rgba?\(/.test(value),'Badge measurement requires computed RGB colors');const parts=value.match(/[\d.]+/g).map(Number);assert(parts.length===3||parts.length===4);return [...parts.slice(0,3),parts[3]??1];};
+ assert(computed.backgrounds.every(b=>b.image==='none'),'Badge effective background must be measurable without an image');
+ const layers=computed.backgrounds.map(b=>rgba(b.color));assert.equal(layers.at(-1)[3],1,'Badge measurement must reach an opaque background');
+ const blend=(over,under)=>over.slice(0,3).map((n,i)=>n*over[3]+under[i]*(1-over[3]));
+ let effectiveBackground=layers.at(-1).slice(0,3);
+ for(let i=layers.length-2;i>=0;i--)effectiveBackground=blend(layers[i],effectiveBackground);
+ const effectiveForeground=blend(rgba(computed.foreground),effectiveBackground);
+ const rgb=values=>'rgb('+values.join(', ')+')';
+ const a=luminance(rgb(effectiveForeground)),b=luminance(rgb(effectiveBackground));
+ const result={width,theme,phase,foreground:computed.foreground,background:computed.background,effectiveBackground:rgb(effectiveBackground),fontSize:computed.fontSize,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
+ badgeMeasurements.push(result);console.log('Badge measurement '+JSON.stringify(result));return result;
+}
+function assertBadge(sample){assert(sample.contrast>=4.5,'Bag badge contrast below 4.5:1: '+JSON.stringify(sample));assert(sample.fontSize>=13,'Bag badge font below 13px: '+JSON.stringify(sample));}
+
 async function verifyLayout(page,bag,width,height){
  const info=await bag.evaluate(dialog=>{
   const aside=dialog.querySelector('.cart-drawer'),rect=aside.getBoundingClientRect();
@@ -58,6 +84,8 @@ async function verifyLayout(page,bag,width,height){
   const targets=[...dialog.querySelectorAll('button')].map(el=>{const r=el.getBoundingClientRect();return {width:r.width,height:r.height};});
   return {rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},samples,targets,modal:dialog.matches(':modal')};
  });
+ const theme=await bag.evaluate(el=>el.closest('.app').classList.contains('theme-dark')?'dark':'light');
+ assertBadge(await measureBadge(bag,{width,theme,phase:'safety-matrix'}));
  assert(info.modal,'Native modal must make the background inert');
  assert(info.rect.x>=-1&&info.rect.y>=-1&&info.rect.x+info.rect.width<=width+1&&info.rect.y+info.rect.height<=height+1);
  assert(info.targets.every(t=>t.width>=44&&t.height>=44),'All Bag buttons need 44px touch targets');
@@ -72,6 +100,14 @@ async function verifyLayout(page,bag,width,height){
 }
 try{
  browser=await chromium.launch(process.platform==='darwin'?{executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'}:{});
+ // Collect all four original measurements before failing, preserving both appearance/viewport results.
+ const originalSamples=[];
+ for(const width of [320,1440])for(const theme of ['light','dark']){
+  const f=await setup({width,theme});
+  try{await f.page.goto(origin+'/#settings');await f.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(f.page);const sample=await measureBadge(bag,{width,theme,phase:'badge-audit'});originalSamples.push(sample);await f.page.screenshot({path:output+'/badge-'+theme+'-'+width+'.png'});}finally{await f.context.close();}
+ }
+ assert(originalSamples.every(s=>s.contrast>=4.5&&s.fontSize>=13),'Bag badge accessibility thresholds failed: '+JSON.stringify(originalSamples));
+ for(const sample of originalSamples){assertBadge(sample);checks.push({label:'quantity badge '+sample.theme+' '+sample.width+'px',passed:true,measurement:sample});}
  for(const width of [320,390,768,1440])for(const theme of ['light','dark'])for(const signedIn of [false,true])for(const online of [true,false]){
   const height=width===1440?900:844,label=`${width}-${theme}-${signedIn?'member':'guest'}-${online?'online':'offline'}`;
   const f=await setup({width,height,signedIn,theme}),{context,page,requests,errors}=f;
@@ -147,5 +183,5 @@ try{
  const short=await setup({width:844,height:240});
  try{await short.page.goto(`${origin}/#settings`);await short.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(short.page);await bag.getByRole('button',{name:'Open EcoVibes ID'}).scrollIntoViewIfNeeded();assert(await bag.getByRole('button',{name:'Open EcoVibes ID'}).isVisible());await short.page.screenshot({path:`${output}/short-landscape.png`});checks.push({label:'short landscape actions reachable',passed:true});}finally{await short.context.close();}
 }catch(e){failures.push({name:e.name,message:e.message,stack:e.stack});}
-finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));const report={passed:failures.length===0,checks,failures,scope:'Built desktop Chromium with synthetic identities and real browser offline mode. Not hosted, physical-device, genuine sign-in or durable checkout acceptance.'};await writeFile(`${output}/checks.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));if(failures.length)process.exitCode=1;}
+finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));const report={passed:failures.length===0,checks,badgeMeasurements,failures,scope:'Built desktop Chromium with synthetic identities and real browser offline mode. Not hosted, physical-device, genuine sign-in or durable checkout acceptance.'};await writeFile(`${output}/checks.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));if(failures.length)process.exitCode=1;}
 function infoLabel(width,theme){return `${width}px/${theme}: native modal, keyboard wrap/Escape/focus return, 44px targets, >=13px copy, >=4.5 contrast, no horizontal overflow`;}
