@@ -15,7 +15,8 @@ dialog.drawer-backdrop::backdrop{background:transparent}
 .cart-drawer .cart-summary>small,.cart-drawer .cart-summary>p{font-size:.875rem;line-height:1.6;color:var(--ink)}
 .cart-drawer .cart-summary>p{justify-content:flex-start;align-items:flex-start;margin-bottom:0}
 .cart-drawer .cart-summary>p>svg{flex-shrink:0;margin-top:4px}
-.cart-drawer .cart-summary .checkout-button{font-size:.9375rem;min-height:48px;white-space:normal;line-height:1.4}
+.cart-drawer .cart-summary .checkout-button{font-size:.9375rem;height:auto;min-height:48px;padding:12px;white-space:normal;line-height:1.4}
+.cart-drawer .cart-summary .checkout-button>svg{flex-shrink:0}
 .cart-drawer button:focus-visible{outline:3px solid var(--green2);outline-offset:3px}
 .theme-dark .cart-drawer .eyebrow{color:var(--ink)}
 @media(prefers-reduced-motion:reduce){.cart-drawer,.drawer-backdrop{animation:none;transition:none}}

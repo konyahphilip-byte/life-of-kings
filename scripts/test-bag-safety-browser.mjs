@@ -19,6 +19,7 @@ const accountKey=u=>`ecovibes:v1:account:${u.id}`;
 const checks=[];
 const failures=[];
 const badgeMeasurements=[];
+const actionMeasurements=[];
 let browser;
 async function setup({width=390,height=844,signedIn=false,theme='light',serviceWorkers='block'}={}){
  const context=await browser.newContext({viewport:{width,height},reducedMotion:'reduce',serviceWorkers});
@@ -77,6 +78,41 @@ async function measureBadge(bag,{width,theme,phase}){
 }
 function assertBadge(sample){assert(sample.contrast>=4.5,'Bag badge contrast below 4.5:1: '+JSON.stringify(sample));assert(sample.fontSize>=13,'Bag badge font below 13px: '+JSON.stringify(sample));}
 
+// Wait for browser rendering after changing root text sizing; no arbitrary sleep or relaxed threshold.
+async function setTextScale(page,scale){
+ await page.evaluate(scale=>{document.documentElement.style.fontSize=`${scale*100}%`;return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));},scale);
+ assert.equal(await page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize)),16*scale);
+}
+async function measureAction(bag,{width,height,theme,scale=1}){
+ const geometry=await bag.getByRole('button',{name:'Open EcoVibes ID'}).evaluate(button=>{
+  const rect=r=>({top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height});
+  const bounds=button.getBoundingClientRect(),style=getComputedStyle(button),textRects=[];
+  const walker=document.createTreeWalker(button,NodeFilter.SHOW_TEXT);
+  while(walker.nextNode()){
+   const node=walker.currentNode;if(!node.textContent.trim()||node.parentElement.closest('svg'))continue;
+   const range=document.createRange();range.selectNodeContents(node);textRects.push(...[...range.getClientRects()].map(rect));
+  }
+  const icons=[...button.querySelectorAll('svg')].map(el=>rect(el.getBoundingClientRect()));
+  const visiblePoint=r=>{const el=document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2);return Boolean(el&&button.contains(el));};
+  return {button:rect(bounds),textRects,icons,fontSize:parseFloat(style.fontSize),lineHeight:parseFloat(style.lineHeight),overflowX:style.overflowX,overflowY:style.overflowY,visiblePoints:[...textRects,...icons].map(visiblePoint)};
+ });
+ const result={width,height,theme,scale,...geometry};actionMeasurements.push(result);console.log('Action measurement '+JSON.stringify(result));return result;
+}
+function assertAction(sample){
+ const {button,textRects,icons,width,height,scale}=sample;
+ const inside=(r,padding=0)=>r.left>=button.left+padding-.5&&r.right<=button.right-padding+.5&&r.top>=button.top+padding-.5&&r.bottom<=button.bottom-padding+.5;
+ assert(textRects.length>0&&textRects.every(r=>r.width>0&&r.height>0),'Bag action must have rendered label rectangles');
+ assert(textRects.every(r=>inside(r,8)),'Bag action label escapes its padded button bounds: '+JSON.stringify(sample));
+ assert.equal(icons.length,1,'Bag action needs its navigation icon');
+ assert(icons.every(r=>inside(r,8)&&r.width>=16&&r.height>=16),'Bag action icon must remain readable and contained: '+JSON.stringify(sample));
+ assert(icons.every(r=>Math.abs((r.top+r.bottom)-(button.top+button.bottom))<=1),'Bag action icon must stay vertically centred');
+ assert(sample.fontSize>=15*scale&&sample.lineHeight>=sample.fontSize*1.4-.1,'Bag action text cannot shrink to fit');
+ assert(button.width>=44&&button.height>=48,'Bag action minimum touch target');
+ assert(!['hidden','clip'].includes(sample.overflowX)&&!['hidden','clip'].includes(sample.overflowY),'Bag action cannot hide overflowing content');
+ assert(button.left>=-.5&&button.right<=width+.5&&button.top>=-.5&&button.bottom<=height+.5,'Scrolled Bag action must fit the viewport');
+ assert(sample.visiblePoints.every(Boolean),'Bag action label and icon must be unobscured');
+}
+
 async function verifyLayout(page,bag,width,height){
  const info=await bag.evaluate(dialog=>{
   const aside=dialog.querySelector('.cart-drawer'),rect=aside.getBoundingClientRect();
@@ -86,6 +122,9 @@ async function verifyLayout(page,bag,width,height){
  });
  const theme=await bag.evaluate(el=>el.closest('.app').classList.contains('theme-dark')?'dark':'light');
  assertBadge(await measureBadge(bag,{width,theme,phase:'safety-matrix'}));
+ await bag.getByRole('button',{name:'Open EcoVibes ID'}).scrollIntoViewIfNeeded();
+ const scale=await page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize)/16);
+ assertAction(await measureAction(bag,{width,height,theme,scale}));
  assert(info.modal,'Native modal must make the background inert');
  assert(info.rect.x>=-1&&info.rect.y>=-1&&info.rect.x+info.rect.width<=width+1&&info.rect.y+info.rect.height<=height+1);
  assert(info.targets.every(t=>t.width>=44&&t.height>=44),'All Bag buttons need 44px touch targets');
@@ -95,11 +134,28 @@ async function verifyLayout(page,bag,width,height){
  await bag.getByRole('button',{name:'Close bag'}).focus();
  await page.keyboard.press('Shift+Tab');
  assert(await bag.getByRole('button',{name:'Open EcoVibes ID'}).evaluate(e=>document.activeElement===e),'Keyboard focus must wrap inside Bag');
+ await page.keyboard.press('Tab');
+ assert(await bag.getByRole('button',{name:'Close bag'}).evaluate(e=>document.activeElement===e),'Forward keyboard focus must wrap inside Bag');
  await page.keyboard.press('Escape');await bag.waitFor({state:'detached'});
  assert(await page.locator('.bag-button').evaluate(e=>document.activeElement===e),'Return keyboard focus to Bag opener');
 }
 try{
  browser=await chromium.launch(process.platform==='darwin'?{executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'}:{});
+ // Reproduce both reported action failures before asserting, retaining the original measurements/screenshots.
+ const originalActions=[];
+ for(const theme of ['light','dark']){
+  const f=await setup({width:320,theme});
+  try{
+   await f.page.goto(origin+'/#settings');await f.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(f.page);
+   await setTextScale(f.page,2);await bag.getByRole('button',{name:'Open EcoVibes ID'}).scrollIntoViewIfNeeded();
+   originalActions.push(await measureAction(bag,{width:320,height:844,theme,scale:2}));
+   await f.page.screenshot({path:output+'/action-'+theme+'-320-200pct.png'});
+  }finally{await f.context.close();}
+ }
+ const actionErrors=[];
+ for(const sample of originalActions){try{assertAction(sample);}catch(e){actionErrors.push(e.message);}}
+ assert.deepEqual(actionErrors,[],'Bag action text-scaling regression');
+ for(const sample of originalActions)checks.push({label:'action regression '+sample.theme+' 320px 200%',passed:true});
  // Collect all four original measurements before failing, preserving both appearance/viewport results.
  const originalSamples=[];
  for(const width of [320,1440])for(const theme of ['light','dark']){
@@ -145,6 +201,20 @@ try{
   }finally{await context.close();}
  }
 
+ // Text sizing is independent of viewport sizing; include short-screen and landscape scrolling.
+ const textViewports=[... [320,390,768,1440].map(width=>({width,height:width===1440?900:844})),{width:390,height:320},{width:844,height:240}];
+ for(const {width,height} of textViewports)for(const theme of ['light','dark'])for(const scale of [1,1.5,2]){
+  const f=await setup({width,height,theme}),label=`action-${width}x${height}-${theme}-${scale*100}pct`;
+  try{
+   await f.page.goto(origin+'/#settings');await f.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(f.page);
+   await setTextScale(f.page,scale);await bag.getByRole('button',{name:'Open EcoVibes ID'}).scrollIntoViewIfNeeded();
+   await f.page.screenshot({path:`${output}/${label}.png`});
+   await verifyLayout(f.page,bag,width,height);await hasBasket(f.page,'ecovibes:v1',{x1:2});
+   assert.deepEqual(f.requests.filter(financial),[]);assert.deepEqual(f.errors,[]);
+   checks.push({label,passed:true,financialMutations:0,layout:'Label/icon inside padded action; text size retained; badge contrast; scrolling, Tab/Shift+Tab, Escape and focus return'});
+  }finally{await f.context.close();}
+ }
+
  // Verify the existing app-shell worker rather than claiming all offline reloads are unsupported.
  for(const signedIn of [false,true]){
   const f=await setup({signedIn,serviceWorkers:'allow'});
@@ -183,5 +253,5 @@ try{
  const short=await setup({width:844,height:240});
  try{await short.page.goto(`${origin}/#settings`);await short.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(short.page);await bag.getByRole('button',{name:'Open EcoVibes ID'}).scrollIntoViewIfNeeded();assert(await bag.getByRole('button',{name:'Open EcoVibes ID'}).isVisible());await short.page.screenshot({path:`${output}/short-landscape.png`});checks.push({label:'short landscape actions reachable',passed:true});}finally{await short.context.close();}
 }catch(e){failures.push({name:e.name,message:e.message,stack:e.stack});}
-finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));const report={passed:failures.length===0,checks,badgeMeasurements,failures,scope:'Built desktop Chromium with synthetic identities and real browser offline mode. Not hosted, physical-device, genuine sign-in or durable checkout acceptance.'};await writeFile(`${output}/checks.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));if(failures.length)process.exitCode=1;}
+finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));const report={passed:failures.length===0,checks,badgeMeasurements,actionMeasurements,failures,scope:'Built desktop Chromium with synthetic identities and real browser offline mode. Not hosted, physical-device, genuine sign-in or durable checkout acceptance.'};await writeFile(`${output}/checks.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));if(failures.length)process.exitCode=1;}
 function infoLabel(width,theme){return `${width}px/${theme}: native modal, keyboard wrap/Escape/focus return, 44px targets, >=13px copy, >=4.5 contrast, no horizontal overflow`;}

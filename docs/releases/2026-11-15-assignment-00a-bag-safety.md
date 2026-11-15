@@ -160,3 +160,86 @@ This is desktop Chrome on macOS with emulated viewport sizes, not physical-phone
 A rollback must retain the checkout safety guard and honest message. Do not revert the whole 00A repair or restore the inaccessible badge as an accepted release. If R1 causes an unforeseen UI issue, use a bounded forward style correction that continues to meet both badge thresholds; prepare/test that fallback before an authorized deployment. No production rollback drill is claimed.
 
 R1 CSS SHA256: `e7d28fc962171081c71d49988d113dbc826239c76add414f1f5f787857ec9acc`. R1 browser-test SHA256: `c7bbea77e1bcbdbe923bc1084f6e6720ef0d26ecb879ebc8adbe9ec725779e42`. Receipt, screenshot and complete source/evidence hashes are recorded in the ignored R1 checkpoint/evidence files so the committed receipt does not attempt to contain its own Git SHA.
+
+
+## Assignment 00A-R3 — content-responsive Bag action
+
+15 November 2026. **LOCALLY TESTED — AWAITING INDEPENDENT REVIEW.** Parent `7f1d27fb1e8fa0210ee30b8fdb85f645fc72eea3`, existing isolated branch `codex/bag-safety-00a-20261114`. R2 verified the badge correction but required changes for an inherited enlarged-text action defect. R3 corrects that defect only. The new commit/tree are recorded after commit creation in `work/assignment-00a-r3/checkpoint.json`; no release approval is claimed.
+
+### Exact bounded change
+
+- `src/modules/bag-safety.css`: two scoped rules override the inherited action height with `height:auto`, retain `min-height:48px`, add 12px internal padding and prevent SVG shrinking. Existing `.9375rem` text, 1.4 line height, wrapping, colors and badge styling remain.
+- `scripts/test-bag-safety-browser.mjs`: measure actual text-node `Range.getClientRects()` and SVG rectangles, require padded containment, readable text/line height, 16px icon, viewport visibility and unobscured hit points. Reject hidden/clip workarounds. Add text-size/responsive cases and forward keyboard wrapping while retaining all existing safety and badge assertions.
+- This existing receipt: append R3 measurements, evidence, preservation and limitations.
+
+`App.tsx`, `App.checkout.test.tsx`, `src/lib/storage.ts`, `src/styles.css`, server/API contracts, dependencies and workflows remain byte-identical to the parent. No Contact Seller action, durable checkout, live payment or wider Marketplace feature was implemented. Future actions should use the same content-responsive sizing principles without duplicating business behavior.
+
+### RED before implementation; actual correction
+
+The new test ran before the CSS edit and failed its actual text-containment assertion in **both** light/dark 320×844px, 200% text contexts. Original computed rectangles and screenshots remain in `work/assignment-00a-r3/red/browser/`; complete output is `red-browser.log`. A clickable button and no horizontal overflow were insufficient: the text escaped its colored surface.
+
+At 320px / 200%, both appearances preserve 30px text and 42px line height with two label lines:
+
+| Measurement | Before | After |
+| --- | --- | --- |
+| Button height | 48px | **110px**, content-driven |
+| Button top / bottom | 738.78125 / 786.78125px | 733.78125 / 843.78125px after scrolling |
+| Label first-line top | 723.78125px: **15px outside** | 749.78125px: **16px inside** |
+| Label final-line bottom | 800.78125px: **14px outside** | 826.78125px: **17px inside** |
+| Navigation icon | 16×16px | **16×16px**, contained and vertically centered |
+
+Corrected 320px button heights at 100% / 150% / 200% text: **48 / 57.5 / 110px**. Text sizes: **15 / 22.5 / 30px**; line heights: **21 / 31.5 / 42px**. Default height remains 48px. Text was not shrunk, clipped or forced to stay on one line.
+
+The badge rule and thresholds are unchanged: 13px at default size, 19.5px at 150%, 26px at 200%. All 72 badge samples pass; contrast remains **14.9057068232:1 light** and **16.1560900724:1 dark**.
+
+### Fresh R3 execution evidence
+
+All **18** commands in `work/assignment-00a-r3/final/gates.json` exit 0. Exact argument arrays, runtime binary, timestamps, durations and complete logs are retained. Pinned Node26.12.1 / Vite8.3.5 / built-in Undici8.12.2 / npm Undici8.12.3 were used; system Node and dependencies unchanged. Reproduction from this worktree with the pinned Node on PATH:
+
+```sh
+node node_modules/vitest/vitest.mjs run src/modules/App.checkout.test.tsx src/modules/App.identity.test.tsx src/modules/App.navigation.test.tsx src/modules/navigation.test.ts --reporter=json --outputFile=work/assignment-00a-r3/final/focused.json
+node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=work/assignment-00a-r3/final/full.json
+node node_modules/typescript/bin/tsc -b
+node node_modules/vite/bin/vite.js build
+BAG_SAFETY_OUTPUT=work/assignment-00a-r3/green/browser node scripts/test-bag-safety-browser.mjs
+node scripts/test-navigation-browser.mjs
+node scripts/test-dependency-security.mjs
+```
+
+Use new evidence folders for subsequent runs. The gate record also contains the exact npm audit, nine isolated HTTP and disposable PostgreSQL commands and required PostgreSQL binary path.
+
+| Gate | Fresh R3 result |
+| --- | --- |
+| Regression-first browser | RED in both reported light/dark contexts; original failure output and screenshots retained. |
+| Focused / full regression | **35 passed, 0 failed / 4 files** (including 7 Bag cases); **572 passed, 0 failed / 44 files**. |
+| TypeScript / production build | Exit 0 / exit 0; 1686 modules transformed. Existing index/Communications size warnings remain. |
+| Bag browser | **78 passed**: 40 existing checks, 2 direct regression contexts, 36 text-layout contexts; 70 action measurements, 72 badge samples. Browser run 139.979 seconds. |
+| Width/text/appearance | 320/390/768/1440px × 100/150/200% root text × light/dark: 24 cases; 390×320 short and 844×240 landscape × all three sizes × both appearances: 12 further cases. |
+| Navigation browser | 39 passed. Prior artifacts copied before rerun; fresh artifacts copied to `green/navigation/`. |
+| Dependency audit / security | 0 vulnerabilities / 8 local HTTP assertions passed. |
+| Isolated HTTP / PostgreSQL | All nine workflow scripts pass; 6 public-trends checks. PostgreSQL17.10: 84 disposable checks. No genuine provider or production acceptance follows. |
+| Source stability | Seven code/test/style/workflow hashes stable through final gates; all other tracked candidate files unchanged from parent. |
+
+Every actual label line and the icon must stay inside the button with at least 8px clearance (0.5px subpixel tolerance); actual CSS padding is 12px. The icon remains at least 16px and centered, intended text size/line height cannot decrease, and the complete action/hit points fit the viewport after native modal scrolling. No horizontal overflow, Tab/Shift+Tab wrap, Escape and focus restoration remain checked.
+
+The original guest/member × online/offline scenarios still preserve baskets, navigate to the existing account workspace, show honest unavailable copy, avoid false success and send no financial mutation. Cached-shell reload and A/B account isolation pass. No account baskets were combined.
+
+Visually inspected original light RED, corrected 320px / 200% light/dark, 390px / 150% light, 1440px / 200% dark, 844×240 / 200% light and 390×320 / 200% dark screenshots. The action remains legible on its emerald surface and the drawer scrolls to reach it. Screenshot hashes, numeric results and exact commands are in `work/assignment-00a-r3/checks.json` and `final/gates.json`.
+
+Two-frame synchronization follows the observed R2 browser-rendering diagnostic for synthetic root text changes. No arbitrary sleep, deadline extension or assertion/worker/isolation weakening was used. All previous failures remain retained; historical QA001 timing failures remain undiagnosed.
+
+### Preservation and one auxiliary-document exception
+
+All **15 original worktree HEADs/statuses and 3915 protected file hashes remain unchanged**. Inventory stays 16, including this isolated task worktree. All other candidate tracked files match the parent.
+
+Of 157 earlier R1/R2 evidence files, 156 retain their original hashes. During this run, the auxiliary `work/assignment-00a-r2/REVIEW.md` acquired exactly one newline between “wider” and “redesign”; author/cause is not established. The preservation assertion caught this difference before writing the receipt. The current note and its original manifest were **left untouched**. Removing only that line-wrap in memory reproduced the original SHA256, and that hash-verified original text is archived separately as `work/assignment-00a-r3/R2-REVIEW-original-hash-verified.md`. Both hashes, the diagnostic failure and the exact exception are retained in `preservation-exception.json` and `receipt-guard-failure.json`. This is an evidence-document difference, not an application test failure or permission to overwrite unrelated work.
+
+### Limits, risk and review handoff
+
+Local desktop Chrome/macOS with synthetic identities and emulated viewport/root text sizes only. Physical phones, Safari/Firefox, native apps, device settings, screen readers, real-account/provider and hosted acceptance remain unverified. No new assets/effects, dependency, telemetry, retention, permission/API/financial authority, credential handling or fee was introduced; core access remains GH₵0.
+
+No public-source publication, remote CI, merge, deployment, production migration, provider-setting change or payment activation occurred. Guest→member→guest basket restoration remains a separate product/storage decision. Contact Seller, durable orders and live payments remain outside this assignment.
+
+Next smallest task: independent review of the new exact commit, original RED/final GREEN and preservation evidence, before separately authorized remote publication/CI and release steps. A future fallback must preserve honest unavailable copy, navigation-only action, private baskets, the accessible badge, content-responsive action and keyboard/modal behavior. Do not revert to pre-00A false success or accept the known fixed-height defect. No operational rollback drill is claimed.
+
+R3 CSS SHA256: `5bfd16396eacd367bb2970c549e8022954b2610627277f3dd521ea2d8da89865`. R3 browser-test SHA256: `d8f44da63d23e242c0a64d8cb0d8c654a6215118820ac99afb1f0f63bd4c553c`. Receipt/source/screenshot hashes and the exact post-commit revision are in the R3 evidence/checkpoint, avoiding a self-referential Git SHA in this receipt.
