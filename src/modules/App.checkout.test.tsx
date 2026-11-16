@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
@@ -8,10 +8,18 @@ vi.mock('./assistant/Sidekick', () => ({ default: () => null }));
 vi.mock('./backend/BackendWorkspace', () => ({ default: () => <div>Account workspace entry</div> }));
 vi.mock('./SocialHub', () => ({ PeopleToFollow: () => null, ReelsPage: () => null, StoriesStrip: () => null }));
 
+// Keep accessible-name assertions while avoiding expensive searches through unrelated screens.
+const bagButton=()=>within(screen.getByRole('banner')).getByRole('button',{name:/^Bag/});
+async function resultForActiveTest<T>(signal:AbortSignal,pending:Promise<T>):Promise<T>{
+  const value=await pending;signal.throwIfAborted();return value;
+}
+
 const account = { id: 'bag-test-account', eco_id: 'bag.test', display_name: 'Bag Test', roles: ['customer'] };
 
 describe('main Bag without a durable checkout', () => {
-  beforeEach(() => {
+  let testSignal:AbortSignal;
+  beforeEach(({signal}) => {
+    testSignal=signal;
     localStorage.clear();sessionStorage.clear();
     window.history.replaceState(null,'','/#money-trust');
     vi.stubGlobal('scrollTo',vi.fn());
@@ -27,6 +35,8 @@ describe('main Bag without a durable checkout', () => {
     {signedIn:true,online:true},
     {signedIn:true,online:false},
   ])('preserves items and never reports an order: signedIn=$signedIn online=$online',async({signedIn,online})=>{
+    // Capture this test's signal; the next beforeEach must never retarget an old continuation.
+    const signal=testSignal;
     vi.spyOn(navigator,'onLine','get').mockReturnValue(online);
     const key=signedIn?'ecovibes:v1:account:'+account.id:'ecovibes:v1';
     localStorage.setItem(key,JSON.stringify({cart:{x1:2}}));
@@ -36,26 +46,26 @@ describe('main Bag without a durable checkout', () => {
     });
     vi.stubGlobal('fetch',fetch);
     const view=render(<App/>);
-    if(signedIn)await screen.findByText('@bag.test');
-    fireEvent.click(screen.getByRole('button',{name:/^Bag/}));
+    if(signedIn)await resultForActiveTest(signal,screen.findByText('@bag.test'));
+    fireEvent.click(bagButton());
     expect(screen.getByRole('dialog',{name:'Your bag 2'})).toBeTruthy();
     expect(screen.getByText(/Qty 2/)).toBeTruthy();
     expect(screen.getByText(/Checkout is not connected to this bag/)).toBeTruthy();
     expect(screen.getByText(/This subtotal is not a payment quote/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button',{name:/Continue in sandbox|Open EcoVibes ID/}));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:/Continue in sandbox|Open EcoVibes ID/}));
     expect(screen.queryByText(/Sandbox order created/)).toBeNull();
-    await screen.findByText('Account workspace entry');
-    await waitFor(()=>expect(JSON.parse(localStorage.getItem(key)||'{}').cart).toEqual({x1:2}));
+    await resultForActiveTest(signal,screen.findByText('Account workspace entry'));
+    await resultForActiveTest(signal,waitFor(()=>expect(JSON.parse(localStorage.getItem(key)||'{}').cart).toEqual({x1:2})));
     const mutations=fetch.mock.calls.filter(([input,init])=>!['GET','HEAD'].includes(String(init?.method||'GET').toUpperCase())&&/orders|checkout|payments|refund|transfers/.test(String(input)));
     expect(mutations).toEqual([]);
-    fireEvent.click(screen.getByRole('button',{name:/^Bag/}));
+    fireEvent.click(bagButton());
     expect(screen.getByText(/Qty 2/)).toBeTruthy();
     expect(screen.getByText(/Checkout is not connected to this bag/)).toBeTruthy();
     view.unmount();
     window.history.replaceState(null,'','/#money-trust');
     render(<App/>);
-    if(signedIn)await screen.findByText('@bag.test');
-    fireEvent.click(screen.getByRole('button',{name:/^Bag/}));
+    if(signedIn)await resultForActiveTest(signal,screen.findByText('@bag.test'));
+    fireEvent.click(bagButton());
     expect(screen.getByText(/Qty 2/)).toBeTruthy();
   });
   it('preserves each account basket through A → B → A, then reload',async()=>{
@@ -65,15 +75,15 @@ describe('main Bag without a durable checkout', () => {
     const request=vi.fn(async(input:RequestInfo|URL)=>Response.json(String(input).endsWith('/auth/me')?{user:current,csrfToken:'synthetic'}:{}));
     vi.stubGlobal('fetch',request);
     const view=render(<App/>);await screen.findByText('@bag.test');
-    fireEvent.click(screen.getByRole('button',{name:/^Bag/}));expect(screen.getByText(/Qty 2/)).toBeTruthy();
+    fireEvent.click(bagButton());expect(screen.getByText(/Qty 2/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button',{name:'Close bag'}));
     current=other;act(()=>window.dispatchEvent(new Event('ecovibes:identity_changed')));await screen.findByText('@other.test');
-    fireEvent.click(screen.getByRole('button',{name:/^Bag/}));expect(screen.getByText(/Qty 3/)).toBeTruthy();expect(screen.queryByText(/Qty 2/)).toBeNull();
+    fireEvent.click(bagButton());expect(screen.getByText(/Qty 3/)).toBeTruthy();expect(screen.queryByText(/Qty 2/)).toBeNull();
     fireEvent.click(screen.getByRole('button',{name:'Open EcoVibes ID'}));await screen.findByText('Account workspace entry');
     current=account;act(()=>window.dispatchEvent(new Event('ecovibes:identity_changed')));await screen.findByText('@bag.test');
-    fireEvent.click(screen.getByRole('button',{name:/^Bag/}));expect(screen.getByText(/Qty 2/)).toBeTruthy();expect(screen.queryByText(/Qty 3/)).toBeNull();
+    fireEvent.click(bagButton());expect(screen.getByText(/Qty 2/)).toBeTruthy();expect(screen.queryByText(/Qty 3/)).toBeNull();
     view.unmount();window.history.replaceState(null,'','/#money-trust');render(<App/>);await screen.findByText('@bag.test');
-    fireEvent.click(screen.getByRole('button',{name:/^Bag/}));expect(screen.getByText(/Qty 2/)).toBeTruthy();
+    fireEvent.click(bagButton());expect(screen.getByText(/Qty 2/)).toBeTruthy();
     expect(JSON.parse(localStorage.getItem('ecovibes:v1:account:'+other.id)!).cart).toEqual({x2:3});
     expect(request.mock.calls.filter(([url])=>/orders|checkout|payments|refund|transfers/.test(String(url)))).toEqual([]);
   });
@@ -83,19 +93,19 @@ describe('main Bag without a durable checkout', () => {
     localStorage.setItem(key,JSON.stringify({cart:{x1:2}}));
     vi.spyOn(navigator,'onLine','get').mockReturnValue(false);
     vi.stubGlobal('fetch',vi.fn(async()=>{throw new TypeError('Synthetic network unavailable');}));
-    const view=render(<App/>);fireEvent.click(screen.getByRole('button',{name:/^Bag/}));
+    const view=render(<App/>);fireEvent.click(bagButton());
     expect(screen.getByText('Your bag is taking a breather')).toBeTruthy();expect(screen.queryByText(/Qty 2/)).toBeNull();
     expect(JSON.parse(localStorage.getItem(key)!).cart).toEqual({x1:2});
     view.unmount();
     vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>Response.json(String(input).endsWith('/auth/me')?{user:account,csrfToken:'synthetic'}:{})));
-    render(<App/>);await screen.findByText('@bag.test');fireEvent.click(screen.getByRole('button',{name:/^Bag/}));
+    render(<App/>);await screen.findByText('@bag.test');fireEvent.click(bagButton());
     expect(screen.getByText(/Qty 2/)).toBeTruthy();
   });
 
   it('keeps keyboard navigation inside the Bag and restores its opener on cancel',()=>{
     localStorage.setItem('ecovibes:v1',JSON.stringify({cart:{x1:2}}));
     vi.stubGlobal('fetch',vi.fn(async()=>Response.json({user:null,csrfToken:null})));
-    render(<App/>);const opener=screen.getByRole('button',{name:/^Bag/});opener.focus();fireEvent.click(opener);
+    render(<App/>);const opener=bagButton();opener.focus();fireEvent.click(opener);
     const dialog=screen.getByRole('dialog'),first=screen.getByRole('button',{name:'Close bag'}),last=screen.getByRole('button',{name:'Open EcoVibes ID'});
     first.focus();fireEvent.keyDown(first,{key:'Tab',shiftKey:true});expect(document.activeElement).toBe(last);
     fireEvent.keyDown(last,{key:'Tab'});expect(document.activeElement).toBe(first);
@@ -110,7 +120,7 @@ describe('main Bag without a durable checkout', () => {
     localStorage.setItem('ecovibes:v1',JSON.stringify({cart}));
     vi.stubGlobal('fetch',vi.fn(async()=>Response.json({user:null,csrfToken:null})));
     render(<App/>);
-    const opener=screen.getByRole('button',{name:/^Bag/});opener.focus();fireEvent.click(opener);
+    const opener=bagButton();opener.focus();fireEvent.click(opener);
     const control=screen.getByRole('button',{name:'Remove '+remove});control.focus();fireEvent.click(control);
     expect(screen.queryByRole('button',{name:'Remove '+remove})).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('button',{name:next}));
@@ -123,10 +133,20 @@ describe('main Bag without a durable checkout', () => {
     const cart={x1:2,x2:1,x3:2,x4:1};
     localStorage.setItem('ecovibes:v1',JSON.stringify({cart}));
     vi.stubGlobal('fetch',vi.fn(async()=>Response.json({user:null,csrfToken:null})));
-    render(<App/>);fireEvent.click(screen.getByRole('button',{name:/^Bag/}));
+    render(<App/>);fireEvent.click(bagButton());
     expect(screen.getByRole('dialog',{name:'Your bag 6'})).toBeTruthy();
     expect(screen.getByText('GH₵540.00',{exact:true})).toBeTruthy();
     expect(JSON.parse(localStorage.getItem('ecovibes:v1')!).cart).toEqual(cart);
+  });
+
+  it('rejects a settled result after the owning test is aborted',async()=>{
+    const controller=new AbortController(),reason=new Error('Expired test journey'),resume=vi.fn();
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    const continuation=resultForActiveTest(controller.signal,pending).then(resume);
+    controller.abort(reason);release();
+    await expect(continuation).rejects.toBe(reason);
+    expect(resume).not.toHaveBeenCalled();
   });
 
 });
