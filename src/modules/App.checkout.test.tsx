@@ -102,4 +102,31 @@ describe('main Bag without a durable checkout', () => {
     fireEvent(dialog,new Event('cancel',{bubbles:false,cancelable:true}));expect(screen.queryByRole('dialog')).toBeNull();expect(document.activeElement).toBe(opener);
   });
 
+  it.each([
+    {label:'next remaining product',cart:{x1:2,x2:1,x3:2,x4:1},remove:'Coastline print set',next:'Remove Everyday carry tote'},
+    {label:'preceding product after removing the last row',cart:{x1:2,x2:1,x3:2,x4:1},remove:'Hand-thrown cup',next:'Remove Field notes · Vol. 01'},
+    {label:'empty-state action after the final product',cart:{x1:2},remove:'Coastline print set',next:'Explore the marketplace'},
+  ])('restores focus to the $label after removing a focused row',({cart,remove,next})=>{
+    localStorage.setItem('ecovibes:v1',JSON.stringify({cart}));
+    vi.stubGlobal('fetch',vi.fn(async()=>Response.json({user:null,csrfToken:null})));
+    render(<App/>);
+    const opener=screen.getByRole('button',{name:/^Bag/});opener.focus();fireEvent.click(opener);
+    const control=screen.getByRole('button',{name:'Remove '+remove});control.focus();fireEvent.click(control);
+    expect(screen.queryByRole('button',{name:'Remove '+remove})).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button',{name:next}));
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+    fireEvent(screen.getByRole('dialog'),new Event('cancel',{bubbles:false,cancelable:true}));
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('retains the complete calculated GH₵540.00 subtotal for the six-unit fixture',()=>{
+    const cart={x1:2,x2:1,x3:2,x4:1};
+    localStorage.setItem('ecovibes:v1',JSON.stringify({cart}));
+    vi.stubGlobal('fetch',vi.fn(async()=>Response.json({user:null,csrfToken:null})));
+    render(<App/>);fireEvent.click(screen.getByRole('button',{name:/^Bag/}));
+    expect(screen.getByRole('dialog',{name:'Your bag 6'})).toBeTruthy();
+    expect(screen.getByText('GH₵540.00',{exact:true})).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('ecovibes:v1')!).cart).toEqual(cart);
+  });
+
 });

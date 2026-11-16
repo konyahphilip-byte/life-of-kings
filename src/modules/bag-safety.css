@@ -11,7 +11,8 @@ dialog.drawer-backdrop::backdrop{background:transparent}
 .cart-drawer .cart-item b,.cart-drawer .cart-item strong{font-size:.875rem;line-height:1.5}
 .cart-drawer .cart-item small{font-size:.8125rem;line-height:1.5;color:var(--ink)}
 .cart-drawer .cart-summary{flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
-.cart-drawer .cart-summary>div{font-size:1rem;gap:12px}
+.cart-drawer .cart-summary>div{font-size:1rem;gap:4px 12px;flex-wrap:wrap;align-items:baseline}
+.cart-drawer .cart-summary>div>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .cart-drawer .cart-summary>small,.cart-drawer .cart-summary>p{font-size:.875rem;line-height:1.6;color:var(--ink)}
 .cart-drawer .cart-summary>p{justify-content:flex-start;align-items:flex-start;margin-bottom:0}
 .cart-drawer .cart-summary>p>svg{flex-shrink:0;margin-top:4px}
@@ -22,3 +23,9 @@ dialog.drawer-backdrop::backdrop{background:transparent}
 @media(prefers-reduced-motion:reduce){.cart-drawer,.drawer-backdrop{animation:none;transition:none}}
 
 .theme-dark .cart-drawer button:focus-visible{outline-color:var(--lime)}
+
+.cart-drawer .empty-state{flex-shrink:0}
+.cart-drawer .empty-state h3{font:700 .9375rem/1.4 system-ui,sans-serif}
+.cart-drawer .empty-state p{font-size:.875rem;line-height:1.6;color:var(--ink)}
+.cart-drawer .empty-state .button{font-size:.9375rem;line-height:1.4;height:auto;min-height:48px;max-width:100%;padding:12px;white-space:normal}
+.cart-drawer .empty-state .button>svg{flex-shrink:0}

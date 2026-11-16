@@ -46,6 +46,7 @@ function App(){
  const [toast,setToast]=useState('');
  const [cartOpen,setCartOpen]=useState(false);
  const cartDialogRef=useRef<HTMLDialogElement>(null);
+ const bagRemovalFocus=useRef<{owner:string|null;index:number}|null>(null);
  useLayoutEffect(()=>{
   if(!cartOpen)return;
   const dialog=cartDialogRef.current,opener=document.activeElement;
@@ -71,6 +72,16 @@ function App(){
  const storageOwner=identity?.id??null;
  const storageOwnerRef=useRef<string|null>(null);
  useLayoutEffect(()=>{if(storageOwnerRef.current===storageOwner)return;storageOwnerRef.current=storageOwner;setState(loadState(storageOwner));setSellerProducts(loadSellerProducts(storageOwner));},[storageOwner]);
+ useLayoutEffect(()=>{
+  const pending=bagRemovalFocus.current;
+  if(!pending)return;
+  bagRemovalFocus.current=null;
+  const dialog=cartDialogRef.current;
+  if(!cartOpen||!dialog||pending.owner!==storageOwner||storageOwnerRef.current!==storageOwner)return;
+  const controls=dialog.querySelectorAll<HTMLButtonElement>('.cart-item > button');
+  const target=controls[pending.index]??controls[controls.length-1]??dialog.querySelector<HTMLButtonElement>('.empty-state button')??dialog.querySelector<HTMLButtonElement>('[aria-label="Close bag"]');
+  target?.focus();
+ },[state.cart,cartOpen,storageOwner]);
  useEffect(()=>{if(storageOwnerRef.current===storageOwner)saveState(state,storageOwner)},[state,storageOwner]);
  useEffect(()=>{if(storageOwnerRef.current!==storageOwner)return;try{localStorage.setItem(storageOwner?`${sellerProductsKey}:account:${storageOwner}`:sellerProductsKey,JSON.stringify(sellerProducts))}catch{/* Keep marketplace preview usable when storage is unavailable. */}},[sellerProducts,storageOwner]);
  useEffect(()=>{const up=()=>setOnline(true),down=()=>setOnline(false);window.addEventListener('online',up);window.addEventListener('offline',down);return()=>{window.removeEventListener('online',up);window.removeEventListener('offline',down)}},[]);
@@ -121,6 +132,14 @@ function App(){
  const notify=(s:string)=>setToast(s);
  const trackRecommendationSignal=(itemType:'product'|'job',itemId:string,action:'opened'|'saved'|'dismissed',active=true)=>{if(!identity||!csrfToken||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(itemId))return;void fetch(apiUrl('/recommendations/signals'),{method:'POST',credentials:'include',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({itemType,itemId,action,active})}).catch(()=>{});};
  const addCart=(id:string)=>{patch({cart:{...state.cart,[id]:(state.cart[id]||0)+1}});notify('Added to your bag');};
+ const removeBagItem=(id:string,button:HTMLButtonElement)=>{
+  if(document.activeElement===button){
+   const controls=Array.from(cartDialogRef.current?.querySelectorAll<HTMLButtonElement>('.cart-item > button')??[]);
+   const index=controls.indexOf(button);
+   if(index>=0)bagRemovalFocus.current={owner:storageOwner,index};
+  }
+  setState(current=>{const cart={...current.cart};delete cart[id];return {...current,cart};});
+ };
  const toggle=(key:'liked'|'saved'|'followed'|'savedOpps',id:string)=>{const list=state[key];patch({[key]:list.includes(id)?list.filter(x=>x!==id):[...list,id]});};
  const submitPost=(e:FormEvent)=>{e.preventDefault();if(!state.draft.trim())return;const post:FeedPost={id:`draft-${Date.now()}`,name:'You',handle:'you',time:'Just now',text:state.draft.trim(),tag:'COMMUNITY',likes:0,comments:0,avatar:'YO'};patch({posts:[post,...state.posts],draft:''});closeComposer();notify('Post saved on this device; it has not been shared yet.');};
  const openAccountMarketplace=()=>{if(!cartCount)return;setCartOpen(false);go('EcoVibes ID');};
@@ -175,7 +194,7 @@ function App(){
   <Sidekick key={storageOwner||'guest'} onNavigate={destination=>go(destination)} page={page==='Create'?'Home':page} userId={storageOwner} csrfToken={csrfToken} dataMode={state.saver} online={online} launcherHost={chaleHost}/>
   {toast&&<div className="toast" role="status"><Check size={16}/>{toast}</div>}
   {showComposer&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)closeComposer()}}><form className="composer-modal" onSubmit={submitPost}><div className="modal-head"><div><span className="eyebrow">YOUR COMMUNITY</span><h2>Share a moment</h2></div><button type="button" className="icon-button" onClick={closeComposer} aria-label="Close"><X size={19}/></button></div><div className="composer-user"><Avatar label={identity?initials(identity.display_name):'EV'}/><span><b>{identity?.display_name||'Guest preview'}</b><small>Only visible on this device</small></span></div><textarea autoFocus placeholder="What’s on your mind?" value={state.draft} onChange={e=>patch({draft:e.target.value})} rows={5}/><div className="composer-footer"><span><Zap size={14}/> Draft saved on this device</span><Button kind="primary" disabled={!state.draft.trim()}>Save local post <Send size={15}/></Button></div></form></div>}
-  {cartOpen&&<dialog ref={cartDialogRef} aria-labelledby="bag-title" className="drawer-backdrop" onCancel={()=>setCartOpen(false)} onMouseDown={e=>{if(e.target===e.currentTarget)setCartOpen(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">THE ECOVIBES MARKETPLACE</span><h2 id="bag-title">Your bag <span>{cartCount}</span></h2></div><button className="icon-button" aria-label="Close bag" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>{cartCount===0?<Empty title="Your bag is taking a breather" detail="When something catches your eye, add it here."><Button kind="primary" onClick={()=>{setCartOpen(false);go('Marketplace')}}>Explore the marketplace <ChevronRight size={16}/></Button></Empty>:<><div className="cart-items">{catalogProducts.filter(p=>state.cart[p.id]).map(p=><div className="cart-item" key={p.id}><span className={`cart-thumb ${p.color}`}>{p.icon}</span><div><b>{p.name}</b><small>{p.seller} · Qty {state.cart[p.id]}</small><strong>{fmt(p.price*(state.cart[p.id]||0))}</strong></div><button aria-label={`Remove ${p.name}`} onClick={()=>{const c={...state.cart};delete c[p.id];patch({cart:c})}}><X size={16}/></button></div>)}</div><div className="cart-summary"><div><span>Subtotal</span><b>{fmt(total)}</b></div><small>This subtotal is not a payment quote. Open EcoVibes ID → Marketplace for current listings and available ordering.</small><Button kind="primary" className="checkout-button" onClick={openAccountMarketplace}>Open EcoVibes ID <ChevronRight size={16}/></Button><p><CircleHelp size={13}/> Checkout is not connected to this bag. Items remain in your bag. No order or payment was created here.</p></div></>}</aside></dialog>}
+  {cartOpen&&<dialog ref={cartDialogRef} aria-labelledby="bag-title" className="drawer-backdrop" onCancel={()=>setCartOpen(false)} onMouseDown={e=>{if(e.target===e.currentTarget)setCartOpen(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">THE ECOVIBES MARKETPLACE</span><h2 id="bag-title">Your bag <span>{cartCount}</span></h2></div><button className="icon-button" aria-label="Close bag" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>{cartCount===0?<Empty title="Your bag is taking a breather" detail="When something catches your eye, add it here."><Button kind="primary" onClick={()=>{setCartOpen(false);go('Marketplace')}}>Explore the marketplace <ChevronRight size={16}/></Button></Empty>:<><div className="cart-items">{catalogProducts.filter(p=>state.cart[p.id]).map(p=><div className="cart-item" key={p.id}><span className={`cart-thumb ${p.color}`}>{p.icon}</span><div><b>{p.name}</b><small>{p.seller} · Qty {state.cart[p.id]}</small><strong>{fmt(p.price*(state.cart[p.id]||0))}</strong></div><button aria-label={`Remove ${p.name}`} onClick={event=>removeBagItem(p.id,event.currentTarget)}><X size={16}/></button></div>)}</div><div className="cart-summary"><div><span>Subtotal</span><b>{fmt(total)}</b></div><small>This subtotal is not a payment quote. Open EcoVibes ID → Marketplace for current listings and available ordering.</small><Button kind="primary" className="checkout-button" onClick={openAccountMarketplace}>Open EcoVibes ID <ChevronRight size={16}/></Button><p><CircleHelp size={13}/> Checkout is not connected to this bag. Items remain in your bag. No order or payment was created here.</p></div></>}</aside></dialog>}
  </div>
 }
 function ArrowHomeIcon(){return <span className="arrow-home-icon">↗</span>}

@@ -1,14 +1,22 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {mkdir,writeFile,statfs} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {chromium} from 'playwright';
 import {fileURLToPath} from 'node:url';
 import {createWebHandler} from '../server/web.mjs';
 
 // Actual production build, disposable browser profiles and synthetic identity only.
 // No production API, .env, real account, provider or financial operation is used.
-const output=process.env.BAG_SAFETY_OUTPUT||'work/assignment-00a/browser';
+const output=process.env.BAG_SAFETY_OUTPUT||`work/assignment-00a/browser/run-${Date.now()}`;
 await mkdir(output,{recursive:true});
+const capacity=[];
+async function checkCapacity(phase){
+ const samples=await Promise.all([output,tmpdir()].map(async path=>{const s=await statfs(path);return {path,freeBytes:s.bavail*s.bsize};}));
+ capacity.push({phase,at:new Date().toISOString(),samples});
+ assert(samples.every(s=>s.freeBytes>=2*1024**3),'Insufficient storage: at least2GiB must be available before continuing; incomplete runs are not passes');
+}
+await checkCapacity('before-browser');
 const serve=await createWebHandler(fileURLToPath(new URL('../dist',import.meta.url)));
 const server=createServer(async(req,res)=>{try{if(!await serve(req,res)){res.writeHead(503,{'Content-Type':'application/json'});res.end('{}');}}catch{res.writeHead(500);res.end();}});
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
@@ -21,16 +29,17 @@ const failures=[];
 const badgeMeasurements=[];
 const actionMeasurements=[];
 let browser;
-async function setup({width=390,height=844,signedIn=false,theme='light',serviceWorkers='block'}={}){
+async function setup({width=390,height=844,signedIn=false,theme='light',serviceWorkers='block',cart={x1:2},sellerProducts=[]}={}){
  const context=await browser.newContext({viewport:{width,height},reducedMotion:'reduce',serviceWorkers});
  let current=signedIn?user:null,apiDown=false;
- await context.addInitScript(({user,other,signedIn,theme,origin})=>{
+ await context.addInitScript(({user,other,signedIn,theme,origin,cart,sellerProducts})=>{
   if(location.origin!==origin)return;
   if(sessionStorage.getItem('bag-fixture-seeded'))return;
   sessionStorage.setItem('bag-fixture-seeded','1');
-  localStorage.setItem(signedIn?`ecovibes:v1:account:${user.id}`:'ecovibes:v1',JSON.stringify({cart:{x1:2},theme}));
+  localStorage.setItem(signedIn?`ecovibes:v1:account:${user.id}`:'ecovibes:v1',JSON.stringify({cart,theme}));
+  localStorage.setItem('ecovibes:marketplace-products:v1',JSON.stringify(sellerProducts));
   localStorage.setItem(`ecovibes:v1:account:${other.id}`,JSON.stringify({cart:{x2:3},theme}));
- },{user,other,signedIn,theme,origin});
+ },{user,other,signedIn,theme,origin,cart,sellerProducts});
  const page=await context.newPage(),requests=[],errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/'))requests.push({path:new URL(r.url()).pathname,method:r.method()});});
@@ -50,7 +59,7 @@ async function setup({width=390,height=844,signedIn=false,theme='light',serviceW
  return {context,page,requests,errors,setUser:u=>{current=u;},setApiDown:(value=true)=>{apiDown=value;}};
 }
 const financial=r=>!['GET','HEAD'].includes(r.method)&&/orders|checkout|payments|refund|transfers|payout/.test(r.path);
-async function openBag(page){await page.locator('.bag-button').click();const bag=page.getByRole('dialog',{name:'Your bag 2',exact:true});await bag.waitFor();return bag;}
+async function openBag(page,count=2){await page.locator('.bag-button').click();const bag=page.getByRole('dialog',{name:'Your bag '+count,exact:true});await bag.waitFor();return bag;}
 async function hasBasket(page,key,cart){assert.deepEqual(await page.evaluate(k=>JSON.parse(localStorage.getItem(k)||'{}').cart,key),cart);}
 function luminance(rgb){const c=rgb.match(/[\d.]+/g).slice(0,3).map(Number).map(n=>{const s=n/255;return s<=.04045?s/12.92:((s+.055)/1.055)**2.4;});return .2126*c[0]+.7152*c[1]+.0722*c[2];}
 
@@ -83,8 +92,8 @@ async function setTextScale(page,scale){
  await page.evaluate(scale=>{document.documentElement.style.fontSize=`${scale*100}%`;return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));},scale);
  assert.equal(await page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize)),16*scale);
 }
-async function measureAction(bag,{width,height,theme,scale=1}){
- const geometry=await bag.getByRole('button',{name:'Open EcoVibes ID'}).evaluate(button=>{
+async function measureAction(bag,{width,height,theme,scale=1,actionName='Open EcoVibes ID'}){
+ const geometry=await bag.getByRole('button',{name:actionName}).evaluate(button=>{
   const rect=r=>({top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height});
   const bounds=button.getBoundingClientRect(),style=getComputedStyle(button),textRects=[];
   const walker=document.createTreeWalker(button,NodeFilter.SHOW_TEXT);
@@ -139,8 +148,90 @@ async function verifyLayout(page,bag,width,height){
  await page.keyboard.press('Escape');await bag.waitFor({state:'detached'});
  assert(await page.locator('.bag-button').evaluate(e=>document.activeElement===e),'Return keyboard focus to Bag opener');
 }
+
+// R5 checks empty/single/multiple states using real built DOM and disposable fixtures.
+const r5Measurements=[];
+const money=n=>new Intl.NumberFormat('en-GH',{style:'currency',currency:'GHS'}).format(n);
+async function readSubtotal(bag){return bag.locator('.cart-summary>div').evaluate(row=>{
+ const rect=r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom});
+ const rangeText=el=>{const range=document.createRange();range.selectNodeContents(el);return [...range.getClientRects()].map(rect);};
+ const drawer=row.closest('.cart-drawer');return {row:rect(row.getBoundingClientRect()),texts:[...row.children].map(el=>({text:el.textContent,rects:rangeText(el)})),scrollWidth:drawer.scrollWidth,clientWidth:drawer.clientWidth};
+});}
+function assertSubtotal(sample,expected){
+ assert.equal(sample.texts[1].text,expected,'The complete actual subtotal must remain unchanged');
+ assert(sample.texts.every(t=>t.rects.length&&t.rects.every(r=>r.left>=sample.row.left-.5&&r.right<=sample.row.right+.5)),'Subtotal text escapes its padded row: '+JSON.stringify(sample));
+ assert(sample.scrollWidth<=sample.clientWidth+1,'Bag drawer must not acquire horizontal scrolling');
+}
+async function checkR5Layout(page,bag,config){
+ const {width,height,theme,scale,state}=config;
+ assertBadge(await measureBadge(bag,{width,theme,phase:'R5-'+state}));
+ const copy=await bag.evaluate(d=>[...d.querySelectorAll('.empty-state h3,.empty-state p,.cart-item b,.cart-item small,.cart-item strong,.cart-summary>small,.cart-summary>p')].map(el=>{const s=getComputedStyle(el);return {text:el.textContent,font:parseFloat(s.fontSize),color:s.color,bg:getComputedStyle(el.closest('.cart-drawer')).backgroundColor};}));
+ for(const c of copy){assert(c.font>=13*scale,'Bag copy must retain readable text scaling');const a=luminance(c.color),b=luminance(c.bg);assert((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5,'Small Bag text must meet4.5:1 contrast');}
+ const actionName=state==='empty'?'Explore the marketplace':'Open EcoVibes ID';
+ await bag.getByRole('button',{name:actionName,exact:true}).scrollIntoViewIfNeeded();
+ const action=await measureAction(bag,{...config,actionName});assertAction(action);
+ for(const button of await bag.locator('button').all()){
+  await button.scrollIntoViewIfNeeded();const r=await button.boundingBox();assert(r&&r.width>=44&&r.height>=44,'Every Bag control needs a44px target');
+  assert(r.x>=-.5&&r.x+r.width<=width+.5&&r.y>=-.5&&r.y+r.height<=height+.5,'Every control must be reachable by vertical scrolling');
+ }
+ const geometry=await bag.locator('.cart-drawer').evaluate(d=>({scroll:d.scrollWidth,client:d.clientWidth}));assert(geometry.scroll<=geometry.client+1,'Drawer horizontal overflow');
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Document horizontal overflow');
+ let subtotal;
+ if(state!=='empty'){subtotal=await readSubtotal(bag);assertSubtotal(subtotal,money(state==='single'?170:540));}
+ await bag.getByRole('button',{name:'Close bag'}).focus();await page.keyboard.press('Shift+Tab');assert(await bag.getByRole('button',{name:actionName,exact:true}).evaluate(e=>document.activeElement===e));
+ await page.keyboard.press('Tab');assert(await bag.getByRole('button',{name:'Close bag'}).evaluate(e=>document.activeElement===e));
+ r5Measurements.push({...config,copy,action,subtotal,geometry});
+}
+async function collectR5Regressions(){
+ const errors=[];
+ const capture=(label,fn)=>{try{fn();checks.push({label,passed:true});}catch(e){errors.push({label,message:e.message});}};
+ for(const theme of ['light','dark']){
+  const config={width:320,height:844,theme,scale:2};
+  const empty=await setup({...config,cart:{}});
+  try{await empty.page.goto(origin+'/#settings');await empty.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(empty.page,0);await setTextScale(empty.page,2);
+   const copy=await bag.locator('.empty-state p').evaluate(el=>({font:parseFloat(getComputedStyle(el).fontSize),color:getComputedStyle(el).color,bg:getComputedStyle(el.closest('.cart-drawer')).backgroundColor}));
+   await bag.getByRole('button',{name:'Explore the marketplace'}).scrollIntoViewIfNeeded();const action=await measureAction(bag,{...config,actionName:'Explore the marketplace'});
+   capture('R5 empty '+theme,()=>{assert(copy.font>=28);const a=luminance(copy.color),b=luminance(copy.bg);assert((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5);assertAction(action);});
+   r5Measurements.push({phase:'regression-empty',...config,copy,action});await empty.page.screenshot({path:`${output}/R5-empty-${theme}-200pct.png`});
+  }finally{await empty.context.close();}
+  const multi=await setup({...config,cart:{x1:2,x2:1,x3:2,x4:1}});
+  try{await multi.page.goto(origin+'/#settings');await multi.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();await multi.page.locator('.bag-button').focus();await multi.page.keyboard.press('Enter');const bag=multi.page.getByRole('dialog');await setTextScale(multi.page,2);await bag.locator('.cart-summary').scrollIntoViewIfNeeded();const subtotal=await readSubtotal(bag);
+   capture('R5 subtotal '+theme,()=>assertSubtotal(subtotal,money(540)));r5Measurements.push({phase:'regression-subtotal',...config,subtotal});await multi.page.screenshot({path:`${output}/R5-subtotal-${theme}-200pct.png`});
+   const focus=[];
+   for(const [remove,next] of [['Remove Coastline print set','Remove Everyday carry tote'],['Remove Hand-thrown cup','Remove Field notes · Vol. 01'],['Remove Everyday carry tote','Remove Field notes · Vol. 01'],['Remove Field notes · Vol. 01','Explore the marketplace']]){
+    const control=bag.getByRole('button',{name:remove,exact:true});await control.focus();await multi.page.keyboard.press('Enter');const expected=bag.getByRole('button',{name:next,exact:true});await expected.waitFor();focus.push({remove,next,focused:await expected.evaluate(e=>document.activeElement===e)});
+   }
+   capture('R5 removal focus '+theme,()=>assert(focus.every(s=>s.focused),'Removal must choose next, preceding or empty action; never BODY'));r5Measurements.push({phase:'regression-focus',...config,focus});
+   await multi.page.keyboard.press('Escape');await bag.waitFor({state:'detached'});assert(await multi.page.locator('.bag-button').evaluate(e=>document.activeElement===e));assert.deepEqual(multi.requests.filter(financial),[]);
+  }finally{await multi.context.close();}
+ }
+ assert.deepEqual(errors,[],'R5 consolidated regressions: '+JSON.stringify(errors));
+}
+async function runR5Matrix(){
+ const views=[{width:320,height:844},{width:390,height:844},{width:768,height:844},{width:1440,height:900},{width:390,height:320},{width:844,height:240}];
+ for(const view of views)for(const theme of ['light','dark'])for(const scale of [1,1.5,2])for(const state of ['empty','single','multiple']){
+  await checkCapacity('R5-'+state+'-'+view.width+'-'+theme+'-'+scale);
+  const cart=state==='empty'?{}:state==='single'?{x1:2}:{x1:2,x2:1,x3:2,x4:1};const count=Object.values(cart).reduce((a,b)=>a+b,0);const f=await setup({...view,theme,cart});
+  try{await f.page.goto(origin+'/#settings');await f.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();await f.page.locator('.bag-button').focus();await f.page.keyboard.press('Enter');const bag=f.page.getByRole('dialog');await setTextScale(f.page,scale);await checkR5Layout(f.page,bag,{...view,theme,scale,state});
+   await f.page.keyboard.press('Escape');await bag.waitFor({state:'detached'});assert(await f.page.locator('.bag-button').evaluate(e=>document.activeElement===e));await hasBasket(f.page,'ecovibes:v1',cart);assert.deepEqual(f.requests.filter(financial),[]);assert.deepEqual(f.errors,[]);
+   checks.push({label:`R5-${state}-${view.width}x${view.height}-${theme}-${scale*100}pct`,passed:true,count,financialMutations:0});
+  }finally{await f.context.close();}
+ }
+ for(const theme of ['light','dark']){
+  const synthetic={id:'r5-large',name:'Synthetic layout fixture',seller:'Synthetic test',category:'Home',price:123456.78,color:'sage',icon:'◒'};const f=await setup({width:320,theme,cart:{'r5-large':2},sellerProducts:[synthetic]});
+  try{await f.page.goto(origin+'/#settings');await f.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(f.page);await setTextScale(f.page,2);await bag.locator('.cart-summary').scrollIntoViewIfNeeded();const expected='GH₵246913.56';assertSubtotal(await readSubtotal(bag),expected);
+   for(const displayOnly of ['GHS 246,913.56','US$ 12,345,678.90','CHF 123,456,789.01','GH₵9,876,543,210.99']){
+    await bag.locator('.cart-summary>div b').evaluate((el,text)=>{el.textContent=text;},displayOnly);await f.page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));const subtotal=await readSubtotal(bag);assertSubtotal(subtotal,displayOnly);r5Measurements.push({phase:'display-only synthetic currency stress; not a supported financial currency',theme,subtotal});
+   }
+   await f.page.reload();await f.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const restored=await openBag(f.page);assert.equal(await restored.locator('.cart-summary>div b').textContent(),expected);await hasBasket(f.page,'ecovibes:v1',{'r5-large':2});assert.deepEqual(f.requests.filter(financial),[]);assert.deepEqual(f.errors,[]);
+   checks.push({label:'R5 large actual GHS subtotal and display-only currency stress '+theme,passed:true,expected,financialMutations:0});
+  }finally{await f.context.close();}
+ }
+}
+
 try{
  browser=await chromium.launch(process.platform==='darwin'?{executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'}:{});
+ await collectR5Regressions();
  // Reproduce both reported action failures before asserting, retaining the original measurements/screenshots.
  const originalActions=[];
  for(const theme of ['light','dark']){
@@ -215,6 +306,7 @@ try{
   }finally{await f.context.close();}
  }
 
+ await runR5Matrix();
  // Verify the existing app-shell worker rather than claiming all offline reloads are unsupported.
  for(const signedIn of [false,true]){
   const f=await setup({signedIn,serviceWorkers:'allow'});
@@ -253,5 +345,5 @@ try{
  const short=await setup({width:844,height:240});
  try{await short.page.goto(`${origin}/#settings`);await short.page.getByRole('heading',{name:'Settings',exact:true}).waitFor();const bag=await openBag(short.page);await bag.getByRole('button',{name:'Open EcoVibes ID'}).scrollIntoViewIfNeeded();assert(await bag.getByRole('button',{name:'Open EcoVibes ID'}).isVisible());await short.page.screenshot({path:`${output}/short-landscape.png`});checks.push({label:'short landscape actions reachable',passed:true});}finally{await short.context.close();}
 }catch(e){failures.push({name:e.name,message:e.message,stack:e.stack});}
-finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));const report={passed:failures.length===0,checks,badgeMeasurements,actionMeasurements,failures,scope:'Built desktop Chromium with synthetic identities and real browser offline mode. Not hosted, physical-device, genuine sign-in or durable checkout acceptance.'};await writeFile(`${output}/checks.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));if(failures.length)process.exitCode=1;}
+finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));try{await checkCapacity('after-browser');}catch(e){failures.push({name:e.name,message:e.message});}const report={passed:failures.length===0,checks,badgeMeasurements,actionMeasurements,r5Measurements,capacity,failures,scope:'Built desktop Chromium with synthetic identities and real browser offline mode. Not hosted, physical-device, genuine sign-in or durable checkout acceptance.'};await writeFile(`${output}/checks.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));if(failures.length)process.exitCode=1;}
 function infoLabel(width,theme){return `${width}px/${theme}: native modal, keyboard wrap/Escape/focus return, 44px targets, >=13px copy, >=4.5 contrast, no horizontal overflow`;}

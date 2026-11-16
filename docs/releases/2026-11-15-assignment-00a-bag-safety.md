@@ -243,3 +243,67 @@ No public-source publication, remote CI, merge, deployment, production migration
 Next smallest task: independent review of the new exact commit, original RED/final GREEN and preservation evidence, before separately authorized remote publication/CI and release steps. A future fallback must preserve honest unavailable copy, navigation-only action, private baskets, the accessible badge, content-responsive action and keyboard/modal behavior. Do not revert to pre-00A false success or accept the known fixed-height defect. No operational rollback drill is claimed.
 
 R3 CSS SHA256: `5bfd16396eacd367bb2970c549e8022954b2610627277f3dd521ea2d8da89865`. R3 browser-test SHA256: `d8f44da63d23e242c0a64d8cb0d8c654a6215118820ac99afb1f0f63bd4c553c`. Receipt/source/screenshot hashes and the exact post-commit revision are in the R3 evidence/checkpoint, avoiding a self-referential Git SHA in this receipt.
+
+
+## Assignment 00A-R5 — consolidated Bag corrections and test recovery
+
+15–16 November 2026. **BLOCKED** for release: the three Bag findings are locally repaired and the current verification passes, but all 18 retained R4 regression failures still have unresolved historical causes. Do not equate fresh passes with dependable historical attribution or release approval. Parent `aad44d897961e12cc2d8193ca199c83fda97fa06`, same isolated branch `codex/bag-safety-00a-20261114`. The exact new commit/tree are recorded after the local commit in `work/assignment-00a-r5/checkpoint.json`.
+
+### Bounded implementation and reuse
+
+- `src/modules/App.tsx`: preserve the native dialog, existing storage/account boundary and navigation-only checkout guard. After removing a focused product, restore focus to the next row, otherwise the preceding row, otherwise Explore. The pending focus target is bound to the current storage owner and discarded on an account mismatch. No request, financial action, identity rule or basket merging was added.
+- `src/modules/bag-safety.css`: scoped readable empty-state text and a content-responsive 48px-minimum Explore action; allow the subtotal label/amount to wrap or stack and preserve the full number. Earlier badge and primary-action corrections remain.
+- `src/modules/App.checkout.test.tsx`: three synchronous removal-focus regressions and one exact six-unit subtotal/preservation assertion. Existing account, offline, navigation, modal and safety assertions remain.
+- `scripts/test-bag-safety-browser.mjs`: actual rendered empty-state/amount/focus assertions; 108 empty/single/multiple layout cases; large actual GHS and explicitly display-only currency-length fixtures; unique default evidence folders and a 2GiB free-space guard. Existing checks and thresholds remain.
+- This receipt: append evidence and limitations. No global redesign, dependency, workflow, server/API or database change.
+
+The checkout guard remains byte-identical to the parent; SHA256 of its exact source line is `faadc4b19f395ac89123bba1a21b573de58bb9c421cf7d62fe9ef4e8ae452dc5`. It only closes the Bag and navigates to EcoVibes ID. No order/payment success or financial mutation is introduced.
+
+### Environment investigation and retained failures
+
+The interrupted R4 browser run failed with `ENOSPC` while writing `390-dark-member-online.png` (zero-byte file). Its source call, partial checks and error are preserved. The volume initially had approximately 156MiB available; workspace and temporary directories share that volume. Exact inventory, caches/sizes and diagnosis are in `environment-inventory.json`, `browser-interruption.json` and `PHASE1.md`. No worktree, cache, asset or other user file was deleted. Subsequent observed free capacity recovered without any agent cleanup; this does not establish who freed it. Testing resumed only after adequate actual capacity was observed. The complete corrected browser command began with **3,515,289,600 free bytes** and ended with **3,495,813,120**; its sampled capacity stayed between **3.25 and 3.27GiB**, above the 2GiB guard.
+
+All 10 initial and 8 subsequent R4 failures were individually reviewed. Final classification is **14 timeouts, 2 duplicate-control errors and 2 missing-UI errors; all 18 historical causes remain UNRESOLVED release blockers**. `failure-classifications.json` remains the original diagnostic; `failure-resolution.json` corrects one diagnostic symptom label and maps every case to its fresh parent/focused/full result. All 18 corresponding cases pass in the unchanged-parent 35-test baseline and current 39/576-test runs. This establishes nonreproduction, not causation.
+
+A private installed-Vitest diagnostic reproduces how an unguarded timed-out async body can resume after cleanup and mount during a later test. Four expected-outcome diagnostic checks pass. This proves a possible harness mechanism; it does not attribute the original 18 failures to that mechanism, disk pressure, or a specific application defect. Historical QA001 remains undiagnosed. No existing test deadline, assertion, worker count or isolation setting was weakened.
+
+### Regression-first evidence and before/after behavior
+
+Before application edits, `accessibility-red/checks.json` records **12/12 expected failing assertions** across the empty-state, subtotal and four removal-focus outcomes in both appearances. A second counterfactual serves the preserved parent build and detects all three findings in both appearances. The final exact unit assertions, run against the preserved parent App through a private resolver, produce **3 direct BODY-versus-control failures and 1 passing unchanged-calculation test**. The earlier wait-based parent run timed out in those three tests and is retained separately. No source reset or checkout was used.
+
+| Finding | Before | Corrected behavior |
+| --- | --- | --- |
+| Empty description | 10px; light contrast 3.5962:1; dark contrast 6.5036:1 | 14px at default, 21px at 150%, 28px at 200%; ink contrast **15.8989:1 light / 14.3637:1 dark**. |
+| Empty Explore | 10px text / 34px target | 15px / 48px minimum; 30px text and 110px content-driven height at 320px/200%. Full label and 16px icon contained. |
+| Six-unit subtotal, 320px/200% | `GH₵540.00` ends at x323.90625 beyond the x304 padded edge; drawer scrollWidth324/clientWidth320 | Same exact value; label and amount can stack, amount ends at x197.015625, drawer width320 with no horizontal scroll. |
+| Focused row removal | Focus falls to BODY | Next, preceding and final empty-state action receive focus; modal containment, Escape and return to opener pass. |
+
+The large actual fixture remains `GH₵246913.56` (2 × 123456.78), including after reload. One complete browser attempt failed after 188 passing checks because the new test incorrectly expected grouped `GH₵246,913.56`. The product formatter has always used the ungrouped form. Only that new expectation was corrected; product values/formatting and every existing assertion remain unchanged. The failed run is retained in `final/gates.json`, `final/bag-browser.log` and `green/browser/checks.json`.
+
+Additional GHS/USD/CHF strings stress layout only; they do not establish currency conversion, supported financial currencies or a payment feature. Four final 320px/200% light/dark empty/subtotal screenshots were visually inspected. No clipped money, hidden action text or horizontal drawer overflow was observed in the passing matrix.
+
+### Actual verification and exact source binding
+
+- Unchanged parent: **35 passed / 0 failed / 4 files**, before application edits.
+- Corrected focused: **39 passed / 0 failed / 4 files**. Full regression: **576 passed / 0 failed / 44 files**, no skips.
+- TypeScript and Vite production build: exit0. Existing index/Communications chunk-size warnings remain; no performance certification follows.
+- Dependency audit: **0 vulnerabilities**. Existing security script: **8 assertions**, exit0.
+- Nine isolated HTTP workflow scripts: exit0. Disposable PostgreSQL17.10: **84 checks**, exit0. No genuine provider or production database was used.
+- Navigation browser: **39 checks**, exit0. Existing artifacts were copied with a manifest before rerun; fresh results are in `green/navigation/`.
+- Corrected complete Bag browser: **194 checks**, zero failures. Includes original 78 checks, 6 direct consolidated checks, 108 layout states and 2 large/currency-length fixtures. The 108 states cover empty/single/multiple × light/dark × 100/150/200% × 320/390/768/1440px plus 390×320 short and 844×240 landscape contexts. Keyboard wrap, Escape, opener return, readable text, contained icons, touch targets, no horizontal scroll, account/offline baskets and zero financial mutations remain checked.
+
+The successful full Bag browser command took **723.304 seconds** on this shared Mac; the earlier failed attempt reached 188 checks in 457.2 seconds. This is not a controlled performance comparison or a cause diagnosis. The unchanged `navigation-browser.yml` job has a **12-minute overall limit**, including installation/build/navigation. Its suitability for this expanded matrix remains UNVERIFIED and is a further remote-CI release gate. No timeout was raised or assertion/matrix reduced.
+
+The first 18 commands in `final/gates.json` passed; its 19th command is the retained browser-format-expectation failure. The successful replacement browser command is in `final-browser/commands.json`. Its before/after hashes match. `final-browser/source-before.json` establishes that only the test's large-amount expectation changed after the previous gates; application, unit tests, styles, build/security/API inputs and all other recorded source hashes are identical. Those unrelated gates were not rerun merely for reassurance. No claim that the earlier 19-command attempt passed is made.
+
+Exact argument arrays, runtime, timestamps, durations, capacities and outputs are retained in those command records. Pinned Node26.12.1 / Vite8.3.5 and existing dependencies were reused. Test commands include `node node_modules/vitest/vitest.mjs run`, `node node_modules/typescript/bin/tsc -b`, `node node_modules/vite/bin/vite.js build`, `node scripts/test-dependency-security.mjs`, the existing isolated workflow scripts, `node scripts/test-navigation-browser.mjs` and `BAG_SAFETY_OUTPUT=<fresh-folder> node scripts/test-bag-safety-browser.mjs`. Use a fresh output folder for every subsequent run; do not overwrite RED evidence.
+
+### Preservation, risk, fallback and next task
+
+All **15 original worktree HEADs/statuses and 3915 protected file hashes remain unchanged**. Inventory remains16 including this task. The checked 386 prior evidence files retain their R4-baseline hashes; R5 did not alter the previously documented R2 auxiliary-note exception. Other candidate files match the parent. Final manifests, exact five-file hashes, disk samples and post-commit identity are in `preservation-after.json`, `source-hashes.json`, `checks.json` and `checkpoint.json`.
+
+The application change uses existing local state, system fonts and bounded DOM focus; it adds no media, animation, request, permission, telemetry, paid dependency, retention rule or fee. Core access remains GH₵0. No public publication, remote CI, migration, merge, provider-setting change, payment activation or deployment occurred. Local desktop Chromium with synthetic identities, browser offline mode and root-font scaling is not hosted, physical-phone, native-app, browser-zoom, Safari/Firefox or real screen-reader acceptance.
+
+A future fallback must preserve truthful unavailable copy, navigation-only guard, private baskets, badge contrast, content-responsive actions, wrapped totals and modal/focus behavior. Prefer a tested bounded forward correction; do not restore pre-00A false success or use the known inaccessible parent as an accepted fallback. No production rollback drill is claimed. PR26/PR40 overlap remains subject to independent integration review; this assignment adopts neither wider commerce chain nor duplicate old repair.
+
+**Next smallest task:** diagnose the retained intermittent App-shell failures with controlled, cancellation-aware test instrumentation, then independently review the exact R5 commit and complete separately authorized remote/release gates. The current green runs do not close those blockers. Guest→member→guest restoration remains a separate product decision. Contact Seller, durable orders, live payments and wider Marketplace development were not implemented.
