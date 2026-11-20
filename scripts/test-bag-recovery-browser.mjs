@@ -54,6 +54,15 @@ try{
    assert.equal(await box.getByText('Your bag is temporarily unavailable. Your saved items are kept on this device. No order or payment was created.',{exact:true}).count(),1,'Emergency build must use its guard-preserving fallback');
    assert.equal(await box.locator('.cart-item').count(),0,'Fallback must not expose a previous account basket');
    await page.screenshot({path:output+'/'+label+'-fallback.png'});await assertStorage(page,Boolean(user));
+   await box.getByRole('button',{name:'Open EcoVibes ID',exact:true}).click();
+   await page.getByRole('heading',{name:'One account. Shared services.',exact:true}).waitFor();assert.equal(await page.getByRole('dialog').count(),0,'Fallback account navigation must dismiss the drawer');
+   if(!user&&theme==='light'){
+    await page.goto(origin+'/#marketplace');await page.getByRole('heading',{name:'Good things, made by good people.',exact:true}).waitFor();
+    await page.getByRole('button',{name:/^Your bag/}).click();box=page.getByRole('dialog',{name:/Your bag/});await box.waitFor();
+    assert.equal(await box.getByText('Your bag is temporarily unavailable. Your saved items are kept on this device. No order or payment was created.',{exact:true}).count(),1,'Marketplace entry must use the same fallback');await page.keyboard.press('Escape');
+   }
+   await page.goto(origin+'/#settings');await page.getByRole('heading',{name:'Settings',exact:true}).waitFor();box=await bag(page);
+
    if(user===A){
     current=B;await page.evaluate(()=>window.dispatchEvent(new Event('ecovibes:identity_changed')));await identity(page,B);if(!await page.getByRole('dialog',{name:/Your bag/}).count())box=await bag(page);
     assert.equal(await page.getByRole('dialog',{name:/Your bag/}).locator('.cart-item').count(),0);await assertStorage(page,Boolean(user));
@@ -64,7 +73,7 @@ try{
    await context.setOffline(false);phase='normal';current=user;await page.reload();await page.getByRole('heading',{name:'Settings',exact:true}).waitFor();await identity(page,user);box=await bag(page);
    assert.equal(await box.getByText('Your bag is temporarily unavailable. Your saved items are kept on this device. No order or payment was created.',{exact:true}).count(),0);await box.getByText('Qty '+(user===B?3:user===A?2:1),{exact:false}).waitFor();await assertStorage(page,Boolean(user));
    await page.screenshot({path:output+'/'+label+'-recovered.png'});
-   await box.getByRole('button',{name:'Open EcoVibes ID',exact:true}).click();await page.getByRole('heading',{name:'One account. Shared services.',exact:true}).waitFor();assert.equal(await page.getByRole('dialog').count(),0,'Account navigation must dismiss the fallback drawer');
+   await box.getByRole('button',{name:'Open EcoVibes ID',exact:true}).click();await page.getByRole('heading',{name:'One account. Shared services.',exact:true}).waitFor();assert.equal(await page.getByRole('dialog').count(),0,'Restored normal account navigation must dismiss the drawer');
    assert.deepEqual(mutations.filter(r=>/checkout|orders|payments|refund|payout|transfers/.test(r.path)),[]);assert.deepEqual(errors,[]);
    checks.push({label,passed:true,stages:['normal','fallback','offline fallback','normal'],basketsPreserved:true,financialMutations:0});
   }catch(error){failures.push({label,message:error.message,stack:error.stack});await page.screenshot({path:output+'/'+label+'-failure.png'}).catch(()=>{});}
