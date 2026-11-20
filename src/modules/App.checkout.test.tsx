@@ -27,7 +27,29 @@ describe('main Bag without a durable checkout', () => {
     Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.removeAttribute('open');}});
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true,addListener:vi.fn(),removeListener:vi.fn()})));
   });
-  afterEach(()=>{cleanup();Reflect.deleteProperty(HTMLDialogElement.prototype,'showModal');Reflect.deleteProperty(HTMLDialogElement.prototype,'close');vi.unstubAllGlobals();vi.restoreAllMocks();window.history.replaceState(null,'','/');});
+  afterEach(()=>{vi.unstubAllEnvs();cleanup();Reflect.deleteProperty(HTMLDialogElement.prototype,'showModal');Reflect.deleteProperty(HTMLDialogElement.prototype,'close');vi.unstubAllGlobals();vi.restoreAllMocks();window.history.replaceState(null,'','/');});
+
+  it.each([false,true])('emergency Bag fallback preserves the $0 basket without financial success',async(signedIn)=>{
+    const signal=testSignal;
+    vi.stubEnv('VITE_BAG_UNAVAILABLE','1');
+    const key=signedIn?'ecovibes:v1:account:'+account.id:'ecovibes:v1';
+    localStorage.setItem(key,JSON.stringify({cart:{x1:2}}));
+    const fetch=vi.fn(async(input:RequestInfo|URL,_init?:RequestInit)=>Response.json(String(input).endsWith('/auth/me')?{user:signedIn?account:null,csrfToken:signedIn?'synthetic-csrf':null}:{}));
+    vi.stubGlobal('fetch',fetch);
+    render(<App/>);
+    if(signedIn)await resultForActiveTest(signal,screen.findByText('@bag.test'));
+    fireEvent.click(bagButton());
+    const bag=screen.getByRole('dialog',{name:'Your bag 2'});
+    expect(within(bag).getByText(/Your bag is temporarily unavailable/)).toBeTruthy();
+    expect(within(bag).queryByText(/Qty/)).toBeNull();
+    expect(within(bag).queryByRole('button',{name:/Continue in sandbox/})).toBeNull();
+    fireEvent.click(within(bag).getByRole('button',{name:'Open EcoVibes ID'}));
+    await resultForActiveTest(signal,screen.findByText('Account workspace entry'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(JSON.parse(localStorage.getItem(key)!).cart).toEqual({x1:2});
+    expect(screen.queryByText(/Sandbox order created/)).toBeNull();
+    expect(fetch.mock.calls.filter(([url,init])=>!['GET','HEAD'].includes(String(init?.method||'GET').toUpperCase())&&/orders|checkout|payments|refund|transfers/.test(String(url)))).toEqual([]);
+  });
 
   it.each([
     {signedIn:false,online:true},
