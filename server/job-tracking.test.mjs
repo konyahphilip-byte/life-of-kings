@@ -61,6 +61,32 @@ describe('job-authorized collector coordinates',()=>{
  it.each([{latitude:91},{longitude:181},{accuracy:-1},{accuracy:1001},{latitude:'5.6'},{sequence:0},{capturedAt:1},{capturedAt:Date.parse('2026-10-29T21:01:00Z')},{altitude:100}])('rejects malformed, old or excessive samples %j',async patch=>{
   const f=fixture(),start=f.request();await f.route(B,'POST','/start',start);await expect(f.route(B,'POST','/point',f.point(start.requestId,patch))).rejects.toMatchObject({status:400});
  });
+ it('ages delayed positions from capture time instead of resetting freshness on receipt or retry',async()=>{
+  const f=fixture(),s=f.request();await f.route(B,'POST','/start',s);
+  const delayed=f.point(s.requestId,{capturedAt:s.requestedAt-29_000});
+  await f.route(B,'POST','/point',delayed);f.advance(1000);
+  expect(await f.route(A)).toMatchObject({state:'stale',sequence:1,point:{latitude:delayed.latitude}});
+  expect(await f.route(B,'POST','/point',delayed)).toMatchObject({state:'stale',sequence:1});
+  f.advance(60_000);await f.service.maintenance();
+  expect((await f.route(A)).point).toBeNull();
+  expect(f.db.prepare('SELECT latitude,longitude FROM job_tracking_current').get()).toMatchObject({latitude:null,longitude:null});
+ });
+ it('never extends retention for an older sample with a future device clock',async()=>{
+  const f=fixture(),s=f.request();await f.route(B,'POST','/start',s);
+  await f.route(B,'POST','/point',f.point(s.requestId,{capturedAt:s.requestedAt+5000}));
+  f.advance(30_000);expect((await f.route(A)).state).toBe('stale');
+  f.advance(60_000);await f.service.maintenance();expect((await f.route(A)).point).toBeNull();
+ });
+ it('rejects more than five seconds future skew without storing a coordinate',async()=>{
+  const f=fixture(),s=f.request();await f.route(B,'POST','/start',s);
+  await expect(f.route(B,'POST','/point',f.point(s.requestId,{capturedAt:s.requestedAt+5001}))).rejects.toMatchObject({status:400,code:'location_expired'});
+  expect(await f.route(A)).toMatchObject({state:'waiting',sequence:0,point:null});
+ });
+ it('closes publishing at the exact server expiry boundary',async()=>{
+  const f=fixture(),s=f.request();await f.route(B,'POST','/start',s);f.advance(TRACKING_LIMITS.sessionMs);
+  await expect(f.route(B,'POST','/point',f.point(s.requestId))).rejects.toMatchObject({status:409,code:'tracking_closed'});
+  expect(await f.route(A)).toMatchObject({state:'expired',point:null});
+ });
  it('marks quiet signals stale, removes coordinates at90seconds and expires the session',async()=>{
   const f=fixture(),s=f.request();await f.route(B,'POST','/start',s);await f.route(B,'POST','/point',f.point(s.requestId));
   f.advance(31_000);expect((await f.route(A)).state).toBe('stale');

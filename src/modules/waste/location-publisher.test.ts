@@ -7,7 +7,7 @@ function fixture(permission='prompt'){
  const geo={watchPosition:vi.fn((ok:PositionCallback,no?:PositionErrorCallback|null,_options?:PositionOptions)=>{position=ok;failure=no||(()=>{});return 7;}),clearWatch:vi.fn()};
  const api={start:vi.fn(async():Promise<{sessionId:string;sequence:number;expiresAt?:string}>=>({sessionId:'session',sequence:0})),point:vi.fn(async()=>({state:'live'})),stop:vi.fn(async()=>{})};
  const change=vi.fn();const publisher=createLocationPublisher({ownerId:'collector',mode:'saver',geo,permission:async()=>status as unknown as PermissionStatus,api,onChange:change,available:()=>true,clock:()=>Date.now()});
- const send=(accuracy=12)=>position({coords:{latitude:5.6,longitude:-.18,accuracy},timestamp:Date.now()} as GeolocationPosition);
+ const send=(accuracy=12,offset=0)=>position({coords:{latitude:5.6,longitude:-.18,accuracy},timestamp:Date.now()+offset} as GeolocationPosition);
  return{publisher,api,geo,status,change,send,fail:()=>failure({code:1} as GeolocationPositionError)};
 }
 afterEach(()=>vi.useRealTimers());
@@ -37,6 +37,12 @@ describe('foreground device location publisher',()=>{
   const x=fixture();await x.publisher.start(true,true);x.send(800);await vi.waitFor(()=>expect(x.api.point).toHaveBeenCalledOnce());
   expect(x.api.point).toHaveBeenCalledWith(expect.objectContaining({expectedOwnerId:'collector',sessionId:'session',sequence:1,latitude:5.6,longitude:-.18,accuracy:800}));
   await x.publisher.stop();expect(x.geo.clearWatch).toHaveBeenCalledWith(7);expect(x.api.stop).toHaveBeenCalledWith(expect.objectContaining({expectedOwnerId:'collector',sessionId:'session'}));
+ });
+ it('does not transmit coordinates more than five seconds in the future',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
+  const x=fixture();await x.publisher.start(true,true);x.send(12,5001);await Promise.resolve();
+  expect(x.api.point).not.toHaveBeenCalled();expect(x.change).toHaveBeenCalledWith('Waiting for a fresh device position with usable accuracy.');
+  await x.publisher.stop();
  });
  it('stops on permission revocation and ignores late device callbacks',async()=>{
   const x=fixture();await x.publisher.start(true,true);x.status.state='denied';x.status.onchange?.();await Promise.resolve();x.send();

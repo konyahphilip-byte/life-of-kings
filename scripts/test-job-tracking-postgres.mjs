@@ -59,6 +59,14 @@ try{
  await admin.query('BEGIN');await admin.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[B]);await admin.query("UPDATE provider_profiles SET verification_state='unverified' WHERE user_id=$1",[B]);
  settled=false;const revoked=route(s2,B,'point',{...point(),sessionId:next.requestId}).then(()=>({allowed:true}),e=>({status:e.status})).finally(()=>{settled=true;});
  await delay(80);check(!settled,'Publish waits for provider review revocation');await admin.query('COMMIT');check((await revoked).status===409,'Revoked provider review rejects in-flight publish');
+ await admin.query("UPDATE provider_profiles SET verification_state='approved' WHERE user_id=$1",[B]);
+ const freshLease={...start(),requestId:randomUUID()};await route(s1,B,'start',freshLease);
+ const delayed={...point(),sessionId:freshLease.requestId,capturedAt:time-29000};await route(s1,B,'point',delayed);
+ time+=1000;check((await route(s2,A)).state==='stale','Delayed PostgreSQL position ages from capture, not receipt');
+ check((await route(s1,B,'point',delayed)).state==='stale','Exact retry cannot refresh a stale point');
+ time+=60000;await s1.maintenance();
+ check((await admin.query('SELECT latitude,longitude FROM job_tracking_current')).rows.every(p=>p.latitude===null&&p.longitude===null),'Cleanup removes a point ninety seconds after capture');
+ await assert.rejects(()=>route(s2,B,'point',{...point(),sessionId:freshLease.requestId,sequence:2,capturedAt:time+5001}),e=>e.code==='location_expired');check(true,'PostgreSQL runtime refuses future skew beyond five seconds');
  check((await admin.query('SELECT count(*)::int n FROM audit WHERE details<>\'{}\'')).rows[0].n===0,'Audit never contains coordinates');
  await admin.query('BEGIN');await admin.query('DROP TABLE job_tracking_operations;DROP TABLE job_tracking_current');await admin.query('ROLLBACK');check((await admin.query('SELECT 1 FROM job_tracking_current')).rowCount===1,'Disposable rollback retains tracking records; no production DROP planned');
  for(const path of paths)check(createHash('sha256').update(await readFile(new URL('../'+path,import.meta.url))).digest('hex')===hashes[path],'Stable exact source: '+path);

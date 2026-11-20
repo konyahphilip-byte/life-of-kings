@@ -33,6 +33,19 @@ describe('collection location permission UI',()=>{
   const {snapshot}=setup('customer','live'),stamp=new Date().toISOString();Object.assign(snapshot,{point:{latitude:5.6,longitude:-.18,accuracy:10,capturedAt:stamp,receivedAt:stamp},serverTime:stamp,expiresAt:new Date(Date.parse(stamp)+120000).toISOString()});
   expect(locationPresentation(snapshot as unknown as Parameters<typeof locationPresentation>[0],31000).state).toBe('stale');expect(locationPresentation(snapshot as unknown as Parameters<typeof locationPresentation>[0],91000).point).toBeNull();expect(locationPresentation(snapshot as unknown as Parameters<typeof locationPresentation>[0],121000)).toEqual({state:'expired',point:null});
  });
+ it('marks a delayed reading stale from device capture time and hides it at ninety seconds',()=>{
+  const {snapshot}=setup('customer','live'),now=Date.parse('2026-11-20T12:00:00Z');
+  Object.assign(snapshot,{serverTime:new Date(now).toISOString(),expiresAt:new Date(now+120000).toISOString(),point:{latitude:5.6,longitude:-.18,accuracy:10,capturedAt:new Date(now-29000).toISOString(),receivedAt:new Date(now).toISOString()}});
+  const data=snapshot as unknown as Parameters<typeof locationPresentation>[0];
+  expect(locationPresentation(data,999).state).toBe('live');
+  expect(locationPresentation(data,1000).state).toBe('stale');
+  expect(locationPresentation(data,61000).point).toBeNull();
+ });
+ it('does not let a future capture timestamp extend receipt freshness',()=>{
+  const {snapshot}=setup('customer','live'),now=Date.parse('2026-11-20T12:00:00Z');
+  Object.assign(snapshot,{serverTime:new Date(now).toISOString(),point:{latitude:5.6,longitude:-.18,accuracy:10,capturedAt:new Date(now+5000).toISOString(),receivedAt:new Date(now).toISOString()}});
+  expect(locationPresentation(snapshot as unknown as Parameters<typeof locationPresentation>[0],30000).state).toBe('stale');
+ });
  it('does not request device access on opening and requires separate sharing consent',async()=>{
   const x=setup();render(<LocationTracking ownerId="owner" csrf="csrf" jobs={[job]} saver="saver"/>);
   const start=await screen.findByRole('button',{name:'Start device location'});expect(start).toBeDisabled();expect(x.query).not.toHaveBeenCalled();expect(x.watch).not.toHaveBeenCalled();

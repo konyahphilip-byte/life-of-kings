@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const TRACKING_VERSION='20261029210000_job_tracking';
-export const TRACKING_LIMITS=Object.freeze({sessionMs:30*60_000,staleMs:30_000,retentionMs:90_000,minPointMs:3000,maxAgeMs:30_000,maxFutureMs:15_000,maxAccuracy:1000});
+export const TRACKING_LIMITS=Object.freeze({sessionMs:30*60_000,staleMs:30_000,retentionMs:90_000,minPointMs:3000,maxAgeMs:30_000,maxFutureMs:5000,maxAccuracy:1000});
 export const TRACKING_SQLITE_SCHEMA=`
 CREATE TABLE IF NOT EXISTS job_tracking_current(
  job_id TEXT PRIMARY KEY REFERENCES jobs(id),session_id TEXT NOT NULL UNIQUE,customer_id TEXT NOT NULL REFERENCES users(id),collector_id TEXT NOT NULL REFERENCES users(id),provider_revision INTEGER NOT NULL,
@@ -44,7 +44,9 @@ export function createJobTracking({q,run,transaction,assert,now,event,rateLimit,
   const {job,role,eligible,profile}=authority,at=millis();
   if(row&&(!eligible||row.customer_id!==job.customer_id||row.collector_id!==job.assigned_provider_id||Number(row.provider_revision)!==Number(profile?.revision))){await revoke(job.id);row={...row,status:'revoked',latitude:null};}
   if(row&&timestamp(row.expires_at)<=at&&row.status==='active'){await run(`UPDATE job_tracking_current SET status='expired',${clearPoint} WHERE job_id=?`,job.id);row={...row,status:'expired',latitude:null};}
-  const age=row?.received_at?Math.max(0,at-timestamp(row.received_at)):null;
+  // A delayed upload cannot make an old reading live again. A future device
+  // clock cannot extend freshness beyond server receipt either.
+  const age=row?.received_at?Math.max(0,at-Math.min(timestamp(row.received_at),row.captured_at?timestamp(row.captured_at):Infinity)):null;
   if(row&&age!==null&&age>=TRACKING_LIMITS.retentionMs&&row.latitude!==null){await run(`UPDATE job_tracking_current SET ${clearPoint} WHERE job_id=?`,job.id);row={...row,latitude:null};}
   const ended={completed:'completed',cancelled:'cancelled',disputed:'disputed',awaiting_customer:'finished'}[job.status];
   const state=ended||(disabled?'unavailable':!eligible?'not_authorized':!row?'not_started':row.status!=='active'?row.status:age===null?'waiting':age>=TRACKING_LIMITS.staleMs?'stale':'live');
@@ -56,7 +58,7 @@ export function createJobTracking({q,run,transaction,assert,now,event,rateLimit,
   const stamp=now(),cutoff=new Date(Date.parse(stamp)-TRACKING_LIMITS.retentionMs).toISOString();
   await transaction(async()=>{
    await run(`UPDATE job_tracking_current SET status='expired',${clearPoint} WHERE status='active' AND expires_at<=?`,stamp);
-   await run(`UPDATE job_tracking_current SET ${clearPoint} WHERE received_at<=? AND latitude IS NOT NULL`,cutoff);
+   await run(`UPDATE job_tracking_current SET ${clearPoint} WHERE (received_at<=? OR captured_at<=?) AND latitude IS NOT NULL`,cutoff,cutoff);
    await run('DELETE FROM job_tracking_operations WHERE created_at<=?',new Date(Date.parse(stamp)-86400_000).toISOString());
   });
  }

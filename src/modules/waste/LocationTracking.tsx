@@ -11,7 +11,7 @@ function validSnapshot(value:Snapshot,owner:string,job:string){
  const p=value.point;return !p||([p.latitude,p.longitude,p.accuracy].every(v=>typeof v==='number'&&Number.isFinite(v))&&Math.abs(p.latitude)<=90&&Math.abs(p.longitude)<=180&&p.accuracy>=0&&p.accuracy<=1000&&Number.isFinite(Date.parse(p.capturedAt))&&Number.isFinite(Date.parse(p.receivedAt)));
 }
 export function locationPresentation(snapshot:Snapshot,elapsed:number){
- const serverNow=Date.parse(snapshot.serverTime)+Math.max(0,elapsed),age=snapshot.point?Math.max(0,serverNow-Date.parse(snapshot.point.receivedAt)):null;
+ const serverNow=Date.parse(snapshot.serverTime)+Math.max(0,elapsed),age=snapshot.point?Math.max(0,serverNow-Math.min(Date.parse(snapshot.point.receivedAt),Date.parse(snapshot.point.capturedAt))):null;
  if(snapshot.expiresAt&&serverNow>=Date.parse(snapshot.expiresAt)&&['live','stale','waiting'].includes(snapshot.state))return{state:'expired',point:null};
  const state=snapshot.state==='live'&&age!==null&&age>=snapshot.staleAfterMs?'stale':snapshot.state;
  return{state,point:age!==null&&age<snapshot.locationRetentionMs&&['live','stale'].includes(state)?snapshot.point:null};
@@ -65,7 +65,7 @@ function TrackingSession({ownerId,csrf,job,saver}:{ownerId:string;csrf:string;jo
  return <div className="waste-location-session">
   <p role="status">{offline?'Offline or hidden: live location is unavailable.':state?text[state]:'Checking collection location…'}</p>
   {error&&<p role="alert">{error}</p>}
-  {presentation?.point&&!offline&&<p><strong>{presentation.point.latitude.toFixed(5)}, {presentation.point.longitude.toFixed(5)}</strong><br/>Reported accuracy: {Math.ceil(presentation.point.accuracy)} metres · {new Date(presentation.point.receivedAt).toLocaleTimeString()}<br/><small>A device estimate, not proof of collection or arrival.</small></p>}
+  {presentation?.point&&!offline&&<p><strong>{presentation.point.latitude.toFixed(5)}, {presentation.point.longitude.toFixed(5)}</strong><br/>Reported accuracy: {Math.ceil(presentation.point.accuracy)} metres · {new Date(presentation.point.capturedAt).toLocaleTimeString()}<br/><small>A device estimate, not proof of collection or arrival.</small></p>}
   <button type="button" onClick={()=>refresh.current()} disabled={offline}>Refresh collection location</button>
   {current?.snapshot.role==='collector'&&<div className="waste-location-consent">
    <p>Location is optional. This page asks your browser for device location only after you choose Start. Separately, the box below allows sharing with this collection’s customer for up to 30 minutes. No location history, background tracking or AI use is enabled.</p>

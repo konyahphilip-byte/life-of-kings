@@ -29,7 +29,7 @@ export function createLocationPublisher(options:Options){
   if(!available()){await stop('Device location stopped while this page is unavailable or offline.');return;}
   const position=pending;pending=null;const captured=lease;if(!captured)return;
   const {latitude,longitude,accuracy}=position.coords,capturedAt=position.timestamp;
-  if(![latitude,longitude,accuracy,capturedAt].every(Number.isFinite)||Math.abs(latitude)>90||Math.abs(longitude)>180||accuracy<0||accuracy>1000||clock()-capturedAt>30000||capturedAt-clock()>15000){onChange('Waiting for a fresh device position with usable accuracy.');return;}
+  if(![latitude,longitude,accuracy,capturedAt].every(Number.isFinite)||Math.abs(latitude)>90||Math.abs(longitude)>180||accuracy<0||accuracy>1000||clock()-capturedAt>30000||capturedAt-clock()>5000){onChange('Waiting for a fresh device position with usable accuracy.');return;}
   sending=true;lastSent=clock();
   try{
    const result=await api.point({expectedOwnerId:ownerId,sessionId:captured.sessionId,sequence:captured.sequence+1,latitude,longitude,accuracy,capturedAt:Math.trunc(capturedAt)});

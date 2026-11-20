@@ -35,6 +35,8 @@ try{
  assert.equal(session.state,'waiting');assert.equal(session.sessionId,start.requestId);checks++;
  assert.equal((await expect(path+'/start',collector,'POST',start)).data.sessionId,start.requestId);checks++;
  const point={expectedOwnerId:collector.id,sessionId:session.sessionId,sequence:1,latitude:5.6037,longitude:-0.187,accuracy:12,capturedAt:Date.now()};
+ await expect(path+'/point',collector,'POST',{...point,capturedAt:Date.now()+10000},400);
+ assert.equal((await expect(path,customer)).data.point,null);checks++;
  await expect(path+'/point',collector,'POST',point);
  await expect(path+'/point',collector,'POST',point); // lost-response exact retry
  const tracked=(await expect(path,customer)).data;assert.equal(tracked.state,'live');assert.equal(tracked.point.latitude,point.latitude);assert.equal(tracked.point.accuracy,12);checks++;
