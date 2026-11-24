@@ -3,10 +3,11 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 const temp=await mkdtemp(resolve(tmpdir(),'ecovibes-public-trends-'));let origin,exited=false,failure=null;const checks=[];
 // Test-only process: no .env, secrets, hosted data, AI, paid or public-provider requests.
-const child=spawn(process.execPath,['--import','./scripts/chale-test-provider.mjs','server/index.mjs'],{cwd:new URL('../',import.meta.url).pathname,env:{PATH:process.env.PATH,TMPDIR:process.env.TMPDIR||'/tmp',NODE_ENV:'test',AI_PROVIDER_KEY:'synthetic-chale-http-fixture',PORT:'0',ECOVIBES_DB_PATH:resolve(temp,'test.sqlite'),OPENAI_ENV_FILE:'',SUPABASE_URL:'',DATABASE_URL:'',ECOVIBES_PUBLIC_TRENDS_DISABLED:'true',CHALE_SMOKE_CAPTURE:resolve(temp,'unused.jsonl')},stdio:['ignore','ignore','ignore','ipc']});
+const child=spawn(process.execPath,['--import','./scripts/chale-test-provider.mjs','server/index.mjs'],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{PATH:process.env.PATH,TMPDIR:process.env.TMPDIR||'/tmp',NODE_ENV:'test',AI_PROVIDER_KEY:'synthetic-chale-http-fixture',PORT:'0',ECOVIBES_DB_PATH:resolve(temp,'test.sqlite'),OPENAI_ENV_FILE:'',SUPABASE_URL:'',DATABASE_URL:'',ECOVIBES_PUBLIC_TRENDS_DISABLED:'true',CHALE_SMOKE_CAPTURE:resolve(temp,'unused.jsonl')},stdio:['ignore','ignore','ignore','ipc']});
 child.on('message',m=>{if(m?.event==='chale-smoke-ready'&&m.port)origin=`http://127.0.0.1:${m.port}`;});child.on('exit',()=>{exited=true;});
 async function request(query=''){const r=await fetch(`${origin}/api/v1/discover/happening${query}`,{signal:AbortSignal.timeout(5000)});return {status:r.status,cache:r.headers.get('cache-control'),cookie:r.headers.get('set-cookie'),data:await r.json()};}
 try{

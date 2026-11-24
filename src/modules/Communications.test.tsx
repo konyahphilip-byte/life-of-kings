@@ -19,6 +19,27 @@ function setup() {
 }
 
 describe('calling setup remains honest',()=>{
+  it.each(['provider','network'])('keeps the active room and explains an unconfirmed %s close before an acknowledged retry',async failure=>{
+    let ended=false,endAttempts=0;
+    const session={id:'synthetic-live',mode:'live',title:'Synthetic room',visibility:'public',status:'active',created_at:'2026-11-21T00:00:00Z',creator_eco_id:'host',creator_name:'Synthetic host',role:'host'};
+    vi.stubGlobal('fetch',vi.fn(async(input:unknown,init?:RequestInit)=>{
+      const path=String(input);
+      if(path.endsWith('/end')){
+        endAttempts++;
+        if(endAttempts===1){if(failure==='network')throw Error('Synthetic network failure');return Response.json({error:{code:'media_end_unconfirmed',message:'The server could not complete the request.'}},{status:503});}
+        ended=true;return Response.json({id:session.id,status:'ended'});
+      }
+      const body=path.endsWith('/auth/me')?{user:{id:'host',display_name:'Synthetic host'},csrfToken:'synthetic-csrf'}:path.endsWith('/media/status')?{configured:true,privateCallsConfigured:false}:path.endsWith('/media/sessions')?{configured:true,sessions:ended?[]:[session]}:path.endsWith('/join')&&init?.method==='POST'?{token:'synthetic-no-device-token',serverUrl:'wss://synthetic.invalid',session:{id:session.id,mode:'live',title:session.title,role:'host',canPublish:true}}:{};
+      return Response.json(body);
+    }));
+    render(<Communications/>);fireEvent.click(await screen.findByRole('button',{name:'Join live'}));
+    fireEvent.click(await screen.findByRole('button',{name:'End room for everyone'}));
+    const alert=await screen.findByRole('alert');expect(alert.textContent).toContain('Closing this room was not confirmed');expect(alert.textContent).toContain('may still be active');
+    expect(screen.getByRole('heading',{name:'Synthetic room'})).toBeTruthy();expect(screen.getByRole('button',{name:'Leave'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'End room for everyone'}));
+    await screen.findByRole('heading',{name:'Calls & Live'});expect(endAttempts).toBe(2);expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('can verify a selected ID while private media is unavailable, without sending a call',async()=>{
     const writes=setup(); render(<Communications initialEcoId="@Philip_konyah"/>);
     const lookup=within(screen.getByRole('region',{name:'Find an EcoVibes person'}));
