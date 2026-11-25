@@ -1,6 +1,6 @@
 # Chale AI in EcoVibes
 
-Chale AI is part of the existing React app and Node API. Open **Ask Chale AI** from any screen to get help with the current page, find public listings, work through a problem, or draft an improvement. Replies use the server-controlled inference gateway through `POST /api/v1/ai/chat`. Free Core supports local/self-hosted open-weight inference; AWS Bedrock and the existing OpenAI workflow are optional paid adapters, disabled by default. See [the Free Core setup and actual evidence](ai/CHALE_FREE_CORE.md). Chale’s sole product scope is EcoVibes: its app workflows, public listings and community ideas. It is instructed to redirect unrelated requests to an EcoVibes task; the local model has limited real-inference checks, while a wider quality evaluation remains outstanding.
+Chale AI is part of the existing React app and Node API. Open **Ask Chale AI** from any screen to get help with the current page, find public listings, work through a problem, or draft an improvement. Replies use the server-controlled inference gateway through `POST /api/v1/ai/chat`. Free Core supports local/self-hosted open-weight inference; AWS Bedrock and the existing OpenAI workflow are optional paid adapters, disabled by default. See [the Free Core setup and actual evidence](ai/CHALE_FREE_CORE.md). Chale supports everyday questions and warm conversation as well as verified EcoVibes guidance. Current hosted configuration uses Cloudflare Free; general answer quality and private-tool acceptance remain bounded. See [the verified knowledge audit and staged implementation](ai/CHALE_KNOWLEDGE_ENGINE.md).
 
 ## Instructions and app knowledge
 
@@ -47,11 +47,11 @@ Inference defaults to disabled; existing keys alone do not enable paid calls. Us
 
 Keep remote credentials in provider/hosting secret settings, never `VITE_*`, source control or chat. Status reports configuration, not verified model health. Recent messages, safe context and selected public evidence reach the configured model host; private account records and identifiers do not. Provider retention controls still need review for remote deployments. Local numerical usage logs omit prompts and replies; no shared answer cache or training pipeline is enabled.
 
-Default daily request limits are 20 per signed-in account, 5 per guest socket address and 200 platform-wide, with a UTC date reset. Attempts count, including busy/failure/guide-only outcomes. One generation at a time is allowed per API process. These are request limits, not a monthly dollar guarantee. See the setup document for proxy and multi-instance constraints.
+Code defaults remain 20 per signed-in account, 5 per guest socket address and 200 platform-wide; the current hosted member and guest limits are 40 each, with a UTC date reset. Requests admitted to model processing count even when busy or failed. Whole greeting templates and recognized public-update requests return before the model allowance; request-rate protections still apply. Default model concurrency is one per API process, with an operator-controlled bound. These are request limits, not a monthly dollar guarantee. See the setup document for proxy and multi-instance constraints.
 
 ## Test the workflow
 
-Use Node.js 22.13 or newer. `npm run test:chale-local` explicitly checks real local inference against the private preview; ordinary unit/HTTP tests use simulated models. From the app root, run:
+Use the pinned Node.js26.12.1 runtime. `npm run test:chale-local` explicitly checks real local inference against the private preview; ordinary unit/HTTP tests use simulated models. From the app root, run:
 
 ```sh
 npm test -- server/chale-diagnostics.test.mjs server/chale-ai.test.mjs server/openai-env.test.mjs src/modules/assistant/Sidekick.test.tsx server/recommendations.test.mjs
@@ -71,7 +71,7 @@ Test the following in the running app, using a test account and test listings wh
 4. Sign in, use **Tune learning on Home**, enable personalization and choose an interest. Ask for listings, use **Save** or **Show less**, and confirm the Home learning feed refreshes. Pause learning and verify no feedback is recorded. Resume, reset learned activity and verify chosen interests remain.
 5. Ask “Help me report a collection problem” or “Help me improve a recycling idea.” Review the draft and use **Copy draft**. Confirm no support request, post or account change is created by chat.
 6. Disconnect after loading the app and repeat a guide or draft request. Confirm the **App guide** label and no new network requests. Reconnect and test a model failure; guidance should remain available.
-7. Ask “My video call will not start.” Check that diagnostics distinguish configuration from live operation and show only verified app steps. Ask an unrelated question and check the selected model redirects to EcoVibes without answering the unrelated task.
+7. Ask “My video call will not start.” Check that diagnostics distinguish configuration from live operation and show only verified app steps. Ask an everyday question and verify a relevant answer without forcing an unrelated EcoVibes task.
 8. Start a request and use **Stop answer**. Start another, then sign out or switch test accounts. Confirm pending requests are aborted and the old conversation and drafts do not appear for the new account. Press Escape to close Chale and return focus to its launcher.
 
 If a live request returns `usage_limit_exceeded`, `insufficient_quota`, `credit_balance_exhausted` or `rate_limit_exceeded`, the API returns `ai_usage_limited` and the app uses its guide fallback. Live verification encountered exhausted API credits (`credit_balance_exhausted`), and an earlier hosted-agent check encountered an organization usage limit; that is provider access evidence, not an app-test failure or proof that every deployment is limited. Check the API organization's billing and project limits, then repeat one bounded live request. Other provider failures return `ai_unavailable`; check the server's non-secret error classification and model configuration.

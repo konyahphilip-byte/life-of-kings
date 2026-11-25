@@ -24,6 +24,8 @@ import { createPublicUpdates } from "./chale-updates.mjs";
 import { chaleUpdateIntent } from "../shared/chale-updates.mjs";
 import { chaleConfig, chaleStatus } from "./chale-provider.mjs";
 import { createChaleWorkStatus } from "./chale-work-status.mjs";
+import { createKnowledgeService, KNOWLEDGE_SQLITE_SCHEMA, KNOWLEDGE_VERSION } from "./chale-knowledge.mjs";
+import {createKnowledgeSync,KNOWLEDGE_SYNC_SQLITE_SCHEMA,KNOWLEDGE_SYNC_VERSION} from "./chale-knowledge-sync.mjs";
 import { createPeopleFriends, FRIENDS_SQLITE_SCHEMA } from "./people-friends.mjs";
 import { createDirectMessages, DIRECT_MESSAGES_SQLITE_SCHEMA, DIRECT_MESSAGES_VERSION, DIRECT_MESSAGE_RECEIPTS_VERSION } from "./direct-messages.mjs";
 import { APP_GUIDE_VERSION, normalizeChaleContext } from "./chale-guide.mjs";
@@ -186,6 +188,8 @@ if (!postgresMode) {
     FROM recommendation_signals;
   `);
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
+  db.exec(KNOWLEDGE_SQLITE_SCHEMA);
+  db.exec(KNOWLEDGE_SYNC_SQLITE_SCHEMA);
   db.exec(FRIENDS_SQLITE_SCHEMA);
   db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
 }
@@ -1106,12 +1110,20 @@ const peopleFriends = createPeopleFriends({q,all,run,transaction,assert,now,noti
 const directMessagesAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',DIRECT_MESSAGES_VERSION));
 const receiptsAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?",DIRECT_MESSAGE_RECEIPTS_VERSION));
 const directMessages=createDirectMessages({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:directMessagesAvailable,receiptsAvailable});
+const knowledgeEnabled=process.env.CHALE_KNOWLEDGE_ENABLED==='true';
+const knowledgeAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',KNOWLEDGE_VERSION));
+const knowledge=createKnowledgeService({q,all,run,transaction,assert,now,enabled:knowledgeEnabled,available:knowledgeAvailable,postgresMode,requireAdmin:ctx=>requireStaff(ctx,'admin')});
+const knowledgeSyncAvailable=knowledgeAvailable&&(!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',KNOWLEDGE_SYNC_VERSION)));
+const knowledgeSync=createKnowledgeSync({q,all,run,transaction,assert,now,knowledge,enabled:knowledgeEnabled&&process.env.CHALE_KNOWLEDGE_SYNC_ENABLED==='true',available:knowledgeSyncAvailable,postgresMode,requireAdmin:ctx=>requireStaff(ctx,'admin')});
+function scheduleKnowledgeCheck(){const timer=setTimeout(async()=>{try{await knowledgeSync.tick();}catch{console.error('CHALE_KNOWLEDGE_SYNC_FAILED');}finally{scheduleKnowledgeCheck();}},60000);timer.unref();}
+scheduleKnowledgeCheck();
 const chalePublicUpdates = createPublicUpdates();
 const publicTrends = createPublicTrends();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
 async function route(ctx, req, res, method, path, body, query) {
+  if(path==='/ai/knowledge'||path.startsWith('/ai/knowledge/')){await rateLimit('knowledge:'+(ctx.user?.id||req.socket.remoteAddress),30,60_000);if(path==='/ai/knowledge/sync'||path.startsWith('/ai/knowledge/sync/'))return knowledgeSync.route(ctx,method,path,body,query);return knowledge.route(ctx,method,path,body,query);}
   if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {
     assert([...query.keys()].length === 0, 400, 'invalid_query', 'This view accepts no account or organization selectors.');
