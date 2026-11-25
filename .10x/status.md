@@ -1,5 +1,5 @@
-# M01 engineering checkpoint
+# M01 checkpoint status at candidate preparation
 
-25 November 2026. Joined an existing assignment after local implementation. Discovery and approved architecture have been captured retrospectively. Local source and browser evidence exist. Final verification and draft-CI handoff are in progress. No independent reviewer or production approval is claimed.
+25 November2026. Approved architecture captured; local shared contracts and separate design preview implemented. Final focused49 tests pass. Earlier full684-test run, TypeScript/build/dependency security passed before final refinements. Exact final full and browser gates are awaiting authorized remote CI. QA/security role-based self-review is recorded; no independent reviewer or production approval is claimed.
 
-684 tests passed before review refinements. Three new review failures were retained: two malformed role errors and omitted description/currency. Corrections require a fresh final gate. Current disk capacity constrains repeated full local browser suites; do not weaken the existing disk guard.
+Source modules are unregistered. No migration, merge, activation, deployment, real product publication, financial action or model hosting occurred. Visual concept remains awaiting founder review. Native shop identity/persistence, shared endpoint visibility, Connect enquiry integration and hosted acceptance remain unfinished.
