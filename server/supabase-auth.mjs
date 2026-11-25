@@ -1,4 +1,5 @@
 import { createContextClient, verifyAuth } from '@supabase/server/core';
+import { extractVerifiedAuthContext } from './auth-revocations.mjs';
 
 /** Verify a Supabase access token and fetch its authoritative user record. */
 export async function authenticateSupabaseRequest(incomingRequest) {
@@ -19,9 +20,7 @@ export async function authenticateSupabaseRequest(incomingRequest) {
   // verifyAuth has already validated the signature and issuer. Read only the
   // signed AAL claim so staff sessions can require a verified second factor.
   let assuranceLevel = 'aal1';
-  const accessToken = typeof authorization === 'string'
-    ? authorization.replace(/^Bearer\s+/i, '')
-    : '';
+  const accessToken = auth.token;
   try {
     const payload = accessToken.split('.')[1];
     const claims = payload ? JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) : null;
@@ -34,14 +33,15 @@ export async function authenticateSupabaseRequest(incomingRequest) {
     const supabase = createContextClient({ auth: { token: auth.token, keyName: auth.keyName } });
     const { data, error: userError } = await supabase.auth.getUser(auth.token);
     if (userError) return { user: null, error: userError };
-    return { user: data.user, assuranceLevel, error: null };
+    const authContext=extractVerifiedAuthContext(auth.token,data.user?.id);
+    return { user: data.user, assuranceLevel, authContext, error: null };
   } catch (clientError) {
     return {
       user: null,
       error: {
-        status: 503,
-        code: 'supabase_client_unavailable',
-        message: clientError instanceof Error ? clientError.message : 'Supabase client unavailable.',
+        status: clientError?.status===401?401:503,
+        code: clientError?.status===401?'invalid_auth_context':'supabase_client_unavailable',
+        message: 'Sign-in verification could not be completed. Sign in again.',
       },
     };
   }

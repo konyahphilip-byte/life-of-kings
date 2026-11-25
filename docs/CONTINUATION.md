@@ -1,3 +1,35 @@
+## October 28 - Phase 0 draft CI and browser-cleanup investigation
+
+**LOCALLY BUILT** on codex/account-recovery-ci-20261028, based c69cce9. Only release-checks.yml adds required disposable PostgreSQL CI and pins Ubuntu24.04/installed PG16; product/server/migration/dependency source unchanged. Fresh local PG17.10 passes67 checks. Aggregate independent review permits explicitly blocked draft publication only, not merge/deploy. Exact remote result remains in the PR and work/account-ci-20261028. [Snapshot](releases/2026-10-28-account-ci-draft.md).
+
+Actual installed SDK synthetic delayed local sign-out erased both replacement B and new-A sessions. Existing EcoVibes helper preserved B/zero removal; unsafe mutable sign-out was not added. Browser cleanup remains UNVERIFIED; work/account-browser-removal-research-20261027. No real provider/account/storage/email mutation. Initial missing PG_BINDIR and CLI401 retained; connected GitHub app is authorised. SMTP/domain/private credential workflow, real Auth/inboxes, transaction-time authorization and guard-first rollout/rollback remain gates.145 primary source/assets preserved; no source deployment or paid/new-service activity.
+
+## October 27 - Phase 0 audit and unconfirmed-outcome repair
+
+**LOCALLY BUILT** on codex/account-logout-outcome-20261027, based d415f6c3. Resent 522-line brief matches canonical directive. Fresh read-only Render/Supabase audit: live still 26c1b555; SMTP off/default-template editing locked; confirmation on / OTP 3600; root+exact recovery redirects retained; leaked-password warning/plan restriction remains. No settings/credentials/private Users/inboxes changed/read. Main Bag false-success, fixed Chale launcher and local-only publishing/ranking boundaries were audited and remain queued.
+
+Recovery now blocks redispatch after any unconfirmed sign-out, disposes authority, preserves honest password-save/unknown-session states and offers Back to sign in. Reviewed late-remount reactivity RED fixed with identity-bound outcome revision.46focused/4files,483full/36files/105.34s, TypeScript/build 1672, native synthetic probe and independent source/evidence review pass. Six source hashes/145 primary source-assets preserved. [Acceptance report](releases/2026-10-27-account-outcome-local.md); work/account-logout-outcome-20261027. Lost-response/remount REDs and stopped with exit 143 superseded run retained. Historical QA-001 timeouts remain undiagnosed despite current green full run.
+
+No publication/CI/migration/deployment. Phase 0 remains BLOCKED/UNVERIFIED: actual browser removal, provider/Auth/policy/real accounts/inboxes, SMTP/domain/credential workflow, exact CI and guard-preserving rollout/rollback. Stopping repeated unknown requests does not confirm the original provider outcome. No later phase or paid/DNS/financial/game work.
+
+## October27 - recovery sign-out overlap guarded locally
+
+**LOCALLY BUILT** on codex/account-logout-concurrency-20261027, based155a2dff. Native captured-operation probe and two RED tests reproduced2 provider requests from overlapping handlers; shared pending promise now yields1 request/outcome, acknowledged later calls remain no-ops.30focused/3files, TypeScript/build1672, final native synthetic probe and independent two-file review pass. [Receipt](releases/2026-10-27-account-logout-concurrency-local.md), work/account-logout-concurrency-20261027.
+
+Sequential lost-response retries remain unresolved; overlap deduplication is not global provider idempotency. Prior full470/471/message5s timeout remains historical/open, not rerun or diagnosed. Browser removal/real Auth/SMTP/inboxes/exact CI/guard-preserving rollout/rollback gates stay open. No publication/deployment/schema/provider change;145 protected primary source/assets preserved.
+
+## October27 - recovery completion feedback repaired locally
+
+**LOCALLY BUILT** on codex/account-browser-confirmation-20261027, based c3118d89. Actual installed SDK/synthetic storage reproduced a rejected refresh returning no session while retaining the original session; UI RED confirmed premature completion. The new independent public session read refuses false success and preserves B/new-A storage; it does not implement storage removal. Reviewer Minor malformed-ID finding fixed, no remaining bounded source findings.
+
+Final full471 tests:470passed/1existing DirectMessages5s timeout,36files,299.10s; all25 recovery/helper/UI checks passed. The message test subsequently passed alone, but QA-001/full regression gate remains open. Earlier focused24/1 and23/2 confirmation/sign-in timeouts and type-only Buffer error are preserved; no deadline/assertion/worker/isolation weakening or cause inference. TypeScript/build1672 pass. [Receipt](releases/2026-10-27-account-browser-local.md), work/account-browser-20261027. No CI/publish/migration/deployment; PR23 remains live. Browser removal/provider retry/real Auth/SMTP/inbox and rollout/rollback gates remain open.145 protected primary source/assets preserved.
+
+## October27 - local server recovery-revocation barrier
+
+**LOCALLY BUILT**, not deployed: app-owned primary-auth/session barriers, transaction-serialized admission and cleanup, post-commit cookies, immutable recovery operation retries, linked-password race guard and deny-only admission control. Independent review's delayed-cookie race was reproduced and fixed; bearer cleanup sends no cookie header. Full463/35, final focused32/4, TypeScript/build1671, HTTP30+15, disposable PostgreSQL17.10/67 and bounded dependency security checks passed. Full run began before final router-only fix/additional retry assertion; final HTTP/focused/build cover those changes. No exact candidate CI/hosted acceptance claim.
+
+[Receipt](releases/2026-10-27-account-revocation-local.md) and work/account-revocation-20261027 retain exact evidence and failures. Proposed migration is unapplied; PR23/main26c1b555 remains hosted. Browser storage clearing, provider-global-logout response-loss/retry, actual provider primary proof, guard-preserving rollback/CI and real Auth/inbox/mobile acceptance remain gates. SMTP/domain/credential workflow remains BLOCKED.145 primary source/assets preserved; no paid resources, DNS, private Auth access or dirty-root publication.
+
 # EcoVibes continuation — backend release checkpoint
 
 ## October 15 — atomic role activation verified locally

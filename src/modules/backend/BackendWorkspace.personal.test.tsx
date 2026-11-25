@@ -3,7 +3,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import BackendWorkspace from './BackendWorkspace';
 
 const auth=vi.hoisted(()=>({getSession:vi.fn(),signUp:vi.fn()}));
-vi.mock('../../lib/supabase',()=>({supabase:{auth}}));
+vi.mock('../../lib/supabase',async original=>({...await original<typeof import('../../lib/supabase')>(),supabase:{auth}}));
 let member:{id:string;eco_id:string;display_name:string;roles:string[]}|null;
 beforeEach(()=>{
  sessionStorage.clear();vi.clearAllMocks();member={id:'synthetic-personal',eco_id:'personal.member',display_name:'Personal Member',roles:['customer']};

@@ -25,8 +25,8 @@ describe('EcoVibes ID app-shell integration', () => {
   let signedIn = true;
 
   beforeEach(() => {
-    window.history.replaceState(null,'','/');
     signedIn = true;
+    window.history.replaceState({}, '', '/');
     localStorage.clear();
     sessionStorage.clear();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -62,6 +62,12 @@ describe('EcoVibes ID app-shell integration', () => {
     expect(personalization.getByRole('button',{name:'Open Chale AI'})).toBeTruthy();
     fireEvent.change(personalization.getByLabelText('Chale shortcut'),{target:{value:'hidden'}});
     expect(JSON.parse(localStorage.getItem('ecovibes:chale-ui:v1')!).launcher).toBe('hidden');
+  });
+
+  it.each(['/?code=synthetic-code', '/#error=access_denied&error_code=otp_expired'])('opens account help for an email callback (%s)', async href => {
+    window.history.replaceState({}, '', href);
+    render(<App />);
+    expect(await screen.findByText('Account workspace test surface')).toBeTruthy();
   });
 
   it('shows the authenticated EcoVibes ID in the greeting, sidebar and profile', async () => {
