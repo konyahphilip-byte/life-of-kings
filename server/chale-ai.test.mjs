@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { CHALE_INSTRUCTIONS, CHALE_TOOLS, generateChaleAIReply, isChaleAIConfigured } from './chale-ai.mjs';
 import { APP_GUIDE_VERSION, CHALE_DESTINATIONS, CHALE_GUIDE, normalizeChaleContext, searchAppGuide } from './chale-guide.mjs';
@@ -38,6 +38,7 @@ describe('Chale app workflow', () => {
     requests = [];
   });
   afterEach(() => {
+    vi.useRealTimers();
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries(environment)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -210,6 +211,37 @@ describe('Chale app workflow', () => {
     assert.equal(requests[2].body.tool_choice, 'none');
   });
 
+  it('cancels a catalog lookup even when its reader ignores cancellation', async () => {
+    const controller = new AbortController(); let entered = false;
+    mockResponses({ output: [call('search_ecovibes_catalog', { query: 'tote' })] }, finalResponse());
+    const pending = generateChaleAIReply(conversation, () => { entered = true; return new Promise(() => {}); }, {}, { signal: controller.signal });
+    const rejected = assert.rejects(pending, { name: 'AbortError' });
+    while (!entered) await new Promise(resolve => setTimeout(resolve, 0));
+    controller.abort(); await rejected;
+    assert.equal(requests.length, 1);
+  });
+
+  it('bounds a stalled public catalog lookup and does not invent its result', async () => {
+    vi.useFakeTimers();
+    mockResponses({ output: [call('search_ecovibes_catalog', { query: 'tote' })] }, finalResponse('The catalog could not be checked.'));
+    const pending = generateChaleAIReply(conversation, () => new Promise(() => {}));
+    await vi.advanceTimersByTimeAsync(5001);
+    const reply = await pending;
+    assert.deepEqual(reply.items, []);
+    const result = JSON.parse(requests[1].body.input.find(item => item.type === 'function_call_output').output);
+    assert.equal(result.error, 'tool_timeout');
+  });
+
+  it('ignores a late reader result and releases the slot for another answer', async () => {
+    vi.useFakeTimers();let finish;const audit=[];
+    mockResponses({ output: [call('search_ecovibes_catalog', { query: 'tote' })] }, finalResponse('The catalog could not be checked.'),finalResponse('Another question works.'));
+    const pending=generateChaleAIReply(conversation,()=>new Promise(resolve=>{finish=resolve;}),{}, {onToolAudit:event=>audit.push(event)});
+    await vi.advanceTimersByTimeAsync(5001);const reply=await pending;
+    finish([publicItem]);await Promise.resolve();await Promise.resolve();
+    assert.deepEqual(reply.items,[]);assert.equal(audit.length,1);assert.equal(audit[0].outcome,'timeout');
+    const next=await generateChaleAIReply(conversation,async()=>[]);assert.equal(next.text,'Another question works.');
+  });
+
   it('returns canonical diagnostics without exposing raw capabilities or accepting identity claims', async () => {
     mockResponses({ output: [call('diagnose_ecovibes_issue', { symptom: 'Video call will not start' })] }, finalResponse('Review the call requirements.'));
     const reply = await generateChaleAIReply(conversation, async () => [], { currentPage: 'Calls & Live', signedIn: false }, {
@@ -346,6 +378,11 @@ describe('Chale app workflow', () => {
 });
 
 describe('canonical app guide', () => {
+  it('explains deployed accepted-friend text and keeps private calling fail closed',()=>{
+    const messages=CHALE_GUIDE.entries.find(entry=>entry.id==='messages'),calls=CHALE_GUIDE.entries.find(entry=>entry.id==='calls-live');
+    assert.equal(messages.availability,'implemented');assert.match(messages.summary,/accepted friends/);assert.match(messages.summary,/not mean read/);assert.match(messages.steps.join(' '),/Send message/);assert.match(messages.steps.join(' '),/Find friend/);
+    assert.match(calls.summary,/not enabled by adding credentials/);assert.match(calls.summary,/consent/);assert.match(calls.steps.join(' '),/No private call is sent/);
+  });
   it('contains real allowlisted routes with explicit availability and offline-readable steps', () => {
     const expected = ['Home', 'Marketplace', 'Quick&Handi', 'Waste', 'Settings', 'EcoVibes ID', 'Wallet', 'Money & Trust', 'Rewards', 'Opportunities', 'Communities', 'Gaming', 'Calls & Live', 'Messages', 'Profile', 'Reels', 'Explore'];
     assert.deepEqual([...CHALE_DESTINATIONS].sort(), expected.sort());
@@ -358,8 +395,8 @@ describe('canonical app guide', () => {
     assert.equal(CHALE_GUIDE.entries.find((entry) => entry.id === 'wallet').availability, 'preview');
     assert.equal(CHALE_GUIDE.entries.find((entry) => entry.id === 'calls-live').availability, 'provider_required');
     assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'support').steps.join(' '), /Trust & inbox/);
-    assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'messages').summary, /cannot send or receive/);
-    assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'messages').summary, /sending disabled/);
+    assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'messages').summary, /Private text between accepted friends/);
+    assert.match(CHALE_GUIDE.entries.find((entry) => entry.id === 'messages').summary, /Background push, voice notes and attachments are not connected/);
   });
 
   it('finds useful module guides and leaves unmatched features without invented instructions', () => {

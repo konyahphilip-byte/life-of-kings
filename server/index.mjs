@@ -1278,6 +1278,7 @@ async function route(ctx, req, res, method, path, body, query) {
     try {
       const reply = await generateChaleAIReply(messages, (text) => findPublicCatalogListings(text, ctx.user?.id || null), appContext, {
         signal: controller.signal,
+        onToolAudit: ({toolId,outcome,durationMs,registryVersion}) => console.info(JSON.stringify({level:'info',event:'chale_tool_execution',toolId,outcome,durationMs,registryVersion,time:now()})),
         capabilities: {
           aiConfigured: isChaleAIConfigured(),
           liveKitConfigured,

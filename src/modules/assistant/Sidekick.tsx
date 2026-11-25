@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUp, Bookmark, Check, ChevronRight, Copy, LoaderCircle, Sparkles, ThumbsDown, X } from 'lucide-react';
 import type { AssistantDestination } from './assistant';
@@ -34,6 +34,7 @@ type Props = {
   onNavigate: (page: AssistantDestination) => void;
   page: AssistantDestination; userId: string | null; csrfToken: string; dataMode: DataMode; online: boolean;
   launcherHost?: HTMLElement | null;
+  launcherHostRef?: RefObject<HTMLElement | null>;
 };
 
 const welcome: ChatEntry = {
@@ -164,7 +165,12 @@ async function searchLiveListings(query: string, dataMode: DataMode, signal: Abo
   return [...items.values()].slice(0, dataMode === 'extreme' ? 3 : 6);
 }
 
-export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode, online, launcherHost }: Props) {
+export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode, online, launcherHost, launcherHostRef }: Props) {
+  const [attachedLauncherHost,setAttachedLauncherHost] = useState<HTMLElement|null>(null);
+  // Resolve the committed DOM ref locally. App does not need to rerender all
+  // page content solely to attach this presentation-only portal.
+  useLayoutEffect(()=>{if(launcherHostRef)setAttachedLauncherHost(launcherHostRef.current);},[launcherHostRef]);
+  const portalHost=launcherHostRef?attachedLauncherHost:launcherHost;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [entries, setEntries] = useState<ChatEntry[]>([welcome]);
@@ -459,7 +465,7 @@ export default function Sidekick({ onNavigate, page, userId, csrfToken, dataMode
       <span className="sidekick-orb" aria-hidden="true"><Sparkles size={19}/></span><span>Ask Chale AI</span><i>AI</i>
     </button>;
   return <>
-    {launcherHost ? createPortal(launcher, launcherHost) : launcherHost === undefined ? launcher : null}
+    {portalHost ? createPortal(launcher, portalHost) : portalHost === undefined ? launcher : null}
     {open && <section className={`sidekick-panel chale-panel${viewport.keyboard ? ' chale-keyboard' : ''}`} data-edge={display.edge} style={{ '--chale-viewport-height': `${viewport.height}px`, '--chale-keyboard-inset': `${viewport.bottom}px` } as CSSProperties} id="ecovibes-sidekick" role="dialog" aria-label="Chale AI">
       <header className="sidekick-head">
         <span className="sidekick-avatar"><Sparkles size={19}/></span>

@@ -1,4 +1,4 @@
-import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import BackendWorkspace from './BackendWorkspace';
 
@@ -13,16 +13,16 @@ beforeEach(()=>{
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 describe('personal accounts and optional business tools',()=>{
  it('lets a personal member go directly to messages without activating a business role',async()=>{
-  const navigate=vi.fn();window.addEventListener('ecovibes:navigate',navigate);render(<BackendWorkspace/>);expect(await screen.findByText('Personal member')).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('Choose a starting point (optional)'),{target:{value:'personal'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));expect((navigate.mock.calls[0][0] as CustomEvent).detail).toBe('Messages');
+  const navigate=vi.fn();window.addEventListener('ecovibes:navigate',navigate);await act(async()=>{render(<BackendWorkspace/>);});expect(await screen.findByText('Personal member')).toBeTruthy();
+  const choices=within(screen.getByRole('region',{name:'Personal use and optional activities'}));fireEvent.change(choices.getByLabelText('Choose a starting point (optional)'),{target:{value:'personal'}});fireEvent.click(choices.getByRole('button',{name:'Continue'}));expect((navigate.mock.calls[0][0] as CustomEvent).detail).toBe('Messages');
   expect(vi.mocked(fetch).mock.calls.some(([path,options])=>String(path).endsWith('/identity/roles')||options?.method==='POST')).toBe(false);window.removeEventListener('ecovibes:navigate',navigate);
  });
  it('offers None of the above and does not remove existing business permissions',async()=>{
-  member!.roles=['customer','provider','seller'];const navigate=vi.fn();window.addEventListener('ecovibes:navigate',navigate);render(<BackendWorkspace/>);await screen.findByText('Personal member');
+  member!.roles=['customer','provider','seller'];const navigate=vi.fn();window.addEventListener('ecovibes:navigate',navigate);await act(async()=>{render(<BackendWorkspace/>);});await screen.findByText('Personal member');
   const select=screen.getByLabelText('Choose a starting point (optional)');expect(within(select).getByRole('option',{name:'None of the above — personal use'})).toBeTruthy();fireEvent.change(select,{target:{value:'none'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));expect((navigate.mock.calls[0][0] as CustomEvent).detail).toBe('Home');expect(screen.getByText('provider')).toBeTruthy();expect(screen.getByText('seller')).toBeTruthy();expect(vi.mocked(fetch).mock.calls.some(([,options])=>options?.method&&options.method!=='GET')).toBe(false);window.removeEventListener('ecovibes:navigate',navigate);
  });
  it.each([['seller','Marketplace'],['provider','Quick&Handi']])('opens the %s area without activating its business role',async(choice,destination)=>{
-  const navigate=vi.fn();window.addEventListener('ecovibes:navigate',navigate);render(<BackendWorkspace/>);await screen.findByText('Personal member');
+  const navigate=vi.fn();window.addEventListener('ecovibes:navigate',navigate);await act(async()=>{render(<BackendWorkspace/>);});await screen.findByText('Personal member');
   fireEvent.change(screen.getByLabelText('Choose a starting point (optional)'),{target:{value:choice}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));expect((navigate.mock.calls[0][0] as CustomEvent).detail).toBe(destination);
   expect(vi.mocked(fetch).mock.calls.some(([,options])=>options?.method&&options.method!=='GET')).toBe(false);window.removeEventListener('ecovibes:navigate',navigate);
  });
