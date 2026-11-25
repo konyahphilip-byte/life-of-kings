@@ -19,9 +19,44 @@ jobs:
       - run: npm run build
       - run: npx --no-install playwright install --with-deps chromium
       - run: node scripts/test-navigation-browser.mjs
+      - run: node scripts/test-bag-safety-browser.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: navigation-browser
-          path: artifacts/navigation/
+          path: |
+            artifacts/navigation/
+            work/assignment-00a/browser/
+          retention-days: 7
+  bag-upgrade-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26.12.1'
+          cache: npm
+      - run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - run: npx --no-install playwright install --with-deps chromium
+      - run: node scripts/test-offline-shell.mjs
+      - run: node scripts/test-bag-upgrade-browser.mjs
+        env:
+          BAG_UPGRADE_OUTPUT: artifacts/bag-upgrade
+      - run: npx --no-install vite build --outDir work/bag-fallback-dist
+        env:
+          VITE_BAG_UNAVAILABLE: '1'
+      - run: node scripts/test-bag-recovery-browser.mjs
+        env:
+          BAG_RECOVERY_OUTPUT: artifacts/bag-recovery
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bag-upgrade-recovery
+          path: |
+            artifacts/bag-upgrade/
+            artifacts/bag-recovery/
           retention-days: 7
