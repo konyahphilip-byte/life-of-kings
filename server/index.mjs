@@ -2070,7 +2070,13 @@ async function route(ctx, req, res, method, path, body, query) {
     const media = await q("SELECT * FROM media_sessions WHERE id=? AND status='active'", mediaMatch[1]);
     assert(media, 404, "media_session_not_found", "This room is no longer active.");
     assert(media.creator_id === ctx.user.id, 403, "media_host_required", "Only the room host can end this room.");
-    await liveKit?.room.deleteRoom(media.room_name).catch(() => undefined);
+    requireLiveKit();
+    try { await liveKit.room.deleteRoom(media.room_name); }
+    catch {
+      // No provider acknowledgement means no confirmed remote shutdown. Keep
+      // the active record retryable and do not write an ended-success audit.
+      assert(false, 503, "media_end_unconfirmed", "The media service did not confirm closing this room. It may still be active. Try ending it again.");
+    }
     await run("UPDATE media_sessions SET status='ended',ended_at=? WHERE id=?", now(), media.id);
     await event(ctx.user.id, "media_session", media.id, "MEDIA_SESSION_ENDED");
     return { id: media.id, status: "ended" };
