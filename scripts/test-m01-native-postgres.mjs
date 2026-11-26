@@ -16,15 +16,16 @@ function command(name,args){const r=spawnSync(join(bin,name),args,{encoding:'utf
 async function connect(user='postgres'){const c=new pg.Client({host:tmp,port,user,database:'postgres',ssl:false,connectionTimeoutMillis:3000,query_timeout:7000});c.on('error',()=>{});await c.connect();clients.push(c);return c;}
 function check(ok,label,detail){results.push({passed:Boolean(ok),label,detail});}
 const A=randomUUID(),B=randomUUID(),C=randomUUID(),R=randomUUID();
-const actor=id=>({user:{id,status:'active',roles:id===R?['trust_staff']:id===A?['seller']:['customer']},sessionHash:createHash('sha256').update(id).digest('hex'),csrfToken:id,authAssurance:'aal2'});
+let founderMode=false;
+const actor=id=>({user:{id,status:'active',roles:id===R?['trust_staff']:id===A?(founderMode?['seller','admin']:['seller']):['customer']},sessionHash:createHash('sha256').update(id).digest('hex'),csrfToken:id,authAssurance:'aal2'});
 const main=await readFile('server/index.mjs','utf8'),migration=await readFile('supabase/migrations/20261126090000_native_studio.sql','utf8');
-const hashes={migration:createHash('sha256').update(migration).digest('hex'),service:createHash('sha256').update(await readFile('server/commerce/native-studio.mjs')).digest('hex')};
+const hashes={migration:createHash('sha256').update(migration).digest('hex'),service:createHash('sha256').update(await readFile('server/commerce/native-studio.mjs')).digest('hex'),reviewMigration:createHash('sha256').update(await readFile('supabase/migrations/20261126100000_publication_review.sql')).digest('hex')};
 function query(client,sql,params=[]){let n=0;return client.query(sql.replace(/\?/g,()=>'$'+(++n)),params);}
-function service(client){return createNativeStudio({q:async(s,...p)=>(await query(client,s,p)).rows[0],all:async(s,...p)=>(await query(client,s,p)).rows,
+function service(client,founderReviewScope=null){return createNativeStudio({q:async(s,...p)=>(await query(client,s,p)).rows[0],all:async(s,...p)=>(await query(client,s,p)).rows,
  run:async(s,...p)=>({changes:(await query(client,s,p)).rowCount}),
  transaction:async work=>{await client.query('BEGIN');try{const r=await work();await client.query('COMMIT');return r;}catch(e){await client.query('ROLLBACK');throw e;}},
  assert:(ok,status,code,message)=>{if(!ok)throw Object.assign(Error(message),{status,code});},now:()=>new Date().toISOString(),id:randomUUID,rateLimit:async()=>{},event:async()=>{},notify:async()=>{},
- postgresMode:true,enabled:true,available:true,requireStaff:ctx=>{if(!ctx.user.roles.includes('trust_staff')||ctx.authAssurance!=='aal2')throw Object.assign(Error('Staff required'),{status:403});},
+ postgresMode:true,enabled:true,available:true,founderReviewScope,requireStaff:ctx=>{if(!ctx.user.roles.some(r=>['trust_staff','admin'].includes(r))||ctx.authAssurance!=='aal2')throw Object.assign(Error('Staff required'),{status:403});},
  normalizePhoto:()=>{throw Error('Photo decoding is tested through the real HTTP path, not this SQL fixture.');},storeMediaAsset:async()=>{},loadMediaAsset:async()=>Buffer.alloc(0),removeMediaAsset:async()=>{}});}
 async function route(s,id,method,path,body={}){return s.route(actor(id),method,path,body,new URLSearchParams());}
 async function denied(work,label){let error;try{await work();}catch(e){error=e;}check(error?.status===404,label,error?.message);}
@@ -44,6 +45,7 @@ try{
  await admin.query(base);
  await admin.query("CREATE TABLE ecovibes_schema_version(version text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now());CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;CREATE ROLE ecovibes_api_runtime LOGIN;");
  await admin.query(migration);
+ await admin.query(await readFile('supabase/migrations/20261126100000_publication_review.sql','utf8'));
  await admin.query('GRANT SELECT,INSERT,UPDATE ON users,roles,sessions,products,media_assets,staff_access,people_friendships TO ecovibes_api_runtime');
  for(const who of [A,B,C,R]){
   await admin.query("INSERT INTO users(id,eco_id,display_name,password_salt,password_hash,status,created_at) VALUES($1,$2,'Synthetic SQL fixture','fixture','fixture','active',now())",[who,'fixture.'+who.slice(0,8)]);
@@ -62,11 +64,27 @@ try{
  const fields={title:'Native PostgreSQL product',description:'Synthetic SQL concurrency fixture',categoryId:'fashion',priceMinor:1200,stock:5,availability:'in_stock',variants:[],gallery:[{assetId:photo,alt:'Synthetic SQL fixture'}],collection:'Test collection'};
  const product=(await route(s,A,'POST','/studio/shops/'+shop.id+'/products',{requestId:randomUUID(),...fields})).product;
  await denied(()=>route(s,C,'GET','/studio/products/'+product.id),'outsider cannot read a native draft on PostgreSQL');
- await route(s,R,'POST','/studio/reviews/shops/'+shop.id,{decision:'approved'});
- await route(s,R,'POST','/studio/reviews/products/'+product.id,{revision:1,decision:'approved'});
+ const queue=await route(s,R,'GET','/studio/reviews');
+ for(const [kind,target] of [['shops',shop.id],['products',product.id]])await route(s,R,'POST','/studio/reviews/'+kind+'/'+target,{requestId:randomUUID(),revision:1,contentHash:queue[kind].find(x=>x.id===target).reviewContentHash,decision:'approved',reason:'Reviewed synthetic PostgreSQL content and policy.',selfReviewConfirmed:false});
+ const immutable=(await admin.query("SELECT has_table_privilege('anon','m01_review_receipts','SELECT') anon_read,has_table_privilege('authenticated','m01_review_receipts','SELECT') member_read,has_table_privilege('service_role','m01_review_receipts','SELECT') service_read,has_table_privilege('ecovibes_api_runtime','m01_review_receipts','UPDATE') can_update,has_table_privilege('ecovibes_api_runtime','m01_review_receipts','DELETE') can_delete")).rows[0];
+ check(Object.values(immutable).every(x=>x===false),'review receipts deny direct browser access and runtime rewriting',immutable);
+ const receipts=(await admin.query('SELECT * FROM m01_review_receipts')).rows;
+ check(receipts.length===2&&receipts.every(x=>x.reviewer_id===R&&x.capacity==='moderator_review'&&x.reason.length>=5),'review decisions persist creator/reviewer/version/snapshot/reason');
+
  await route(s,A,'POST','/studio/products/'+product.id+'/publish',{revision:1,confirmPublication:true,confirmSupply:true});
  const shopRead=await route(s,B,'GET','/public/shops/isolated-postgres-shop'),discover=await route(s,B,'GET','/public/catalogue');
  check(shopRead.products[0].id===product.id&&discover.products[0].id===product.id,'real PostgreSQL shop/Discover share one product authority');
+ for(const statement of ['UPDATE m01_review_receipts SET reason=reason','DELETE FROM m01_review_receipts']){
+  let blocked;try{await runtime.query(statement);}catch(e){blocked=e;}
+  check(blocked?.code==='42501','actual runtime receipt mutation denied: '+statement,{code:blocked?.code});
+ }
+ await admin.query("INSERT INTO staff_access VALUES($1,'admin',now())",[A]);founderMode=true;
+ const fs=service(runtime,{accountId:A,shopId:shop.id});
+ const edited=(await route(fs,A,'PATCH','/studio/products/'+product.id,{revision:1,...fields,description:'Exact PostgreSQL founder-reviewed version'})).product;
+ const fq=await route(fs,A,'GET','/studio/reviews'),fp=fq.products.find(x=>x.id===product.id);
+ const fr=(await route(fs,A,'POST','/studio/reviews/products/'+product.id,{requestId:randomUUID(),revision:edited.revision,contentHash:fp.reviewContentHash,decision:'approved',reason:'Explicit synthetic founder review of this exact version.',selfReviewConfirmed:true})).receipt;
+ check(fr.capacity==='founder_self_review'&&fr.creator_id===A&&fr.reviewer_id===A,'PostgreSQL persists scoped founder self-review separately from moderator review');
+ await route(fs,A,'POST','/studio/products/'+product.id+'/publish',{revision:edited.revision,confirmPublication:true,confirmSupply:true});
  const enq=(await route(s,B,'POST','/connect/enquiries',{listingId:product.id,clientId:randomUUID(),body:'Synthetic first enquiry'})).enquiry;
  const low=[A,B].sort()[0],high=[A,B].sort()[1];
  const blocker=await connect();await blocker.query('BEGIN');

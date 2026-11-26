@@ -1,0 +1,1 @@
+Draft dependency: PR59 → PR60/native8ef89f7 → publication-review. Keep all unmerged/default-off. Exact-head remote unit/type/build/security/API/fallback/PostgreSQL/browser gates required. Guard-preserving withdrawal retains additive records; no production migration or activation authorized.\n

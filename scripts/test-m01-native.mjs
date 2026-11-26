@@ -58,6 +58,11 @@ try {
   // Refresh the current server-side role projection through the real sign-in route.
   const reviewLogin = await request(null, 'POST', '/auth/login', { ecoId: 'm01.reviewer', password: 'Local-proof-only-Not-a-production-password!42' });
   Object.assign(reviewer, reviewLogin.data, { cookie: reviewLogin.cookie });
+  async function approve(kind,target,revision=1){
+   const queue=(await request(reviewer,'GET','/studio/reviews')).data;
+   const value=queue[kind].find(x=>x.id===target);assert(value,'Actual pending review snapshot');
+   return request(reviewer,'POST','/studio/reviews/'+kind+'/'+target,{requestId:randomUUID(),revision,contentHash:value.reviewContentHash,decision:'approved',reason:'Reviewed actual isolated listing and eligibility.',selfReviewConfirmed:false});
+  }
   const create = { requestId: randomUUID(), name: 'Life of Kings · isolated proof', slug: 'life-of-kings' };
   const shop = (await request(seller, 'POST', '/studio/shops', create)).data.shop;
   check(shop.ownerEcoId === 'm01.seller', 'shop belongs to authenticated existing EcoVibes identity');
@@ -93,13 +98,15 @@ try {
   product = (await request(seller, 'PATCH', '/studio/products/' + product.id, { revision: product.revision, ...draftInput(), gallery: [{ assetId: photo.id, alt: 'Green test image' }] })).data.product;
   await request(seller, 'PATCH', '/studio/products/' + product.id, { revision: product.revision - 1, ...draftInput() }, 409);
   check((await request(seller, 'POST', '/studio/products/' + product.id + '/validate', { revision: product.revision })).data.valid, 'complete native draft validates against server rules');
+  await request(seller,'PATCH','/marketplace/products/'+product.id,{priceMinor:999},409);
+  check((await request(seller,'GET','/studio/products/'+product.id)).data.product.priceMinor===22000,'legacy edits cannot alter a native review snapshot');
   const contentReview=(await request(reviewer,'GET','/studio/reviews')).data;
   check(contentReview.products.some(p=>p.id===product.id&&p.title===product.title&&p.gallery.length===1),'reviewer sees the actual draft and photo before approval');
   await request(reviewer,'GET','/studio/reviews/photos/'+photo.id);
   await request(buyer,'GET','/studio/reviews',undefined,403);
   await request(seller, 'POST', '/studio/reviews/products/' + product.id, { revision: product.revision, decision: 'approved' }, 403);
-  await request(reviewer, 'POST', '/studio/reviews/shops/' + shop.id, { decision: 'approved' });
-  await request(reviewer, 'POST', '/studio/reviews/products/' + product.id, { revision: product.revision, decision: 'approved' });
+  await approve('shops',shop.id);
+  await approve('products',product.id,product.revision);
   await request(seller, 'POST', '/studio/products/' + product.id + '/publish', { revision: product.revision, confirmPublication: true, confirmSupply: false }, 400);
   await request(seller, 'POST', '/studio/products/' + product.id + '/publish', { revision: product.revision, confirmPublication: true, confirmSupply: true }, 200, false).then(() => assert.fail('CSRF accepted'), e => assert.match(e.message, /403/));
   await request(seller, 'POST', '/studio/products/' + product.id + '/publish', { revision: product.revision, confirmPublication: true, confirmSupply: true });
@@ -147,7 +154,7 @@ try {
   check((await request(null, 'GET', '/public/catalogue')).data.products.length === 0, 'editing invalidates moderation and atomically withdraws public record');
   await request(null, 'GET', '/public/photos/' + photo.id, undefined, 404);
   check((await request(seller, 'GET', '/studio/products/' + product.id)).data.product.priceMinor === 23000, 'updated price is persisted in existing product authority');
-  await request(reviewer, 'POST', '/studio/reviews/products/' + product.id, { revision: product.revision, decision: 'approved' });
+  await approve('products',product.id,product.revision);
   await request(seller, 'POST', '/studio/products/' + product.id + '/publish', { revision: product.revision, confirmPublication: true, confirmSupply: true });
   await request(seller, 'POST', '/studio/products/' + product.id + '/unpublish', { revision: product.revision });
   check((await request(null, 'GET', '/public/catalogue')).data.products.length === 0, 'unpublish removes shop and Discover visibility synchronously');

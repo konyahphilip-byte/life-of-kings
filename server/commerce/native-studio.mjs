@@ -1,3 +1,4 @@
+import { REVIEW_POLICY_VERSION, publicationEligibility, reviewCapacity, validateReviewDecision, reviewSnapshot, contentHash } from './publication-review.mjs';
 import { defaultTheme, validateTheme } from '../../shared/storefront/design.mjs';
 import { NATIVE_STUDIO_VERSION } from './native-schema.mjs';
 export { NATIVE_STUDIO_VERSION };
@@ -16,9 +17,10 @@ export const PUBLIC_NATIVE_FROM = `FROM products p
  AND v.publication='published' AND v.moderation='approved' AND v.approved_revision=v.revision
  AND s.status='active' AND s.visibility='public' AND u.status='active'
  AND EXISTS(SELECT 1 FROM roles r WHERE r.user_id=u.id AND r.role='seller')
- AND p.category IN ('fashion','beauty','home')`;
+ AND p.category IN ('fashion','home')
+ AND EXISTS(SELECT 1 FROM m01_review_receipts rr WHERE rr.product_id=p.id AND rr.review_type='product' AND rr.revision=v.revision AND rr.reviewer_id=v.approved_by AND rr.decision='approved' AND rr.policy_version='${REVIEW_POLICY_VERSION}')`;
 export function createNativeStudio({ q, all, run, transaction, assert, now, id, event, notify, rateLimit,
- postgresMode, available, enabled, requireStaff, storeMediaAsset, loadMediaAsset, removeMediaAsset, normalizePhoto }) {
+ postgresMode, available, enabled, requireStaff, storeMediaAsset, loadMediaAsset, removeMediaAsset, normalizePhoto, founderReviewScope=null }) {
  const stop = (code='shop_unavailable', message='This shop is unavailable.', status=404) => assert(false,status,code,message);
  const exact = (body, keys) => assert(body && Object.getPrototypeOf(body)===Object.prototype &&
    Object.keys(body).length===keys.length && Object.keys(body).every(k=>keys.includes(k)),400,'invalid_fields','Refresh this form and use only its supported fields.');
@@ -87,7 +89,9 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
  }
  async function privateProduct(productId) {
    const row=await q(SELECT+'FROM products p JOIN m01_product_publication v ON v.product_id=p.id JOIN m01_shops s ON s.id=v.shop_id JOIN users u ON u.id=s.owner_id WHERE p.id=?',productId);
-   return productView(row,row.shop_id);
+   const result=await productView(row,row.shop_id);
+   result.reviewHistory=(await all('SELECT rr.id,rr.revision,rr.creator_id,rr.reviewer_id,rr.capacity,rr.decision,rr.reason,rr.content_hash,rr.created_at,u.eco_id reviewer_eco_id FROM m01_review_receipts rr JOIN users u ON u.id=rr.reviewer_id WHERE rr.product_id=? ORDER BY rr.created_at DESC,rr.id DESC LIMIT 20',productId)).map(r=>({id:r.id,revision:Number(r.revision),creatorId:r.creator_id,reviewerId:r.reviewer_id,reviewerEcoId:r.reviewer_eco_id,capacity:r.capacity,decision:r.decision,reason:r.reason,contentHash:r.content_hash,createdAt:r.created_at}));
+   return result;
  }
  function input(body) {
    const result={title:text(body.title,2,100,'the product title'),description:text(body.description,0,3000,'the description'),
@@ -114,6 +118,7 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
  }
  async function validation(row) {
    const issues=[];
+   const eligibility=publicationEligibility(row);if(!eligibility.allowed)issues.push({field:'categoryId',message:eligibility.message});
    if(!row.description.trim())issues.push({field:'description',message:'Add a useful product description.'});
    if(!(await gallery(row.id)).length)issues.push({field:'gallery',message:'Upload at least one photo you are authorized to use.'});
    if(row.status==='removed')issues.push({field:'status',message:'Archived products cannot be published.'});
@@ -219,11 +224,23 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
      return {shop:dtoShop(await q('SELECT s.*,u.eco_id owner_eco_id FROM m01_shops s JOIN users u ON u.id=s.owner_id WHERE s.id=?',shopId))};
     }
    }
+   async function inspectReview(kind,targetId) {
+    let row=kind==='product'?await q('SELECT p.*,v.* FROM products p JOIN m01_product_publication v ON v.product_id=p.id WHERE p.id=?',targetId):null;
+    const shop=await q('SELECT * FROM m01_shops WHERE id=?',kind==='shop'?targetId:row?.shop_id);if(!shop)stop();
+    const snapshot=reviewSnapshot(kind,row,shop,kind==='product'?await gallery(row.id):[]);
+    return {row,shop,snapshot,hash:contentHash(snapshot)};
+   }
    if(path==='/studio/reviews'&&method==='GET'){
     await staff(ctx);
     const shops=(await all("SELECT s.*,u.eco_id owner_eco_id FROM m01_shops s JOIN users u ON u.id=s.owner_id WHERE s.status='draft' ORDER BY s.created_at LIMIT 25")).map(dtoShop);
     const pending=await all("SELECT product_id FROM m01_product_publication WHERE moderation='pending' ORDER BY updated_at LIMIT 50");
     const products=await Promise.all(pending.map(p=>privateProduct(p.product_id)));
+    for(const target of [...shops.map(x=>({kind:'shop',value:x})),...products.map(x=>({kind:'product',value:x}))]){
+     const info=await inspectReview(target.kind,target.value.id),self=info.shop.owner_id===ctx.user.id||info.row?.created_by===ctx.user.id;
+     target.value.reviewContentHash=info.hash;target.value.selfReview=self;
+     target.value.reviewAuthorized=!self||Boolean(founderReviewScope&&founderReviewScope.accountId===ctx.user.id&&founderReviewScope.shopId===info.shop.id&&info.shop.owner_id===ctx.user.id&&await q("SELECT 1 ok FROM staff_access WHERE user_id=? AND staff_role='admin'",ctx.user.id));
+     target.value.eligibility=target.kind==='product'?publicationEligibility(info.row):{allowed:true,message:'Review shop ownership separately from product publication.'};
+    }
     await event(ctx.user.id,'marketplace_review',ctx.user.id,'MARKETPLACE_REVIEW_QUEUE_READ',{});
     return {shops,products};
    }
@@ -236,19 +253,30 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
    }
    const review=path.match(/^\/studio\/reviews\/(shops|products)\/([a-f0-9-]{36})$/i);
    if(review&&method==='POST'){
-    const actor=await staff(ctx);assert(['approved','rejected'].includes(body.decision),400,'invalid_review','Choose approve or reject.');
-    if(review[1]==='shops'){
-     exact(body,['decision']);const shop=await q('SELECT * FROM m01_shops WHERE id=?',review[2]);if(!shop)stop();
-     assert(shop.owner_id!==actor,403,'independent_review_required','Another authorized reviewer must approve this shop.');
-     await run('UPDATE m01_shops SET status=?,visibility=?,approved_by=? WHERE id=?',body.decision==='approved'?'active':'suspended',body.decision==='approved'?'public':'private',actor,shop.id);
-    }else{
-     exact(body,['revision','decision']);const record=await q('SELECT p.*,v.* FROM products p JOIN m01_product_publication v ON v.product_id=p.id WHERE p.id=?',review[2]);if(!record)stop();
-     assert(record.seller_id!==actor&&record.created_by!==actor,403,'independent_review_required','Another authorized reviewer must review this product.');
-     assert(Number(record.revision)===body.revision,409,'product_changed','This product changed. Review its latest revision.');
-     assert(body.decision!=='approved'||(await validation(record)).valid,400,'product_invalid','Complete product validation before approval.');
-     await run('UPDATE m01_product_publication SET moderation=?,approved_revision=?,approved_by=? WHERE product_id=?',body.decision,body.decision==='approved'?body.revision:null,actor,record.id);
+    const actor=await staff(ctx),decision=validateReviewDecision(body),kind=review[1]==='shops'?'shop':'product';
+    const initial=await inspectReview(kind,review[2]);await lockAccounts([actor,initial.shop.owner_id]);
+    await q('SELECT id FROM m01_shops WHERE id=?'+(postgresMode?' FOR UPDATE':''),initial.shop.id);
+    const info=await inspectReview(kind,review[2]),{row,shop,snapshot,hash}=info;
+    const eligible=kind==='shop'||decision.decision==='rejected'||publicationEligibility(row).allowed;
+    const currentAdmin=Boolean(await q("SELECT 1 ok FROM staff_access WHERE user_id=? AND staff_role='admin'",actor));
+    const capacity=reviewCapacity({actorId:actor,admin:currentAdmin,shop,creatorId:snapshot.creatorId,scope:founderReviewScope,selfReviewConfirmed:decision.selfReviewConfirmed,eligible});
+    const prior=await q('SELECT * FROM m01_review_receipts WHERE reviewer_id=? AND request_id=?',actor,decision.requestId);
+    if(prior){
+     assert(prior.content_hash===decision.contentHash&&Number(prior.revision)===decision.revision&&prior.decision===decision.decision&&prior.reason===decision.reason&&prior.capacity===capacity&&prior.shop_id===shop.id&&prior.product_id===(kind==='product'?row.id:null),409,'review_request_conflict','Use a new review action for a different decision.');
+     return {reviewed:true,receipt:prior,replayed:true};
     }
-    await event(actor,'marketplace_review',review[2],'MARKETPLACE_REVIEWED',{decision:body.decision});return {reviewed:true};
+    assert(hash===decision.contentHash&&snapshot.revision===decision.revision,409,'product_changed','The saved content changed. Inspect the latest version before reviewing.');
+    assert(decision.decision!=='approved'||eligible,400,'category_review_required','Additional category and safety controls are required. Founder review cannot bypass them.');
+    assert(kind==='shop'||decision.decision!=='approved'||(await validation(row)).valid,400,'product_invalid','Complete product validation before approval.');
+    const receipt={id:id(),shop_id:shop.id,product_id:kind==='product'?row.id:null,review_type:kind,revision:snapshot.revision,content_hash:hash,snapshot_json:JSON.stringify(snapshot),creator_id:snapshot.creatorId,reviewer_id:actor,capacity,decision:decision.decision,reason:decision.reason,policy_version:REVIEW_POLICY_VERSION,request_id:decision.requestId,created_at:now()};
+    const keys=Object.keys(receipt);await run('INSERT INTO m01_review_receipts('+keys.join(',')+') VALUES('+keys.map(()=>'?').join(',')+')',...Object.values(receipt));
+    if(kind==='shop')await run('UPDATE m01_shops SET status=?,visibility=?,approved_by=? WHERE id=?',decision.decision==='approved'?'active':'suspended',decision.decision==='approved'?'public':'private',actor,shop.id);
+    else {
+     await run("UPDATE products SET status='paused',updated_at=? WHERE id=?",now(),row.id);
+     await run("UPDATE m01_product_publication SET publication='draft',moderation=?,approved_revision=?,approved_by=? WHERE product_id=?",decision.decision,decision.decision==='approved'?decision.revision:null,actor,row.id);
+    }
+    await event(actor,'marketplace_review',review[2],'MARKETPLACE_REVIEWED',{decision:decision.decision,receiptId:receipt.id,revision:receipt.revision,capacity});
+    return {reviewed:true,receipt};
    }
    const shopMatch=path.match(/^\/studio\/shops\/([a-f0-9-]{36})(.*)$/i);
    if(shopMatch){
@@ -318,6 +346,8 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
      if(suffix==='/publish'){
       assert(body.confirmPublication===true&&body.confirmSupply===true,400,'publication_confirmation','Confirm publication and current supply before publishing.');
       assert(result.valid&&row.moderation==='approved'&&Number(row.approved_revision)===body.revision&&shop.status==='active'&&shop.visibility==='public',409,'publication_not_approved','This exact product revision and shop need approval before publication.');
+      const hash=contentHash(reviewSnapshot('product',row,shop,await gallery(row.id)));
+      assert(await q("SELECT 1 ok FROM m01_review_receipts WHERE product_id=? AND revision=? AND content_hash=? AND reviewer_id=? AND decision='approved' AND policy_version=?",row.id,row.revision,hash,row.approved_by,REVIEW_POLICY_VERSION),409,'review_receipt_required','This exact saved version needs a current, recorded review.');
       await run("UPDATE products SET status='active',updated_at=? WHERE id=?",now(),row.id);
       await run("UPDATE m01_product_publication SET publication='published',published_at=?,updated_at=? WHERE product_id=?",now(),now(),row.id);
      }else{

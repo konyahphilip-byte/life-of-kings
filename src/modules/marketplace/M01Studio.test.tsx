@@ -74,3 +74,27 @@ it('blocks publication when the form differs from the approved saved revision',a
  fireEvent.change(screen.getByLabelText('Product title'),{target:{value:'Unsaved replacement title'}});
  expect((screen.getByRole('button',{name:'Publish approved product'}) as HTMLButtonElement).disabled).toBe(true);
 });
+
+it('refreshes saved review state when returning to inventory',async()=>{
+ const product={id:'00000000-0000-4000-8000-000000000003',shopId:shop.id,title:'Reviewed tee',description:'Actual saved draft',categoryId:'fashion',priceMinor:22000,stock:0,availability:'out_of_stock',collection:'',variants:[],gallery:[],revision:1,publication:'draft',moderation:'pending'};
+ let approved=false;
+ vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
+  const url=String(input);
+  if(url.endsWith('/auth/me'))return Response.json({user:{...seller,roles:['seller','admin']},csrfToken:'fixture-csrf'});
+  if(url.endsWith('/studio/shops'))return Response.json({shops:[shop]});
+  if(url.endsWith('/studio/reviews'))return Response.json({shops:[],products:[{...product,reviewContentHash:'a'.repeat(64),selfReview:true,reviewAuthorized:true,eligibility:{allowed:true}}]});
+  if(init?.method==='POST'&&url.includes('/studio/reviews/products/')){approved=true;return Response.json({reviewed:true});}
+  if(url.endsWith('/products'))return Response.json({products:[{...product,moderation:approved?'approved':'pending'}]});
+  return Response.json({});
+ }));
+ render(<M01Studio/>);await screen.findByLabelText('Product title');
+ fireEvent.click(screen.getByText('Review',{selector:'button'}));
+ await screen.findByLabelText('Decision');
+ fireEvent.change(screen.getByLabelText('Decision'),{target:{value:'approved'}});
+ fireEvent.change(screen.getByLabelText('Reason for this decision'),{target:{value:'Reviewed the exact ordinary tee version.'}});
+ fireEvent.click(screen.getByLabelText(/I am explicitly reviewing/));
+ fireEvent.click(screen.getByText('Record review decision',{selector:'button'}));
+ await screen.findByText('Exact-version review receipt recorded. Seller publication remains a separate step.');
+ fireEvent.click(screen.getByText('My Inventory',{selector:'button'}));
+ await screen.findByText(/draft\s*·\s*approved/);
+});
