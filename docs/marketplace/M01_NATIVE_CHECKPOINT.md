@@ -1,0 +1,40 @@
+# M01 native seller checkpoint — 26 November 2026
+
+**LOCALLY BUILT AND TESTED; NOT RELEASE APPROVED.** This is the first persistent native vertical slice, based on draft PR59/e253201 and main d8f02d0. Production is unchanged. Exact committed revision and remote results are recorded in the external release receipt after commit; do not infer remote success from this document.
+
+## Reused and implemented
+Existing users, sessions, CSRF, seller/staff roles, products, media_assets, storage configuration, audit and notifications remain authoritative. No replacement authentication, payment, cart or catalogue service was introduced.
+
+The default-off native module adds immutable shop IDs, shop membership and historical slug ownership, publication metadata keyed to the existing product row, ordered owned photos, versioned validated appearance configuration, and contextual Connect product enquiries. Friend DMs remain untouched: their mandatory friendship FK cannot represent a buyer-initiated merchant enquiry. The contextual extension uses the same existing account-lock order and current block authority. It does not create a fictitious friendship.
+
+The native React pilot at /m01 provides Add Product, My Inventory, Buyer Enquiries and My Storefront. It creates from scratch, uploads authorized photos privately, saves/reopens drafts, edits, validates, applies exact-revision review, publishes/unpublishes, saves/applies/restores appearance versions and receives/replies to durable enquiries. Shop, Discover, direct product URLs, profile-linked shop reads, existing keyword search and Chale's public product read share current public eligibility. Search is a direct authoritative read; no asynchronous index is claimed. Responses are no-store; already-open pages still need a fresh request to observe changes.
+
+Only an explicit local environment flag mounts the new pilot; the normal app remains the default. This is not the approved final universal Discover design. The Living Edit original and its archive remain unchanged. The reusable renderer uses separate shop identity, appearance and catalogue data.
+
+## Actual evidence
+- Earlier full native working build: 695 tests passed across54 files in247.14s. This preceded final concurrency/fallback/stale-form refinements; it is not an exact-final-candidate full-run claim.
+- Final focused UI/photo suite:10 passed (5 UI,5 real image-codec tests). TypeScript passed. Native UI RED initially failed for absent module; dirty-form RED had4 passed/1 failed, then passed after guarding publication against unsaved values.
+- Real isolated HTTP/auth/SQLite:26 labelled checks plus negative assertions. Four separate synthetic accounts, strict CSRF, ownership, revision and reviewer checks; same product row on shop/Discover/direct/profile/search; theme switch/restore and historical alias; persistent enquiry/reply; no order creation, stock reservation or fabricated friendship. Final report: work/m01-native/http-dK9V5v/report.json.
+- Disabled-feature fallback:6 checks passed. Native records cannot escape eligibility through legacy catalogue/media/search or restore checkout when Studio is disabled. Original failing run and copied fixtures retained.
+- Real disposable PostgreSQL17.10:7 checks passed, including actual additive migration, browser/service-role direct-access denial, immutable-history/message privileges, tenant isolation, shared publication and a concurrent send waiting behind the existing user/block lock. After the block commits, the queued send is denied and no second message is inserted. No hosted migration ran.
+- Browser: real native form/photo save and reload, separate seller/reviewer/buyer sign-ins, explicit publication, saved appearance version, identical canonical product URL from shop/Discover, persistent buyer enquiry and seller response. Native dialog Escape restored focus to Quick view.320/390/768px measurements showed no page-level horizontal overflow. Primary buttons at320px measured49.25px height with15px white text on rgb(20,83,62).
+- Production build, dependency security and existing direct-message/payment/identity gates passed before the final guard refinements. The unchanged test evidence is retained; final remote CI remains a gate.
+-11 actual browser JPEGs and hashes are retained outside Git at Evidence/M01-20261126/native-studio/. The authorized tee photo was uploaded through the actual form. Zero inventory in the isolated proof is not a claim about real supply.
+
+Commands: node scripts/test-m01-native.mjs; node scripts/test-m01-fallback.mjs <exact passing report>; PG_BINDIR=<existing tooling> node scripts/test-m01-native-postgres.mjs; node node_modules/vitest/vitest.mjs run; node node_modules/typescript/bin/tsc -b; node node_modules/vite/bin/vite.js build; node scripts/test-dependency-security.mjs. The CI workflow runs the new API/fallback/PostgreSQL checks without relaxing existing assertions or deadlines.
+
+## Findings and corrections
+Retained failures include test-provider/staff-column fixture mistakes, missing native endpoints, private photo cache-header mismatch, the existing search Promise.map error, designer access to buyer enquiries, disabled-feature native visibility escape, excessive draft migration rights, lack of the existing Connect account lock, and publication from an unsaved form. Each implementation defect was reproduced before correction. Founder self-review is a newly approved next-stage requirement, not established by a different synthetic reviewer account.
+
+## Scope and remaining gates
+- The three Fashion/Beauty/Home values are a **temporary native-pilot restriction** in native-studio.mjs and M01Studio.tsx, not a complete taxonomy. Existing production categories are free text; an earlier unmerged commerce draft has6 roots/12 leaves. The new universal TAX-01–TAX-07 assignment supersedes this temporary control.
+- Incomplete category-specific drafts, listing intents/types, comprehensive taxonomy, archive command, import enrolment and Chale editing/classification tools are not implemented here. Chale editing/import enrolment are visibly unavailable, never simulated as real tools.
+- The approved solo-founder review exception requires a scoped policy and immutable review receipts with reason, version, reviewer capacity and timestamps. It must never claim independent verification or bypass category/legal gates. It will be integrated with TAX-06; this checkpoint's current distinct-account review is not the founder's final operating policy.
+- The Life of Kings shop here is synthetic and local. Real authorized profile binding, public hosted sharing/SEO, current supply, merchant/reviewer capacity, cloud-private-storage behavior, quota/cleanup operations, real provider/device acceptance, dark/zoom/assistive-technology matrix, load tests and exact-source remote CI remain unverified.
+- Main Connect inbox/navigation integration and richer customer enquiry labels remain follow-up integration/UX work; this pilot exercises the real contextual Connect persistence path.
+- No genuine stock, independent human review, orders, payments, bookings, AAA generation or hosted release is claimed. No paid service, model inference or production resource was initiated. Sharp0.35.5 is Apache-2.0; distribution must retain its bundled dependency notices. See M01_MOTION_SHORTLIST.md for the four requested UI-library candidates; none is installed.
+
+## Integration and rollback
+Dependency order: main → draft59 shared contracts → this native checkpoint → universal taxonomy/founder-review increments. Keep all drafts unmerged. The additive SQL file is a proposal; only disposable PostgreSQL executed it.
+
+Disable native UI/API first to withdraw the pilot; keep additive records. The fallback retains native eligibility isolation, native media denial and checkout denial even while the feature is off. Never restore the old false Bag success, cart deletion or a commerce chain that re-enables native orders. No destructive schema rollback is proposed or tested on production.
