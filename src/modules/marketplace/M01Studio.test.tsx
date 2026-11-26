@@ -145,3 +145,32 @@ it.each(['enquiries','shops'])('discards delayed private %s after switching acco
  expect(calls.filter(c=>c.url.endsWith('/studio/shops/'+shop.id+'/products'))).toHaveLength(0);
  expect(screen.getByRole('heading',{name:/^Your enquiries$/})).toBeTruthy();
 });
+
+it('does not restore a previous sign-in workspace after its delayed shop load',async()=>{
+ const buyer={...seller,id:'00000000-0000-4000-8000-000000000008',eco_id:'native.buyer.b',roles:['customer']};
+ let release!:(response:Response)=>void;
+ const delayed=new Promise<Response>(resolve=>{release=resolve;});
+ let logins=0,shopReads=0;
+ vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
+  const url=String(input);
+  if(url.endsWith('/auth/me'))return Response.json({user:null,csrfToken:'guest-csrf'});
+  if(url.endsWith('/auth/logout'))return Response.json({});
+  if(url.endsWith('/auth/login'))return Response.json({user:++logins===1?seller:buyer,csrfToken:'fixture-csrf'});
+  if(url.endsWith('/studio/shops')){shopReads++;return delayed;}
+  if(url.endsWith('/connect/enquiries'))return Response.json({enquiries:[]});
+  return Response.json({products:[]});
+ }));
+ render(<M01Studio/>);await screen.findByLabelText('EcoVibes ID');
+ const login=async(ecoId:string)=>{
+  fireEvent.change(screen.getByLabelText('EcoVibes ID'),{target:{value:ecoId}});
+  fireEvent.change(screen.getByLabelText('Password'),{target:{value:'isolated-test-password'}});
+  fireEvent.click(screen.getByRole('button',{name:'Open my workspace'}));
+  await screen.findByText('@'+ecoId);
+ };
+ await login(seller.eco_id);await waitFor(()=>expect(shopReads).toBe(1));
+ fireEvent.click(screen.getByRole('button',{name:'Sign out'}));await screen.findByLabelText('EcoVibes ID');
+ await login(buyer.eco_id);await screen.findByText('No enquiries yet.');
+ await act(async()=>release(Response.json({shops:[shop]})));
+ expect(screen.getByRole('heading',{name:/^Your enquiries$/})).toBeTruthy();
+ expect(screen.queryByRole('button',{name:'My shop'})).toBeNull();
+});
