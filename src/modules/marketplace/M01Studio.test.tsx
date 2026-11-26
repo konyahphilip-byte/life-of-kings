@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import M01Studio from './M01Studio';
 const seller={id:'00000000-0000-4000-8000-000000000001',eco_id:'native.seller',display_name:'Native Seller',roles:['seller']};
@@ -112,4 +112,36 @@ it('gives buyers their own enquiry workspace without merchant claims',async()=>{
  expect(screen.queryByText('Your shop, beautifully managed.')).toBeNull();
  expect(screen.getByRole('navigation',{name:'Your workspace'})).toBeTruthy();
  expect(screen.getByRole('button',{name:/^Your enquiries$/})).toBeTruthy();
+});
+
+
+it.each(['enquiries','shops'])('discards delayed private %s after switching accounts',async(kind)=>{
+ const buyer={...seller,id:'00000000-0000-4000-8000-000000000008',eco_id:'native.buyer.b',display_name:'Buyer B',roles:['customer']};
+ const first={...seller,eco_id:kind==='shops'?'native.seller.a':'native.buyer.a',roles:kind==='shops'?['seller']:['customer']};
+ let release!:(response:Response)=>void;
+ const delayed=new Promise<Response>(resolve=>{release=resolve;});
+ let enquiryReads=0,shopReads=0;
+ vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
+  const url=String(input);calls.push({url,init});
+  if(url.endsWith('/auth/me'))return Response.json({user:first,csrfToken:'account-a-csrf'});
+  if(url.endsWith('/auth/logout'))return Response.json({});
+  if(url.endsWith('/auth/login'))return Response.json({user:buyer,csrfToken:'account-b-csrf'});
+  if(url.endsWith('/studio/shops')){shopReads++;return kind==='shops'?delayed:Response.json({shops:[]});}
+  if(url.endsWith('/connect/enquiries')){enquiryReads++;return kind==='enquiries'&&enquiryReads===1?delayed:Response.json({enquiries:[]});}
+  return Response.json({products:[]});
+ }));
+ render(<M01Studio/>);await screen.findByText('@'+first.eco_id);
+ await waitFor(()=>expect(kind==='shops'?shopReads:enquiryReads).toBe(1));
+ fireEvent.click(screen.getByRole('button',{name:'Sign out'}));
+ await screen.findByLabelText('EcoVibes ID');
+ fireEvent.change(screen.getByLabelText('EcoVibes ID'),{target:{value:buyer.eco_id}});
+ fireEvent.change(screen.getByLabelText('Password'),{target:{value:'isolated-test-password'}});
+ fireEvent.click(screen.getByRole('button',{name:'Open my workspace'}));
+ await screen.findByText('@native.buyer.b');
+ await screen.findByText('No enquiries yet.');
+ await act(async()=>release(Response.json(kind==='shops'?{shops:[{...shop,name:'ACCOUNT A PRIVATE SHOP'}]}:{enquiries:[{id:'private-a',productTitle:'ACCOUNT A PRIVATE ENQUIRY',counterpartyName:'Seller A',state:'open'}]})));
+ expect(screen.queryByText(/ACCOUNT A PRIVATE/)).toBeNull();
+ expect(screen.queryByRole('button',{name:'My shop'})).toBeNull();
+ expect(calls.filter(c=>c.url.endsWith('/studio/shops/'+shop.id+'/products'))).toHaveLength(0);
+ expect(screen.getByRole('heading',{name:/^Your enquiries$/})).toBeTruthy();
 });

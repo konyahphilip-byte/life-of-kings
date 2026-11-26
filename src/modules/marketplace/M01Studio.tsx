@@ -75,15 +75,15 @@ export default function M01Studio(){
   finally{if(revision===epoch.current)setBusy(false);}
  }
  function clearPrivate(){epoch.current++;setShop(null);setShops([]);setProducts([]);setForm(empty());setEditing(null);setTheme(null);setConfig(null);setThread(null);setEnquiries([]);setReview({shops:[],products:[]});setContact(null);setQuick(null);setMessage('');setIssues([]);setRights(false);setConfirmed(false);setBusy(false);draftRequest.current=crypto.randomUUID();}
- async function loadShops(){const value=await apiRequest<{shops:Shop[]}>('/studio/shops');setShops(value.shops);setShop(value.shops[0]||null);return value.shops[0]||null;}
- async function inventory(current:Shop){const value=await apiRequest<{products:Product[]}>('/studio/shops/'+current.id+'/products');setProducts(value.products);}
- async function refreshEnquiries(){const value=await apiRequest<{enquiries:Enquiry[]}>('/connect/enquiries');setEnquiries(value.enquiries);}
+ async function loadShops(){const generation=epoch.current;const value=await apiRequest<{shops:Shop[]}>('/studio/shops');if(generation!==epoch.current)return null;setShops(value.shops);setShop(value.shops[0]||null);return value.shops[0]||null;}
+ async function inventory(current:Shop){const generation=epoch.current;const value=await apiRequest<{products:Product[]}>('/studio/shops/'+current.id+'/products');if(generation===epoch.current)setProducts(value.products);}
+ async function refreshEnquiries(){const generation=epoch.current;const value=await apiRequest<{enquiries:Enquiry[]}>('/connect/enquiries');if(generation===epoch.current)setEnquiries(value.enquiries);}
  useEffect(()=>{
-  let active=true;
+  let active=true;const accountGeneration=epoch.current;
   void apiRequest<{user:User|null;csrfToken:string}>('/auth/me').then(async value=>{
-   if(!active)return;setUser(value.user);setCsrf(value.csrfToken||'');setSessionReady(true);if(value.user)setTab(initialWorkspace(value.user));
+   if(!active||accountGeneration!==epoch.current)return;setUser(value.user);setCsrf(value.csrfToken||'');setSessionReady(true);if(value.user)setTab(initialWorkspace(value.user));
    if(value.user?.roles.includes('seller')){const current=await loadShops();if(current&&active)await inventory(current);}
-  }).catch(e=>{if(active){setError(e.message);setSessionReady(true);}});
+  }).catch(e=>{if(active&&accountGeneration===epoch.current){setError(e.message);setSessionReady(true);}});
   const pop=()=>setPath(window.location.pathname);window.addEventListener('popstate',pop);
   return()=>{active=false;epoch.current++;window.removeEventListener('popstate',pop);};
  },[]);
@@ -99,14 +99,14 @@ export default function M01Studio(){
  },[path,search]);
  useEffect(()=>{
   if(!user||publicView)return;
-  if(tab==='My Inventory'&&shop){
-   let active=true;const accountGeneration=epoch.current;
-   void apiRequest<{products:Product[]}>('/studio/shops/'+shop.id+'/products').then(r=>{if(active&&accountGeneration===epoch.current)setProducts(r.products);}).catch(e=>{if(active&&accountGeneration===epoch.current)setError(e.message);});
-   return()=>{active=false;};
-  }
-  if(tab==='Buyer Enquiries')void refreshEnquiries().catch(e=>setError(e.message));
-  if(tab==='My Storefront'&&shop)void apiRequest<Theme>('/studio/shops/'+shop.id+'/theme').then(r=>{setTheme(r);setConfig(r.config);setThemeApproved(false);}).catch(e=>setError(e.message));
-  if(tab==='Review'&&isStaff)void apiRequest<{shops:Shop[];products:Product[]}>('/studio/reviews').then(setReview).catch(e=>setError(e.message));
+  let active=true;const accountGeneration=epoch.current;
+  const current=()=>active&&accountGeneration===epoch.current;
+  const failed=(e:Error)=>{if(current())setError(e.message);};
+  if(tab==='My Inventory'&&shop)void apiRequest<{products:Product[]}>('/studio/shops/'+shop.id+'/products').then(r=>{if(current())setProducts(r.products);}).catch(failed);
+  if(tab==='Buyer Enquiries')void apiRequest<{enquiries:Enquiry[]}>('/connect/enquiries').then(r=>{if(current())setEnquiries(r.enquiries);}).catch(failed);
+  if(tab==='My Storefront'&&shop)void apiRequest<Theme>('/studio/shops/'+shop.id+'/theme').then(r=>{if(current()){setTheme(r);setConfig(r.config);setThemeApproved(false);}}).catch(failed);
+  if(tab==='Review'&&isStaff)void apiRequest<{shops:Shop[];products:Product[]}>('/studio/reviews').then(r=>{if(current())setReview(r);}).catch(failed);
+  return()=>{active=false;};
  },[tab,shop?.id,user?.id,publicView]);
  useEffect(()=>{if((quick||contact)&&!dialog.current?.open)dialog.current?.showModal();if(!quick&&!contact&&dialog.current?.open)dialog.current.close();},[quick,contact]);
  function editProduct(p:Product){setEditing(p);setForm({title:p.title,description:p.description,categoryId:p.categoryId,price:String(p.priceMinor/100),stock:String(p.stock),availability:p.availability,collection:p.collection,variants:p.variants,gallery:p.gallery});setIssues([]);setConfirmed(false);setTab('Add Product');}
