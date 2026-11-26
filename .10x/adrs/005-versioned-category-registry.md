@@ -1,0 +1,5 @@
+# ADR-005: One versioned category registry
+Date: 2026-11-26. Status: accepted for isolated TAX-01 development under the founder's comprehensive taxonomy directive.
+The three-category native pilot and older v1 draft are audited in docs/marketplace/TAX01_AUDIT_ARCHITECTURE.md. Keep v1 source byte-identical for historical interpretation; author a separate v2 canonical snapshot with persisted opaque IDs, indexed hierarchy, schema references, explicit eligibility metadata and bounded offline lookup. It will become the authority for later adapters, not a second product catalogue.
+Alternative: merge the legacy commerce branch. Rejected because it couples taxonomy to unrelated carts/orders. Alternative: import a commercial marketplace tree. Rejected because licensing and overlap are unverified. Large external open taxonomy is unnecessary for the bounded pilot.
+No database, public route, UI, publication authority, private data or model call changes. Next stages consume the contract with existing owner/version/review checks. Missing/unsupported data fails closed. Deprecation and version transitions preserve historical IDs.

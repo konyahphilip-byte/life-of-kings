@@ -1,0 +1,3 @@
+# Source provenance
+The three shared/marketplace-taxonomy files are copied byte-for-byte from this same repository's unmerged commit7f6edfe, not cherry-picked with its wider commerce changes. Their original version1 reader and17 regressions are retained for compatibility. They are not current native API publication authority.
+The v2 categories, schema contracts, normalization and search implementation are original EcoVibes work. External research links and limitations are in TAX01_AUDIT_ARCHITECTURE.md. No third-party taxonomy data, product data, photographs or interface assets are incorporated. Brand/model aliases are descriptive search terms only.
