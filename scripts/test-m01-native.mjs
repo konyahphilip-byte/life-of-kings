@@ -129,6 +129,7 @@ try {
   await request(seller, 'POST', '/connect/enquiries/' + enquiry.id + '/messages', { clientId: randomUUID(), body: 'Yes. Please ask any questions before arranging your purchase.' });
   const thread = (await request(buyer, 'GET', '/connect/enquiries/' + enquiry.id)).data;
   check(thread.messages.length === 2 && thread.messages[1].senderId === seller.user.id, 'persistent authorized Connect seller response reaches buyer');
+  check(thread.enquiry.productTitle===product.title&&thread.enquiry.shopName===shop.name&&thread.messages[1].senderEcoId==='m01.seller','authorized Connect thread identifies the actual product, shop and sender');
   check((await request(seller, 'GET', '/connect/enquiries')).data.enquiries[0].id === enquiry.id, 'seller Buyer Enquiries workspace uses same Connect thread');
   database.prepare("INSERT INTO m01_shop_members(shop_id,user_id,role,status) VALUES(?,?,'designer','active')").run(shop.id,outsider.user.id);
   await request(outsider,'GET','/connect/enquiries/'+enquiry.id,undefined,404);

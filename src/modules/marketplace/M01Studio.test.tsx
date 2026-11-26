@@ -98,3 +98,18 @@ it('refreshes saved review state when returning to inventory',async()=>{
  fireEvent.click(screen.getByText('My Inventory',{selector:'button'}));
  await screen.findByText(/draft\s*·\s*approved/);
 });
+
+it('gives buyers their own enquiry workspace without merchant claims',async()=>{
+ const buyer={...seller,eco_id:'native.buyer',display_name:'Buyer',roles:['customer']};
+ vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
+  const url=String(input);
+  if(url.endsWith('/auth/me'))return Response.json({user:buyer,csrfToken:'fixture-csrf'});
+  if(url.endsWith('/connect/enquiries'))return Response.json({enquiries:[]});
+  return Response.json({shops:[],products:[]});
+ }));
+ render(<M01Studio/>);await screen.findByText('@native.buyer');
+ expect(screen.getByRole('heading',{name:/^Your enquiries$/})).toBeTruthy();
+ expect(screen.queryByText('Your shop, beautifully managed.')).toBeNull();
+ expect(screen.getByRole('navigation',{name:'Your workspace'})).toBeTruthy();
+ expect(screen.getByRole('button',{name:/^Your enquiries$/})).toBeTruthy();
+});

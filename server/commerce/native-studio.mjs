@@ -162,6 +162,12 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
    if(Number(block?.low_blocked)||Number(block?.high_blocked))stop('conversation_unavailable','This enquiry is unavailable.');
    return {e,shop};
  }
+ async function enquiryView(ctx,e,shop) {
+   // Called only after enquiryScope has authorized and locked the current parties.
+   const product=await q('SELECT name FROM products WHERE id=?',e.product_id);
+   const other=await q('SELECT eco_id,display_name FROM users WHERE id=?',ctx.user.id===e.buyer_id?shop.owner_id:e.buyer_id);
+   return {id:e.id,productId:e.product_id,shopId:e.shop_id,state:e.state,productTitle:product?.name||null,shopName:shop.name,counterpartyName:other?.display_name||other?.eco_id||null,counterpartyEcoId:other?.eco_id||null};
+ }
  async function sendMessage(ctx,enquiryId,body) {
    exact(body,['clientId','body']);uuid(body.clientId);const content=text(body.body,1,2000,'your message');
    const {e,shop}=await enquiryScope(ctx,enquiryId,true);
@@ -361,7 +367,7 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
    if(path==='/connect/enquiries'){
     if(method==='GET'){
      const rows=await all("SELECT DISTINCT e.* FROM connect_product_enquiries e LEFT JOIN m01_shop_members m ON m.shop_id=e.shop_id WHERE e.buyer_id=? OR (m.user_id=? AND m.status='active' AND m.role IN ('owner','administrator','enquiry_operator')) ORDER BY e.created_at DESC LIMIT 50",ctx.user.id,ctx.user.id);
-     const enquiries=[];for(const e of rows){try{await enquiryScope(ctx,e.id);enquiries.push({id:e.id,productId:e.product_id,shopId:e.shop_id,state:e.state});}catch(error){if(error.status!==404)throw error;}}
+     const enquiries=[];for(const e of rows){try{const scope=await enquiryScope(ctx,e.id);enquiries.push(await enquiryView(ctx,scope.e,scope.shop));}catch(error){if(error.status!==404)throw error;}}
      return {enquiries};
     }
     if(method==='POST'){
@@ -377,9 +383,9 @@ export function createNativeStudio({ q, all, run, transaction, assert, now, id, 
    const enquiry=path.match(/^\/connect\/enquiries\/([a-f0-9-]{36})(\/messages)?$/i);
    if(enquiry){
     if(method==='GET'&&!enquiry[2]){
-     const {e}=await enquiryScope(ctx,enquiry[1]);
-     const rows=await all('SELECT * FROM connect_enquiry_messages WHERE enquiry_id=? ORDER BY sequence DESC LIMIT 50',e.id);
-     return {enquiry:{id:e.id,productId:e.product_id,state:e.state},messages:rows.reverse().map(m=>({id:m.id,senderId:m.sender_id,body:m.body,createdAt:m.created_at}))};
+     const {e,shop}=await enquiryScope(ctx,enquiry[1]);
+     const rows=await all('SELECT m.*,u.eco_id sender_eco_id,u.display_name sender_name FROM connect_enquiry_messages m JOIN users u ON u.id=m.sender_id WHERE m.enquiry_id=? ORDER BY m.sequence DESC LIMIT 50',e.id);
+     return {enquiry:await enquiryView(ctx,e,shop),messages:rows.reverse().map(m=>({id:m.id,senderId:m.sender_id,senderName:m.sender_name,senderEcoId:m.sender_eco_id,body:m.body,createdAt:m.created_at}))};
     }
     if(method==='POST'&&enquiry[2]){await rateLimit('product-enquiry-send:'+ctx.user.id,20,60_000);return {message:await sendMessage(ctx,enquiry[1],body)};}
    }

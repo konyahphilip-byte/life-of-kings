@@ -6,3 +6,5 @@ Actual browser: explicit acknowledgement gate, keyboard activation, retained fou
 Remote RED evidence: run45805008399 atbc689e8 had698 pass/1 failed inventory-refresh assertion (unable to find draft·approved),56.42s; the3 local Bag/navigation failures passed there. Five-line scoped/cancellable refresh now passes8 focused UI checks; unchanged timeouts/assertions. Corrected existing payment script, identity and messages passed. Exact-final CI and completed browser journey remain pending at preparation time.
 
 Latest local normal disk-writing build failed with ENOSPC while writing an image asset after the inventory correction. This is retained at work/publication-review/build-final.log, not counted as a passing final build. Focused UI8 and TypeScript passed. An in-memory preview build is being evaluated; exact-final remote normal build remains mandatory.
+
+Buyer-context follow-up: retained API missing-context assertion and buyer heading failure. Corrected a test-only unsupported exact option with anchored name matching. Native API28, founder14, UI9 and TypeScript pass. Final remote source and updated browser reply journey still required.
