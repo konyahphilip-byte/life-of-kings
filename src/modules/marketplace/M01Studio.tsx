@@ -97,6 +97,11 @@ export default function M01Studio(){
  },[path,search]);
  useEffect(()=>{
   if(!user||publicView)return;
+  if(tab==='My Inventory'&&shop){
+   let active=true;const accountGeneration=epoch.current;
+   void apiRequest<{products:Product[]}>('/studio/shops/'+shop.id+'/products').then(r=>{if(active&&accountGeneration===epoch.current)setProducts(r.products);}).catch(e=>{if(active&&accountGeneration===epoch.current)setError(e.message);});
+   return()=>{active=false;};
+  }
   if(tab==='Buyer Enquiries')void refreshEnquiries().catch(e=>setError(e.message));
   if(tab==='My Storefront'&&shop)void apiRequest<Theme>('/studio/shops/'+shop.id+'/theme').then(r=>{setTheme(r);setConfig(r.config);setThemeApproved(false);}).catch(e=>setError(e.message));
   if(tab==='Review'&&isStaff)void apiRequest<{shops:Shop[];products:Product[]}>('/studio/reviews').then(setReview).catch(e=>setError(e.message));

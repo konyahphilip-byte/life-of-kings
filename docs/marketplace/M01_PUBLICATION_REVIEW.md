@@ -35,3 +35,7 @@ Withdrawal must retain the native public/media/edit/checkout guards and hide rec
 The browser proof uses synthetic local accounts and a green generated test image, not genuine supply or independent staff. It is desktop emulation, not physical-phone or screen-reader acceptance.
 
 Local full-gate exception:695 passed/3 failed in unchanged Bag/navigation tests; all3 also failed on exact parent locally. Parent remote696 passed. A mistyped payment command failed before running any test; corrected to the actual existing scripts/test-paystack-workflow.mjs. These failures remain retained, never counted as passes.
+
+Inventory journey correction: remote RED atbc689e8/run45805008399 had698 passed and only the expected stale-inventory assertion failed. The scoped refresh loads current records on inventory entry and discards a response after unmount/account-generation change. Focused Studio/review UI8 passed after the correction; TypeScript passed. Exact-final CI is recorded separately after commit.
+
+Latest local normal disk-writing build failed with ENOSPC while writing an image asset after the inventory correction. This is retained at work/publication-review/build-final.log, not counted as a passing final build. Focused UI8 and TypeScript passed. An in-memory preview build is being evaluated; exact-final remote normal build remains mandatory.
