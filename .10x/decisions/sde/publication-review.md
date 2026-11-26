@@ -1,0 +1,1 @@
+Plan: failing policy tests; append-only receipt schema; strict API review and publication guard; bounded queue controls; HTTP/SQL regressions. No paid dependencies. Source inspection and self-review are not independent review.

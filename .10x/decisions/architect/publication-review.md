@@ -1,0 +1,1 @@
+Use the existing API transaction and account/shop lock order. Canonical snapshots include product content, owned photo references, creator, shop and revision. A scoped founder exception is not an independent verifier. See ADR004. No production actions.
