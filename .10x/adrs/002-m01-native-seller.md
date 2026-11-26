@@ -1,0 +1,13 @@
+# M01 native seller vertical slice — 26 November 2026
+Approved scope: the founder's latest native Add Product / shop customization / single-listing proof. No production action.
+Base e25320196ff4d5aabc8d19a6dfc673bb88de9e93 on d8f02d0 main. Foundation PR59 is still draft; actual current GitHub was checked. Discover refinement remains a separate dirty worktree; Concept D and its archive remain untouched.
+
+Architecture: existing users, sessions, CSRF, roles, products, media_assets, notifications and audit remain authorities. Add stable shop + staff membership + alias records, product publication metadata keyed by existing product ID, ordered media relations, immutable theme versions, and contextual Connect enquiry records. A contextual Connect extension is necessary: friend DMs have a non-null friendship FK and cannot safely represent buyer-initiated merchant enquiries. Never manufacture friendships or relax their consent policy.
+
+Acceptance: native seller saves/reopens/edits a draft, owned uploaded photos, strict variants/prices/category/availability, exact-revision validation and independent staff approval, explicit seller publication. Shop + Discover + direct links + profile all resolve the same product authority. Edit/unpublish/suspension immediately removes public eligibility. Theme changes preserve identity, aliases, membership, catalogue and conversations. Enquiry/reply uses independent buyer/seller current authorization with retries and blocks; no orders, payment, stock reservation, Bag changes, or AI transmission.
+
+UI: reuse The Living Edit's emerald/editorial direction in an isolated native pilot entry, four Studio workspaces. Original source untouched. Universal concept remains separately pending visual approval. Development status lives outside the customer storefront. Manual theme controls first; Chale automation must remain visibly unavailable until real approved tools exist.
+
+Security: flag default OFF; missing migration fails closed only for new features. Current sessions/CSRF and locked membership govern each mutation. Image content decoded/reencoded with bounded pixels/bytes, EXIF removed; no arbitrary remote URL fetch. Private draft photos cannot leak through the old social-media endpoint. Explicit photo rights and supply attestations; moderation not self-approved. No new paid dependencies/services.
+
+Evidence: tests written before implementation; actual isolated HTTP/auth/SQLite plus unit tests. PostgreSQL migration/runtime and remote CI separately required. Local disk currently ~178MiB; don't bypass existing 2GiB full-browser guard or delete evidence. No hosted/physical-device acceptance claim.

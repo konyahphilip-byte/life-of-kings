@@ -20,6 +20,8 @@ jobs:
       - run: npm run test:security
       - run: npm test -- --maxWorkers=1
       - run: npm run build
+      - run: NATIVE_HTTP_REPORT=work/m01-native/latest-http.json node scripts/test-m01-native.mjs
+      - run: node scripts/test-m01-fallback.mjs work/m01-native/latest-http.json
       - run: npm run test:providers
       - run: node scripts/test-media-close.mjs
       - run: npm run test:payments
@@ -48,3 +50,4 @@ jobs:
           "$PG_BINDIR/postgres" --version
           node scripts/test-message-receipts-postgres.mjs
           node scripts/test-job-tracking-postgres.mjs
+          node scripts/test-m01-native-postgres.mjs

@@ -7,6 +7,12 @@ import {retireUnsafeShell} from './offline-shell';
 
 const root=createRoot(document.getElementById('root')!,screenErrorOptions);
 async function start(){
+ if(import.meta.env.VITE_M01_STUDIO==='true'&&/^\/(?:m01(?:\/|$)|shops\/|products\/)/.test(location.pathname)){
+  const {default:NativeStudio}=await import('./modules/marketplace/M01Studio');
+  root.render(<React.StrictMode><ScreenBoundary screen="Seller Studio" onHome={()=>location.assign('/')}><NativeStudio/></ScreenBoundary></React.StrictMode>);
+  return;
+ }
+
  if(import.meta.env.PROD){
   try{await retireUnsafeShell(window.caches);}
   catch{

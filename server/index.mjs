@@ -1,3 +1,5 @@
+import { createNativeStudio, PUBLIC_NATIVE_FROM } from "./commerce/native-studio.mjs";
+import { NATIVE_STUDIO_SCHEMA, NATIVE_STUDIO_VERSION } from "./commerce/native-schema.mjs";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { Pool } from "pg";
@@ -189,6 +191,7 @@ if (!postgresMode) {
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
   db.exec(FRIENDS_SQLITE_SCHEMA);
   db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
+  if(process.env.ECOVIBES_M01_ENABLED==="true")db.exec(NATIVE_STUDIO_SCHEMA);
   db.exec(TRACKING_SQLITE_SCHEMA);
 }
 
@@ -307,7 +310,7 @@ async function storeMediaAsset(assetId, bytes, mime) {
   const config = mediaStorageConfig();
   if (!config) {
     assert(!isProduction, 503, "media_storage_unavailable", "Configure Supabase Storage before accepting uploads.");
-    const dir = resolve(root, "server/data/social-media");
+    const dir = process.env.ECOVIBES_MEDIA_LOCAL_ROOT || resolve(root, "server/data/social-media");
     mkdirSync(dir, { recursive: true });
     await writeFile(resolve(dir, assetId), bytes, { flag: "wx", mode: 0o600 });
     return;
@@ -327,7 +330,7 @@ async function storeMediaAsset(assetId, bytes, mime) {
 async function removeMediaAsset(assetId) {
   const config = mediaStorageConfig();
   if (!config) {
-    await unlink(resolve(root, "server/data/social-media", assetId)).catch(() => undefined);
+    await unlink(resolve(process.env.ECOVIBES_MEDIA_LOCAL_ROOT || resolve(root, "server/data/social-media"), assetId)).catch(() => undefined);
     return;
   }
   await fetch(mediaObjectUrl(config, assetId), {
@@ -337,7 +340,7 @@ async function removeMediaAsset(assetId) {
 }
 async function loadMediaAsset(assetId) {
   const config = mediaStorageConfig();
-  if (!config) return await readFile(resolve(root, "server/data/social-media", assetId));
+  if (!config) return await readFile(resolve(process.env.ECOVIBES_MEDIA_LOCAL_ROOT || resolve(root, "server/data/social-media"), assetId));
   const response = await fetch(mediaObjectUrl(config, assetId), {
     headers: { Authorization: `Bearer ${config.key}`, apikey: config.key },
   });
@@ -930,7 +933,7 @@ async function findPublicCatalogListings(queryText, userId = null) {
   const productFields = ["p.name", "p.description", "p.category"];
   const productWhere = aiSearchWhere(productFields, terms);
   const products = await all(
-    `SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,u.eco_id actor_eco_id,p.created_at FROM products p JOIN users u ON u.id=p.seller_id WHERE p.status='active' AND p.fulfillment_type!='external_checkout' ${userId ? "AND p.seller_id<>?" : ""} AND ${productWhere.sql} ORDER BY p.created_at DESC LIMIT 30`,
+    `SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,u.eco_id actor_eco_id,p.created_at FROM products p JOIN users u ON u.id=p.seller_id WHERE p.status='active' ${nativePublicGuard()} AND p.fulfillment_type!='external_checkout' ${userId ? "AND p.seller_id<>?" : ""} AND ${productWhere.sql} ORDER BY p.created_at DESC LIMIT 30`,
     ...(userId ? [userId] : []),
     ...productWhere.params,
   );
@@ -1023,7 +1026,7 @@ function recommendationPillar(itemType) {
 }
 async function recommendationChoices() {
   const rows = await all(
-    "SELECT category FROM products WHERE status='active' AND fulfillment_type!='external_checkout' UNION SELECT category FROM jobs WHERE status='open'",
+    `SELECT p.category FROM products p WHERE p.status='active' AND p.fulfillment_type!='external_checkout' ${nativePublicGuard()} UNION SELECT category FROM jobs WHERE status='open'`,
   );
   const choices = new Map();
   for (const label of [...BASE_RECOMMENDATION_INTERESTS, ...rows.map((row) => row.category)]) {
@@ -1046,7 +1049,7 @@ async function recommendationSnapshot(userId, limit = 6) {
     all("SELECT topic FROM recommendation_preferences WHERE user_id=? ORDER BY topic", userId),
     recommendationSignals(userId),
     q("SELECT personalization_enabled FROM recommendation_settings WHERE user_id=?", userId),
-    all("SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,p.currency,p.location,p.created_at FROM products p WHERE p.status='active' AND p.stock>0 AND p.fulfillment_type!='external_checkout' AND p.seller_id<>? ORDER BY p.created_at DESC LIMIT 250", userId),
+    all(`SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,p.currency,p.location,p.created_at FROM products p WHERE p.status='active' ${nativePublicGuard()} AND p.stock>0 AND p.fulfillment_type!='external_checkout' AND p.seller_id<>? ORDER BY p.created_at DESC LIMIT 250`, userId),
     all("SELECT j.id,j.title,j.description detail,j.category,j.area,j.budget_minor,j.currency,j.created_at FROM jobs j WHERE j.status='open' AND j.customer_id<>? ORDER BY j.created_at DESC LIMIT 250", userId),
     recommendationChoices(),
   ]);
@@ -1110,12 +1113,38 @@ const receiptsAvailable=!postgresMode||Boolean(await q("SELECT 1 ok FROM public.
 const directMessages=createDirectMessages({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:directMessagesAvailable,receiptsAvailable});
 const trackingAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',TRACKING_VERSION));
 const jobTracking=createJobTracking({q,run,transaction,assert,now,event,rateLimit,postgresMode,available:trackingAvailable,disabled:process.env.ECOVIBES_TRACKING_DISABLED==='true'});
+const nativeEnabled=process.env.ECOVIBES_M01_ENABLED==='true';
+const nativeTablePresent=postgresMode?Boolean((await q("SELECT to_regclass('public.m01_product_publication') name")).name):Boolean(await q("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='m01_product_publication'"));
+const nativeAvailable=nativeEnabled&&nativeTablePresent&&(!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',NATIVE_STUDIO_VERSION)));
+function nativePublicGuard(alias='p'){return nativeAvailable?' AND '+alias+'.id IN (SELECT p.id '+PUBLIC_NATIVE_FROM+') ':nativeTablePresent?' AND '+alias+'.id NOT IN (SELECT product_id FROM m01_product_publication) ':'';}
+const nativePhotos=nativeAvailable?await import('./commerce/native-photo.mjs'):null;
+const nativeStudio=createNativeStudio({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:nativeAvailable,enabled:nativeEnabled,requireStaff,storeMediaAsset,loadMediaAsset,removeMediaAsset,normalizePhoto:input=>nativePhotos.normalizeNativePhoto(input)});
 const chalePublicUpdates = createPublicUpdates();
 const publicTrends = createPublicTrends();
 
 const paystackRefunds = createPaystackRefundService({ q, all, run, fault, assert, now, notify, event, restoreRefundOrder, postgresMode });
 
 async function route(ctx, req, res, method, path, body, query) {
+  if(path.startsWith('/studio/')||path==='/studio/shops'||path.startsWith('/public/')||path==='/connect/enquiries'||path.startsWith('/connect/enquiries/')){
+    const value=await nativeStudio.route(ctx,method,path,body,query);
+    if(value?.__media){res.setHeader('Cache-Control','private, no-store');res.setHeader('Content-Type',value.mimeType);res.setHeader('Content-Length',value.__media.length);res.end(value.__media);return {__sent:true};}
+    return value;
+  }
+  if(nativeTablePresent&&method==='POST'&&path==='/marketplace/orders'&&Array.isArray(body.items)){
+    for(const item of body.items.slice(0,30))if(typeof item?.productId==='string'&&await q('SELECT 1 ok FROM m01_product_publication WHERE product_id=?',item.productId))fault(503,'checkout_unavailable','Checkout is unavailable for this product. Contact the seller through Connect.');
+  }
+  if(nativeEnabled&&method==='POST'&&path==='/marketplace/orders'){
+    fault(503,'checkout_unavailable','Checkout is unavailable. Contact the seller through Connect; no order or payment has been created.');
+  }
+  if(nativeEnabled&&method==='GET'&&path==='/marketplace/products'&&!query.has('mine')){
+    assert(nativeAvailable,503,'studio_unavailable','The shared catalogue is unavailable.');
+    return (await nativeStudio.publicCatalog({query:query.get('q')||''})).slice(0,25).map(p=>({...p,name:p.title,category:p.categoryId,image_url:p.gallery[0]?.url||null,sellerEcoId:p.ownerEcoId,sellerName:p.shopName,fulfillment_type:'own_inventory',source_type:'direct'}));
+  }
+  if(nativeEnabled&&['PATCH','DELETE'].includes(method)&&/^\/marketplace\/products\/[a-f0-9-]+$/.test(path)){
+    assert(nativeAvailable,503,'studio_unavailable','The shared catalogue is unavailable.');
+    assert(!await q('SELECT 1 ok FROM m01_product_publication WHERE product_id=?',path.split('/').pop()),409,'use_studio','Edit this product in Seller Studio so review and public visibility stay consistent.');
+  }
+
   if(/^\/jobs\/[^/]+\/tracking(?:\/|$)/.test(path))return jobTracking.route(ctx,method,path,body,query);
   if(path==='/connect/messages'||path.startsWith('/connect/messages/'))return directMessages.route(ctx,method,path,body,query);
   if (method === 'GET' && path === '/money/overview') {
@@ -1205,7 +1234,7 @@ async function route(ctx, req, res, method, path, body, query) {
     const active = body.active !== false;
     let item;
     if (itemType === "product") {
-      item = await q("SELECT id,name title,category FROM products WHERE id=? AND status='active' AND stock>0 AND fulfillment_type!='external_checkout'", itemId);
+      item = await q(`SELECT p.id,p.name title,p.category FROM products p WHERE p.id=? AND status='active' AND stock>0 AND fulfillment_type!='external_checkout' ${nativePublicGuard()}`, itemId);
     } else {
       item = await q("SELECT id,title,category FROM jobs WHERE id=? AND status='open'", itemId);
     }
@@ -1921,6 +1950,7 @@ async function route(ctx, req, res, method, path, body, query) {
   }
   const assetMatch = path.match(/^\/social\/assets\/([a-f0-9-]+)$/);
   if (method === "GET" && assetMatch) {
+    if(nativeTablePresent&&await q('SELECT 1 ok FROM m01_photos WHERE asset_id=?',assetMatch[1]))fault(404,'asset_not_found','Media is no longer available.');
     const imagePath = `/social/assets/${assetMatch[1]}`;
     const viewerId = ctx.user?.id || "";
     const asset = await q("SELECT a.* FROM media_assets a WHERE a.id=? AND (EXISTS (SELECT 1 FROM stories s WHERE s.asset_id=a.id AND s.expires_at>? AND (s.visibility='public' OR s.author_id=? OR EXISTS (SELECT 1 FROM people_follows f WHERE f.user_id=? AND f.target_user_id=s.author_id))) OR EXISTS (SELECT 1 FROM reels r WHERE r.asset_id=a.id AND r.status='active') OR EXISTS (SELECT 1 FROM products p WHERE p.image_url=? AND p.status='active'))", assetMatch[1], now(), viewerId, viewerId, imagePath);
@@ -2267,7 +2297,7 @@ async function route(ctx, req, res, method, path, body, query) {
           `%${qtext}%`,
         )
       : await all(
-          `SELECT p.*,u.eco_id seller_eco_id,u.display_name seller_name FROM products p JOIN users u ON u.id=p.seller_id WHERE p.status='active' AND p.fulfillment_type!='external_checkout' AND (?='' OR p.name LIKE ? OR p.description LIKE ? OR p.category LIKE ?) AND (?='' OR p.category=?) ORDER BY p.created_at DESC LIMIT 100`,
+          `SELECT p.*,u.eco_id seller_eco_id,u.display_name seller_name FROM products p JOIN users u ON u.id=p.seller_id WHERE p.status='active' ${nativePublicGuard()} AND p.fulfillment_type!='external_checkout' AND (?='' OR p.name LIKE ? OR p.description LIKE ? OR p.category LIKE ?) AND (?='' OR p.category=?) ORDER BY p.created_at DESC LIMIT 100`,
           qtext,
           `%${qtext}%`,
           `%${qtext}%`,
@@ -3168,19 +3198,19 @@ async function route(ctx, req, res, method, path, body, query) {
       "Enter at least two characters.",
     );
     const like = `%${text}%`;
-    const productResults = await all(
-      "SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,u.eco_id actor_eco_id FROM products p JOIN users u ON u.id=p.seller_id WHERE p.status='active' AND p.fulfillment_type!='external_checkout' AND (p.name LIKE ? OR p.description LIKE ? OR p.category LIKE ?) ORDER BY p.created_at DESC LIMIT 8",
+    const productResults = (await all(
+      `SELECT p.id,p.name title,p.description detail,p.category,p.price_minor,u.eco_id actor_eco_id FROM products p JOIN users u ON u.id=p.seller_id WHERE p.status='active' ${nativePublicGuard()} AND p.fulfillment_type!='external_checkout' AND (p.name LIKE ? OR p.description LIKE ? OR p.category LIKE ?) ORDER BY p.created_at DESC LIMIT 8`,
       like,
       like,
       like,
-    ).map((item) => ({ ...item, price: `GH₵${(item.price_minor / 100).toFixed(2)}`, kind: "product", destination: "Marketplace" }));
-    const jobResults = await all(
+    )).map((item) => ({ ...item, price: `GH₵${(item.price_minor / 100).toFixed(2)}`, kind: "product", destination: "Marketplace" }));
+    const jobResults = (await all(
       "SELECT j.id,j.title,j.description detail,j.category,j.area,u.eco_id actor_eco_id FROM jobs j JOIN users u ON u.id=j.customer_id WHERE j.status='open' AND (j.title LIKE ? OR j.description LIKE ? OR j.category LIKE ? OR j.area LIKE ?) ORDER BY j.created_at DESC LIMIT 8",
       like,
       like,
       like,
       like,
-    ).map((item) => ({ ...item, kind: "job", destination: "Quick&Handi" }));
+    )).map((item) => ({ ...item, kind: "job", destination: "Quick&Handi" }));
     return {
       query: text,
       items: [...productResults, ...jobResults].slice(0, 12),
@@ -3224,7 +3254,7 @@ const server = createServer(async (req, res) => {
       return res.end();
     }
     let body = {};
-    if (!["GET", "HEAD"].includes(method)) body = await bodyJson(req, url.pathname === "/api/v1/social/assets" ? 20_000_000 : 256_000);
+    if (!["GET", "HEAD"].includes(method)) body = await bodyJson(req, url.pathname === "/api/v1/social/assets" ? 20_000_000 : /^\/api\/v1\/studio\/shops\/[a-f0-9-]{36}\/photos$/.test(url.pathname) ? 8_500_000 : 256_000);
     if ((["POST", "PUT", "PATCH", "DELETE"].includes(method)) && url.pathname !== "/api/v1/media/webhook")
       originCheck(req);
     let ctx = { user: null, csrfToken: null };
@@ -3245,6 +3275,7 @@ const server = createServer(async (req, res) => {
           fault(403, "account_unavailable", "This EcoVibes account is unavailable. Contact support if you believe this is a mistake.");
         }
         ctx.csrfToken = record.csrf_token;
+        ctx.sessionHash = tokenHash;
         ctx.authAssurance = record.auth_assurance || "aal1";
       }
     }
