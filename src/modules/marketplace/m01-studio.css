@@ -14,3 +14,8 @@
 @media(prefers-reduced-motion:reduce){.m01-shell *{animation:none!important;transition:none!important;scroll-behavior:auto!important}.m01-hero-photo{transform:none}.m01-dialog::backdrop{backdrop-filter:none}}
 
 .m01-review-decision{border:1px solid var(--m01-border,#cad9d0);border-radius:16px;padding:20px;display:grid;gap:12px;min-width:0}.m01-review-decision legend{font-weight:700;padding:0 8px}.m01-review-decision textarea,.m01-review-decision select{width:100%;box-sizing:border-box;font:inherit}.m01-review-decision .m01-primary{height:auto;min-height:48px;white-space:normal;line-height:1.45;padding:12px 18px}
+
+/* Ivory enquiry surfaces retain their own text roles in both appearances. */
+.m01-thread-list>button[aria-current=true]{--m01-ink:#182c25;--m01-muted:#57665e;color:var(--m01-ink)}
+.m01-messages article.m01-my-message{--m01-ink:#173921;--m01-muted:#57665e;color:var(--m01-ink)}
+.m01-thread-list>button[aria-current=true] span,.m01-messages article.m01-my-message :is(span,time){font-size:.8125rem}
