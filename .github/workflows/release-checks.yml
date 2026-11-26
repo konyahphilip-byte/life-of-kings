@@ -22,6 +22,8 @@ jobs:
       - run: npm run build
       - run: NATIVE_HTTP_REPORT=work/m01-native/latest-http.json node scripts/test-m01-native.mjs
       - run: node scripts/test-m01-fallback.mjs work/m01-native/latest-http.json
+      - run: node scripts/test-publication-review-policy.mjs
+      - run: node scripts/test-m01-review.mjs work/m01-native/latest-http.json
       - run: npm run test:providers
       - run: node scripts/test-media-close.mjs
       - run: npm run test:payments

@@ -19,7 +19,7 @@ db.prepare("UPDATE m01_shops SET status='suspended'").run();
 const originalStock=db.prepare('SELECT stock FROM products WHERE id=?').get(product.id).stock;
 db.close();
 let origin,exit=false,log='',failure=null;const checks=[];
-const child=spawn(process.execPath,['--import','./scripts/chale-test-provider.mjs','server/index.mjs'],{cwd:root,env:{PATH:process.env.PATH,TMPDIR:process.env.TMPDIR||'/tmp',NODE_ENV:'test',AI_PROVIDER_KEY:'synthetic-chale-http-fixture',CHALE_SMOKE_CAPTURE:resolve(folder,'unused.jsonl'),PORT:'0',ECOVIBES_DB_PATH:database,ECOVIBES_MEDIA_LOCAL_ROOT:resolve(source.evidenceDirectory,'media'),ECOVIBES_M01_ENABLED:'false',ECOVIBES_TRACKING_DISABLED:'true',OPENAI_ENV_FILE:'',SUPABASE_URL:'',DATABASE_URL:'',ECOVIBES_PUBLIC_TRENDS_DISABLED:'true'},stdio:['ignore','pipe','pipe','ipc']});
+const child=spawn(process.execPath,['--import','./scripts/chale-test-provider.mjs','server/index.mjs'],{cwd:process.env.M01_FALLBACK_SERVER_ROOT||root,env:{PATH:process.env.PATH,TMPDIR:process.env.TMPDIR||'/tmp',NODE_ENV:'test',AI_PROVIDER_KEY:'synthetic-chale-http-fixture',CHALE_SMOKE_CAPTURE:resolve(folder,'unused.jsonl'),PORT:'0',ECOVIBES_DB_PATH:database,ECOVIBES_MEDIA_LOCAL_ROOT:resolve(source.evidenceDirectory,'media'),ECOVIBES_M01_ENABLED:'false',ECOVIBES_TRACKING_DISABLED:'true',OPENAI_ENV_FILE:'',SUPABASE_URL:'',DATABASE_URL:'',ECOVIBES_PUBLIC_TRENDS_DISABLED:'true'},stdio:['ignore','pipe','pipe','ipc']});
 child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);child.on('message',m=>{if(m?.event==='chale-smoke-ready')origin='http://127.0.0.1:'+m.port;});child.on('exit',()=>exit=true);
 async function get(path,actor){const r=await fetch(origin+'/api/v1'+path,{headers:actor?{cookie:actor.cookie}:{}});return {status:r.status,body:r.headers.get('content-type')?.startsWith('application/json')?await r.json():null};}
 try{
@@ -32,6 +32,10 @@ try{
  const image=await get(product.image_url,actor);assert.equal(image.status,404);checks.push('fallback cannot expose native photos through legacy media path');
  const search=await get('/search?q=Native',actor);assert.equal(search.status,200);assert.equal(search.body.items.filter(p=>p.kind==='product').length,0);checks.push('fallback preserves search visibility isolation');
  const order=await fetch(origin+'/api/v1/marketplace/orders',{method:'POST',headers:{cookie:actor.cookie,'X-CSRF-Token':actor.csrfToken,'Content-Type':'application/json',Origin:origin},body:JSON.stringify({items:[{productId:product.id,quantity:1,variantId:'medium'}]})});assert.equal(order.status,503);checks.push('fallback cannot restore checkout for native listings');
+ const login=await fetch(origin+'/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin},body:JSON.stringify({ecoId:'m01.seller',password:'Local-proof-only-Not-a-production-password!42'})});
+ assert.equal(login.status,200);const sellerData=await login.json();
+ const edit=await fetch(origin+'/api/v1/marketplace/products/'+product.id,{method:'PATCH',headers:{cookie:login.headers.get('set-cookie').split(';')[0],'X-CSRF-Token':sellerData.csrfToken,'Content-Type':'application/json',Origin:origin},body:JSON.stringify({priceMinor:999})});
+ assert.equal(edit.status,409,'Disabling Studio must not allow unreviewed legacy product edits.');checks.push('fallback blocks legacy edits of native review versions');
  const checkDb=new DatabaseSync(database);assert.equal(checkDb.prepare('SELECT stock FROM products WHERE id=?').get(product.id).stock,originalStock);assert.equal(checkDb.prepare('SELECT count(*) n FROM orders').get().n,0);checkDb.close();checks.push('fallback creates no order and preserves inventory');
  assert.equal((await get('/public/catalogue')).status,503);checks.push('new Studio paths remain explicitly unavailable while disabled');
 }catch(e){failure={message:e.message,stack:e.stack};}

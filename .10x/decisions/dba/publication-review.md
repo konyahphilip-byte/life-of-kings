@@ -1,0 +1,1 @@
+Append-only private m01_review_receipts references existing shops/products/users, indexes product version/history and shop/time, binds exact snapshot and policy version. New migration proposed only. Runtime cannot UPDATE/DELETE; no anon/member/service-role direct access. No scope/admin role granted by migration.\n

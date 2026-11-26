@@ -1,3 +1,5 @@
+import { NATIVE_REVIEW_SCHEMA, NATIVE_REVIEW_VERSION } from './commerce/review-schema.mjs';
+import { parseFounderScope } from './commerce/publication-review.mjs';
 import { createNativeStudio, PUBLIC_NATIVE_FROM } from "./commerce/native-studio.mjs";
 import { NATIVE_STUDIO_SCHEMA, NATIVE_STUDIO_VERSION } from "./commerce/native-schema.mjs";
 import { createServer } from "node:http";
@@ -191,7 +193,7 @@ if (!postgresMode) {
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS products_source_external ON products(seller_id,source_type,source_external_id) WHERE source_external_id IS NOT NULL");
   db.exec(FRIENDS_SQLITE_SCHEMA);
   db.exec(DIRECT_MESSAGES_SQLITE_SCHEMA);
-  if(process.env.ECOVIBES_M01_ENABLED==="true")db.exec(NATIVE_STUDIO_SCHEMA);
+  if(process.env.ECOVIBES_M01_ENABLED==="true")db.exec(NATIVE_STUDIO_SCHEMA+NATIVE_REVIEW_SCHEMA);
   db.exec(TRACKING_SQLITE_SCHEMA);
 }
 
@@ -1115,10 +1117,10 @@ const trackingAvailable=!postgresMode||Boolean(await q('SELECT 1 ok FROM public.
 const jobTracking=createJobTracking({q,run,transaction,assert,now,event,rateLimit,postgresMode,available:trackingAvailable,disabled:process.env.ECOVIBES_TRACKING_DISABLED==='true'});
 const nativeEnabled=process.env.ECOVIBES_M01_ENABLED==='true';
 const nativeTablePresent=postgresMode?Boolean((await q("SELECT to_regclass('public.m01_product_publication') name")).name):Boolean(await q("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='m01_product_publication'"));
-const nativeAvailable=nativeEnabled&&nativeTablePresent&&(!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',NATIVE_STUDIO_VERSION)));
+const nativeAvailable=nativeEnabled&&nativeTablePresent&&(!postgresMode||Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',NATIVE_STUDIO_VERSION))&&Boolean(await q('SELECT 1 ok FROM public.ecovibes_schema_version WHERE version=?',NATIVE_REVIEW_VERSION)));
 function nativePublicGuard(alias='p'){return nativeAvailable?' AND '+alias+'.id IN (SELECT p.id '+PUBLIC_NATIVE_FROM+') ':nativeTablePresent?' AND '+alias+'.id NOT IN (SELECT product_id FROM m01_product_publication) ':'';}
 const nativePhotos=nativeAvailable?await import('./commerce/native-photo.mjs'):null;
-const nativeStudio=createNativeStudio({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:nativeAvailable,enabled:nativeEnabled,requireStaff,storeMediaAsset,loadMediaAsset,removeMediaAsset,normalizePhoto:input=>nativePhotos.normalizeNativePhoto(input)});
+const nativeStudio=createNativeStudio({q,all,run,transaction,assert,now,id,event,notify,rateLimit,postgresMode,available:nativeAvailable,enabled:nativeEnabled,requireStaff,storeMediaAsset,loadMediaAsset,removeMediaAsset,normalizePhoto:input=>nativePhotos.normalizeNativePhoto(input),founderReviewScope:parseFounderScope(process.env.ECOVIBES_M01_FOUNDER_REVIEW_SCOPE)});
 const chalePublicUpdates = createPublicUpdates();
 const publicTrends = createPublicTrends();
 
@@ -1140,8 +1142,7 @@ async function route(ctx, req, res, method, path, body, query) {
     assert(nativeAvailable,503,'studio_unavailable','The shared catalogue is unavailable.');
     return (await nativeStudio.publicCatalog({query:query.get('q')||''})).slice(0,25).map(p=>({...p,name:p.title,category:p.categoryId,image_url:p.gallery[0]?.url||null,sellerEcoId:p.ownerEcoId,sellerName:p.shopName,fulfillment_type:'own_inventory',source_type:'direct'}));
   }
-  if(nativeEnabled&&['PATCH','DELETE'].includes(method)&&/^\/marketplace\/products\/[a-f0-9-]+$/.test(path)){
-    assert(nativeAvailable,503,'studio_unavailable','The shared catalogue is unavailable.');
+  if(nativeTablePresent&&['PATCH','DELETE'].includes(method)&&/^\/marketplace\/products\/[a-f0-9-]+$/.test(path)){
     assert(!await q('SELECT 1 ok FROM m01_product_publication WHERE product_id=?',path.split('/').pop()),409,'use_studio','Edit this product in Seller Studio so review and public visibility stay consistent.');
   }
 
