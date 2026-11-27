@@ -1,0 +1,6 @@
+# TAX-01 security review
+Codex self-review,27 November2026; no independent release approval.
+Pure data-only shared module has no provider, network, filesystem, auth or mutation API. Browser bundle has no external runtime imports. Snapshot/input validation rejects non-plain records, getters, unsafe keys, nonfinite numbers, incompatible fields, duplicate/cyclic/orphan identities and ambiguous aliases. Newly reproduced edge cases were corrected before qualification.
+No inference of certification, ownership, availability or publication permission. Disabled/prohibited selections fail strict normalization; draft issues are advisory and private persistence is not implemented by this module. Registry metadata cannot approve a listing or replace server moderation. Alias collision prevention is not a restricted-content detector.
+Native/publication review, identity, finance, product storage and migrations are unchanged. Existing server allowlist remains narrow. Future consumers must enforce ownership, exact revision/version validation, category/content checks and separate review/publication; retaining a snapshot is required before v2 persistence.
+Zero paid dependency/service added. Accessor rejection applies to plain data inputs, not arbitrary JavaScript Proxy objects; registry snapshots are controlled versioned source, not executable uploads.

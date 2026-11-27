@@ -20,6 +20,11 @@ jobs:
       - run: npm run test:security
       - run: npm test -- --maxWorkers=1
       - run: npm run build
+      - name: Verify canonical category contract and types
+        run: |
+          node scripts/test-taxonomy-contract.mjs
+          node scripts/test-taxonomy-browser-bundle.mjs
+          npx tsc --ignoreConfig --noEmit --strict --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext shared/taxonomy/contracts.typecheck.ts
       - run: NATIVE_HTTP_REPORT=work/m01-native/latest-http.json node scripts/test-m01-native.mjs
       - run: node scripts/test-m01-fallback.mjs work/m01-native/latest-http.json
       - run: node scripts/test-publication-review-policy.mjs

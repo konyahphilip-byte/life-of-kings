@@ -1,0 +1,4 @@
+# TAX-01 implementation
+27 November 2026. Reused exact v1 category source/reader/tests from7f6edfe without its wider commerce stack. Added original v2 snapshot, immutable indexed tree, breadcrumbs, related entry points, bounded offline search, strict declared-attribute schemas, type/intent compatibility, lifecycle and version transition checks, typed API and repeatable Node/browser-target compile checks.
+Scope: 24 normalized roots,219 nodes,143 assignable item classifications,35 attribute definitions,18 schemas. Counts describe inventory, not completed Marketplace journeys. Labels/aliases never grant publication. No app/API/schema/UI change or paid dependency.
+Review regressions reproduced11 failures across malformed/inherited legacy values, executable array/options accessors, conflicting canonical aliases and missing attribute-schema version changes; all now pass. Existing broad-category draft is preserved unchanged.

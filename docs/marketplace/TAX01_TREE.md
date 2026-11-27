@@ -1,0 +1,244 @@
+# Canonical category inventory — version 2
+
+Original EcoVibes data; classification candidates are not publication approval. See the manifest for immutable IDs and the audit for overlap decisions.
+
+- Fashion & accessories · fashion · group
+  - Men's clothing · mens-clothing · group
+    - Men's T-shirts · mens-tshirts · candidate · schema fashion
+    - Men's trousers · mens-trousers · candidate · schema fashion
+  - Women's clothing · womens-clothing · group
+    - Dresses · dresses · candidate · schema fashion
+    - Women's tops · womens-tops · candidate · schema fashion
+  - Fashion accessories · fashion-accessories · group
+    - Bags · bags · candidate · schema fashion
+    - Fashion jewellery · jewellery · candidate · schema ordinary
+  - Footwear · footwear · group
+    - Sneakers · sneakers · candidate · schema fashion
+    - Sandals · sandals · candidate · schema fashion
+  - Woven cloth & tailoring fabric · woven-textiles · candidate · schema fashion
+- Beauty & personal care · beauty · group
+  - Skin & body care · skin-body-care · group
+    - Body cleansers · body-cleansers · review-required · schema beauty
+    - Skin moisturisers · skin-moisturisers · review-required · schema beauty
+  - Hair care · hair-care · group
+    - Hair-care products · hair-products · review-required · schema beauty
+    - Hair styling tools · hair-tools · candidate · schema ordinary
+  - Cosmetics · cosmetics · review-required · schema beauty
+  - Personal hygiene supplies · personal-hygiene · review-required · schema beauty
+- Groceries & beverages · groceries · group
+  - Pantry & packaged food · pantry · group
+    - Rice · rice · review-required · schema food
+    - Gari · gari · review-required · schema food
+    - Cooking oils · cooking-oils · review-required · schema food
+  - Beverages · beverages · group
+    - Non-alcoholic drinks · non-alcoholic-drinks · review-required · schema food
+  - Packaged snacks · packaged-snacks · review-required · schema food
+  - Dairy & chilled food · fresh-dairy · review-required · schema food
+- Agriculture & farm supplies · agriculture · group
+  - Crops & produce · crops-produce · group
+    - Vegetables · vegetables · group
+      - Tomatoes · tomatoes · review-required · schema food
+      - Peppers · peppers · review-required · schema food
+      - Onions · onions · review-required · schema food
+    - Roots & tubers · roots-tubers · group
+      - Yam · yam · review-required · schema food
+      - Cassava · cassava · review-required · schema food
+    - Fruit & plantain · fruit-crops · group
+      - Plantain · plantain · review-required · schema food
+      - Pineapple · pineapple · review-required · schema food
+    - Grains & legumes · grain-legumes · group
+      - Maize · maize · review-required · schema food
+      - Cowpea · cowpea · review-required · schema food
+  - Farm equipment · farm-equipment · group
+    - Irrigation · irrigation · group
+      - Irrigation water pumps · irrigation-pumps · review-required · schema equipment
+      - Irrigation pipes & fittings · irrigation-fittings · candidate · schema building
+    - Farm hand tools · farm-hand-tools · candidate · schema ordinary
+  - Farm inputs · farm-inputs · group
+    - Seeds · seeds · group
+      - Vegetable seeds · vegetable-seeds · review-required · schema farm-input
+    - Soil improvement inputs · soil-improvement · review-required · schema farm-input
+  - Livestock-related supplies · livestock-supplies · group
+    - Farm animal feed · animal-feed · review-required · schema farm-input
+    - Farm animal housing & feeding equipment · livestock-equipment · candidate · schema commercial
+    - Live animals · live-animals · disabled · schema ordinary
+    - Pesticides & hazardous farm chemicals · farm-chemicals · disabled · schema farm-input
+- Electronics & technology · electronics · group
+  - Phones & tablets · phones-tablets · group
+    - Smartphones · smartphones · candidate · schema electronics
+    - Feature phones · feature-phones · candidate · schema electronics
+    - Tablets · tablets · candidate · schema electronics
+    - Phone accessories · phone-accessories · candidate · schema ordinary
+  - Computers & networking · computers · group
+    - Laptops · laptops · group
+      - Gaming laptops · gaming-laptops · candidate · schema computer
+      - Everyday & business laptops · general-laptops · candidate · schema computer
+    - Desktop computers · desktop-computers · candidate · schema computer
+    - Networking equipment · network-equipment · candidate · schema electronics
+    - Computer parts & peripherals · computer-parts · candidate · schema electronics
+  - Gaming equipment · gaming · group
+    - Game consoles · game-consoles · candidate · schema electronics
+    - Gaming controllers & accessories · gaming-accessories · candidate · schema electronics
+  - Audio equipment · audio · group
+    - Speakers · speakers · group
+      - Portable Bluetooth speakers · portable-bluetooth-speakers · candidate · schema electronics
+      - Home speakers · home-speakers · candidate · schema electronics
+    - Headphones · headphones · candidate · schema electronics
+  - Cameras & video · cameras · group
+    - Digital cameras · digital-cameras · candidate · schema electronics
+    - Video & photography equipment · video-equipment · candidate · schema electronics
+- Home, kitchen & appliances · home · group
+  - Furniture · furniture · group
+    - Sofas & seating · seating · candidate · schema furniture
+    - Tables & desks · tables-desks · candidate · schema furniture
+    - Beds & storage furniture · beds-storage · candidate · schema furniture
+  - Household appliances · appliances · group
+    - Household refrigerators · home-refrigerators · candidate · schema electronics
+    - Cooking appliances · cooking-appliances · candidate · schema electronics
+    - Laundry appliances · laundry-appliances · candidate · schema electronics
+  - Kitchen & dining · kitchen-dining · group
+    - Cookware · cookware · candidate · schema ordinary
+    - Tableware · tableware · candidate · schema ordinary
+  - Bedding & home textiles · bedding · candidate · schema fashion
+  - Household cleaning supplies · household-cleaning · review-required · schema building
+- Vehicles & parts · vehicles · group
+  - Cars · cars · group
+    - Passenger cars · passenger-cars · review-required · schema vehicle
+  - Commercial vehicles · commercial-vehicles · group
+    - Trucks · trucks · review-required · schema vehicle
+  - Two-wheelers · two-wheelers · group
+    - Motorcycles · motorcycles · review-required · schema vehicle
+    - Bicycles · bicycles · candidate · schema ordinary
+  - Automotive parts · vehicle-parts · group
+    - Engine components · engine-components · candidate · schema ordinary
+    - Tyres & wheels · tyres-wheels · candidate · schema ordinary
+    - Vehicle accessories · vehicle-accessories · candidate · schema ordinary
+- Building materials & tools · construction · group
+  - Masonry & structural materials · masonry · group
+    - Concrete blocks · concrete-blocks · candidate · schema building
+    - Cement · cement · candidate · schema building
+    - Roofing materials · roofing-materials · candidate · schema building
+    - Timber & wood boards · timber · candidate · schema building
+  - Hardware & repair supplies · hardware-repair · group
+    - Hand tools · hand-tools · candidate · schema ordinary
+    - Power tools · power-tools · candidate · schema electronics
+    - Fasteners & fittings · fasteners · candidate · schema building
+  - Plumbing materials · plumbing-materials · candidate · schema building
+  - Paint & finishing materials · finishes · review-required · schema building
+- Industrial equipment · industrial · group
+  - Construction machinery · construction-machinery · group
+    - Excavators · excavators · review-required · schema equipment
+    - Concrete mixers · concrete-mixers · review-required · schema equipment
+  - Manufacturing equipment · manufacturing · group
+    - Processing machines · processing-machines · review-required · schema equipment
+    - Workshop machines · workshop-machines · review-required · schema equipment
+- Business, office & hospitality · business · group
+  - Office & stationery · office · group
+    - Stationery · stationery · candidate · schema ordinary
+    - Printing equipment · printing-equipment · candidate · schema commercial
+  - Shop fittings & display · shop-fittings · candidate · schema commercial
+  - Hospitality & catering equipment · hospitality · group
+    - Commercial refrigeration · commercial-refrigeration · review-required · schema equipment
+    - Catering equipment · catering-equipment · candidate · schema commercial
+    - Hospitality linen · hospitality-linen · candidate · schema fashion
+- Property · property · group
+  - Residential property · residential · group
+    - Apartments · apartments · review-required · schema property
+    - Houses · houses · review-required · schema property
+  - Commercial property · commercial-property · group
+    - Office premises · office-premises · review-required · schema property
+    - Shop premises · shop-premises · review-required · schema property
+  - Land · land · group
+    - Residential plots · residential-plots · review-required · schema property
+- Sports & recreation · sport · group
+  - Fitness equipment · fitness · group
+    - Exercise equipment · exercise-equipment · candidate · schema equipment
+  - Sporting goods · sporting-goods · candidate · schema ordinary
+  - Camping & recreation equipment · camping · candidate · schema ordinary
+- Arts, crafts & music · creative · group
+  - Handmade goods · handmade · group
+    - Woven baskets · woven-baskets · candidate · schema ordinary
+    - Pottery & ceramics · pottery · candidate · schema ordinary
+  - Original physical artworks · artworks · candidate · schema ordinary
+  - Musical instruments · musical-instruments · group
+    - String instruments · string-instruments · candidate · schema ordinary
+    - Percussion instruments · percussion · candidate · schema ordinary
+  - Music production equipment · music-production · candidate · schema electronics
+  - Collectibles & specialty goods · collectibles · group
+    - Collectible items · collectible-items · review-required · schema ordinary
+    - Antiques · antiques · review-required · schema ordinary
+- Books & learning · learning · group
+  - Printed books · books · group
+    - School books · school-books · candidate · schema book
+    - General printed books · general-books · candidate · schema book
+  - Learning materials · learning-materials · candidate · schema ordinary
+- Babies, children & hobbies · children · group
+  - Baby & maternity · baby-care · group
+    - Baby clothing · baby-clothing · candidate · schema fashion
+    - Maternity supplies · maternity-supplies · review-required · schema ordinary
+    - Baby equipment · baby-equipment · review-required · schema ordinary
+  - Toys & hobbies · toys-hobbies · group
+    - Toys · toys · candidate · schema ordinary
+    - Board games · board-games · candidate · schema ordinary
+    - Hobby materials · hobby-materials · candidate · schema ordinary
+- Garden & landscaping · outdoor · group
+  - Gardening · gardening · group
+    - Garden plants · garden-plants · review-required · schema ordinary
+    - Garden tools · garden-tools · candidate · schema ordinary
+  - Landscaping materials · landscaping-materials · candidate · schema building
+- Pet supplies · pets · group
+  - Pet food · pet-food · review-required · schema food
+  - Pet accessories · pet-accessories · candidate · schema ordinary
+  - Pet care equipment · pet-care · review-required · schema ordinary
+- Health & wellness · health · group
+  - Permitted wellness supplies · wellness-supplies · review-required · schema health
+  - Mobility aids · mobility-aids · review-required · schema ordinary
+  - Medicines & sensitive health items · sensitive-health-items · disabled · schema health
+- Event & party supplies · events · group
+  - Event decorations · event-decor · candidate · schema ordinary
+  - Event furniture · event-furniture · candidate · schema furniture
+  - Party supplies · party-supplies · candidate · schema ordinary
+- Safety & protective equipment · safety · group
+  - Protective workwear · protective-workwear · review-required · schema fashion
+  - Site safety equipment · site-safety · review-required · schema commercial
+  - Prohibited weapons · prohibited-weapons · prohibited · schema ordinary
+- Energy & power · energy · group
+  - Renewable energy · renewable-energy · group
+    - Solar panels · solar-panels · review-required · schema equipment
+    - Inverters & charge controllers · inverters · review-required · schema electronics
+  - Power storage equipment · power-storage · review-required · schema equipment
+  - Generators · generators · review-required · schema equipment
+- Water, sanitation & recovered materials · environment · group
+  - Water & sanitation equipment · water-sanitation · group
+    - Water treatment equipment · water-treatment · review-required · schema equipment
+    - Sanitation equipment · sanitation-equipment · candidate · schema commercial
+  - Recovered & reusable materials · recovered-materials · group
+    - Reusable containers · reusable-containers · review-required · schema recovered
+    - Sorted plastic materials · sorted-plastics · review-required · schema recovered
+    - Recovered metals · recovered-metals · review-required · schema recovered
+- Digital goods & software · digital · group
+  - Permitted licensed software · licensed-software · review-required · schema digital
+  - Original digital creations · original-digital-creations · review-required · schema digital
+- Classification review · classification-review · group
+  - Other merchandise requiring classification review · unclassified-merchandise · disabled · schema ordinary
+
+## Field schemas
+
+- ordinary v1: condition (required), brand, model, material, dimensions, unit, minimumQuantity, deliveryArea
+- fashion v1: condition (required), brand, size, colour, material, unit, minimumQuantity
+- beauty v1: unit (required), brand, packaging, freshness, generalLocation
+- food v1: unit (required), originArea, packaging, freshness, quantityPerPackage, minimumQuantity, deliveryArea
+- farm-input v1: unit (required), brand, specification, packaging, terms, minimumQuantity, deliveryArea
+- electronics v1: condition (required), brand, model, storageGb, specification, includedAccessories, terms
+- computer v1: condition (required), brand, model, storageGb, specification, includedAccessories
+- furniture v1: condition (required), brand, material, dimensions, colour, deliveryArea
+- vehicle v1: condition (required), make (required), model (required), year (required), generalLocation (required), mileageKm, fuel, transmission, terms
+- equipment v1: condition (required), generalLocation (required), brand, model, specification, operatingHours, powerWatts, terms, durationUnit
+- building v1: unit (required), material, dimensions, specification, minimumQuantity, deliveryArea
+- commercial v1: condition (required), brand, model, specification, dimensions, unit, minimumQuantity
+- property v1: generalLocation (required), areaSqm (required), bedrooms, amenities, terms, durationUnit
+- book v1: condition (required), author, language, unit
+- digital v1: rights (required), language, compatibility, specification, terms
+- recovered v1: unit (required), material (required), generalLocation (required), dimensions, quantityPerPackage, minimumQuantity
+- health v1: unit (required), brand, packaging, specification, terms
+- service-referral v1: scope (required), generalLocation (required), terms
